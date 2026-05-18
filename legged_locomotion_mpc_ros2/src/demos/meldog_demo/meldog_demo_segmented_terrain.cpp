@@ -78,8 +78,8 @@ int main(int argc, char* argv[])
   initialState.block<3,1>(6, 0) = initialBasePosition;
   initialState.block<3,1>(9, 0) = vector3_t::Zero();
   // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512;
-  access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326;
-  // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755;
+  // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326, 0, -0.785398163, 1.570796326;
+  access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755, 0, -1.04719755, 1.04719755;
 
   LeggedLoopshapingInterface loopShapingInterface = makeLeggedLoopshapingInterface(initTime, 
     initialState, std::move(terrainModel), taskFilePath, modelFilePath, urdfFilePath, 

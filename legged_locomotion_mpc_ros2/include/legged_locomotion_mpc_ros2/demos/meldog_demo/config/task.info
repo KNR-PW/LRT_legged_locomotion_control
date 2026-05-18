@@ -1,20 +1,23 @@
 ; Multiple_Shooting SQP settings
 sqp
 {
-  nThreads                              1
-  dt                                    0.005
+  dt                                    0.015
+  alpha_min                             1e-2 ; = 7 tries before terminating
   sqpIteration                          1
   deltaTol                              1e-4
   g_max                                 1e-2
-  g_min                                 1e-6
+  g_min                                 1e-5
   inequalityConstraintMu                0.1
   inequalityConstraintDelta             5.0
   projectStateInputEqualityConstraints  true
   printSolverStatistics                 true
-  printSolverStatus                     true
+  printSolverStatus                     false
   printLinesearch                       false
+  enableLogging                         true
+  logSize                               50000
   useFeedbackPolicy                     true
   integratorType                        RK2
+  nThreads                              4
   threadPriority                        50
 }
 
@@ -63,15 +66,15 @@ ddp
   minRelCost                      1e-1
   constraintTolerance             5e-3
 
-  displayInfo                     false
-  displayShortSummary             false
-  checkNumericalStability         false
-  debugPrintRollout               false
+  displayInfo                     true
+  displayShortSummary             true
+  checkNumericalStability         true
+  debugPrintRollout               true
 
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
-  maxNumStepsPerSecond            1000
-  timeStep                        0.01
+  maxNumStepsPerSecond            100000
+  timeStep                        0.015
   backwardPassIntegratorType      ODE45
 
   constraintPenaltyInitialValue   20.0
@@ -84,7 +87,7 @@ ddp
   strategy                        LINE_SEARCH
   lineSearch
   {
-    minStepLength                 1e-2
+    minStepLength                 1e-4
     maxStepLength                 1.0
     hessianCorrectionStrategy     DIAGONAL_SHIFT
     hessianCorrectionMultiple     1e-5
@@ -96,20 +99,20 @@ rollout
 {
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
-  timeStep                        0.01
+  timeStep                        0.015
   integratorType                  ODE45
-  maxNumStepsPerSecond            1000
-  checkNumericalStability         false
+  maxNumStepsPerSecond            100000
+  checkNumericalStability         true
 }
 
 mpc
 {
-  timeHorizon                     1.0  ; [s]
-  solutionTimeWindow              -1   ; maximum [s]
+  timeHorizon                     1.0
+  solutionTimeWindow              -1  ; [s]
   coldStart                       false
 
   debugPrint                      true
 
-  mpcDesiredFrequency              50 ; [Hz]
+  mpcDesiredFrequency             20  ; [Hz]
   mrtDesiredFrequency             400 ; [Hz]
 }
