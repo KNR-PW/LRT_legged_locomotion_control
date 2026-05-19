@@ -142,7 +142,7 @@ self_collison_avoidance_soft_constraint_settings
 
 terrain_avoidance_soft_constraint_settings
 {
-  mu 2.5
+  mu 0.5
 
   delta 0.005
 }
@@ -224,16 +224,16 @@ base_weights
 {
   position
   {
-    (0,0)  50
-    (1,0)  50
-    (2,0)  0.1
+    (0,0)  10
+    (1,0)  10
+    (2,0)  0.5
   }
 
   rotation
   {
-    (0,0)  10
-    (1,0)  10
-    (2,0)  50
+    (0,0)  1.0
+    (1,0)  1.0
+    (2,0)  10
   }
 
   linearVelocity
@@ -255,74 +255,74 @@ joint_weights
 {
   LFT_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   LFH_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   LFK_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   LRT_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   LRH_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   LRK_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RFT_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RFH_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RFK_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RRT_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RRH_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 
   RRK_joint
   {
-    position 5.0
-    velocity 5.0
+    position 2.0
+    velocity 2.0
   }
 }
 
@@ -332,16 +332,16 @@ end_effector_weights
   {
     position
     {
-      (0,0)  10.0
-      (1,0)  10.0
-      (2,0)  100.0
+      (0,0)  1.0
+      (1,0)  1.0
+      (2,0)  10.0
     }
 
     velocity
     {
-      (0,0)  5.0
-      (1,0)  5.0
-      (2,0)  15.0
+      (0,0)  0.5
+      (1,0)  0.5
+      (2,0)  5.0
     }
 
     force
@@ -356,16 +356,16 @@ end_effector_weights
   {
     position
     {
-      (0,0)  10.0
-      (1,0)  10.0
-      (2,0)  100.0
+      (0,0)  1.0
+      (1,0)  1.0
+      (2,0)  10.0
     }
 
     velocity
     {
-      (0,0)  5.0
-      (1,0)  5.0
-      (2,0)  15.0
+      (0,0)  0.5
+      (1,0)  0.5
+      (2,0)  5.0
     }
 
     force
@@ -380,16 +380,16 @@ end_effector_weights
   {
     position
     {
-      (0,0)  10.0
-      (1,0)  10.0
-      (2,0)  100.0
+      (0,0)  1.0
+      (1,0)  1.0
+      (2,0)  10.0
     }
 
     velocity
     {
-      (0,0)  5.0
-      (1,0)  5.0
-      (2,0)  15.0
+      (0,0)  0.5
+      (1,0)  0.5
+      (2,0)  5.0
     }
 
     force
@@ -404,16 +404,16 @@ end_effector_weights
   {
     position
     {
-      (0,0)  10.0
-      (1,0)  10.0
-      (2,0)  100.0
+      (0,0)  1.0
+      (1,0)  1.0
+      (2,0)  10.0
     }
 
     velocity
     {
-      (0,0)  5.0
-      (1,0)  5.0
-      (2,0)  15.0
+      (0,0)  0.5
+      (1,0)  0.5
+      (2,0)  5.0
     }
 
     force

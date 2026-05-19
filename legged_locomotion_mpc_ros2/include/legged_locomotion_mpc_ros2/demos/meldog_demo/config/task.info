@@ -66,10 +66,10 @@ ddp
   minRelCost                      1e-1
   constraintTolerance             5e-3
 
-  displayInfo                     true
-  displayShortSummary             true
-  checkNumericalStability         true
-  debugPrintRollout               true
+  displayInfo                     false
+  displayShortSummary             false
+  checkNumericalStability         false
+  debugPrintRollout               false
 
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
@@ -111,7 +111,7 @@ mpc
   solutionTimeWindow              -1  ; [s]
   coldStart                       false
 
-  debugPrint                      true
+  debugPrint                      false
 
   mpcDesiredFrequency             20  ; [Hz]
   mrtDesiredFrequency             400 ; [Hz]
