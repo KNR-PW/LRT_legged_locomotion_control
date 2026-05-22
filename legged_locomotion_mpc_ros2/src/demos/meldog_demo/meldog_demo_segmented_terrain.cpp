@@ -91,14 +91,6 @@ int main(int argc, char* argv[])
   const auto loopshapeDefinition = *loopShapingInterface.getLoopshapingDefinition();
 
   auto& referenceManager = leggedInterface.getLeggedReferenceManager();
-  
-  // /* DYNAMIC WALK */
-
-  // GaitDynamicParameters dynamicParams;
-  // dynamicParams.swingRatio =  0.3;
-  // dynamicParams.steppingFrequency = 1.0;
-
-  // dynamicParams.phaseOffsets = {0.5, 0.2, 0.7};
 
   /* STANDING TROT */
   
@@ -139,10 +131,6 @@ int main(int argc, char* argv[])
   const scalar_t secondMoveTime = 15.0;
   const scalar_t endTime = 20.0;
 
-  // referenceManager.updateCommand(command);
-  // referenceManager.updateGaitParemeters(dynamicParams);
-  // referenceManager.preSolverRun(moveTime, endTime, initialState);
-
   // DDP
 
   const auto mpcSettings = leggedInterface.mpcSettings();
@@ -180,16 +168,6 @@ int main(int argc, char* argv[])
   // Wait for the first policy
   mpcInterface.setCurrentObservation(observation);
 
-  // for(size_t i = 0; i < referenceTrajectory.timeTrajectory.size(); ++i)
-  // {
-  //   std::cerr << "Time: " << referenceTrajectory.timeTrajectory[i] << std::endl;
-  //   std::cerr << "Base position: " << referenceTrajectory.stateTrajectory[i].block(6, 0, 3, 1).transpose() << std::endl;
-  //   std::cerr << "Joint positions: " << access_helper_functions::getJointPositions(referenceTrajectory.stateTrajectory[i], modelInfo).transpose() << std::endl;
-  //   std::cerr << "Joint velocities: " << access_helper_functions::getJointVelocities(referenceTrajectory.inputTrajectory[i], modelInfo).transpose() << std::endl;
-  //   std::cerr << "Force: " << access_helper_functions::getContactForces(referenceTrajectory.inputTrajectory[i], 0 , modelInfo).transpose() << std::endl;
-  // }
-  // return 0;
-
   std::cerr << "Initialization!" << std::endl;
   while (!mpcInterface.initialPolicyReceived()) 
   {
@@ -223,46 +201,13 @@ int main(int argc, char* argv[])
       systemObservation.time = observation.time;
       systemObservation.state = observation.state.head(STATE_DIM);
       systemObservation.input = loopshapeDefinition.getSystemInput(observation.state, observation.input);
-      // referenceManager.updateObservation(systemObservation);
-
+  
       observations.push_back(systemObservation);
-
-      // Test 16.05.2026
-
-      const auto currentTargetState = referenceManager.getTargetTrajectories().getDesiredState(observation.time);
-      const auto currentTargetInput = referenceManager.getTargetTrajectories().getDesiredInput(observation.time);
-      SystemObservation referenceObservation;
-      referenceObservation.time = observation.time;
-      referenceObservation.state = currentTargetState;
-      referenceObservation.input = currentTargetInput;
-
-      referenceManager.updateObservation(referenceObservation);
-      
 
       if(observation.time > firstGaitTime && firstChange)
       {
         firstChange = false;
         referenceManager.updateGaitParemeters(firstDynamicParams);
-        // referenceManager.updateCommand(firstCommand);
-        // referenceManager.preSolverRun(gaitTime, endTime, observation.state);
-
-        // const auto targetTrajectory = referenceManager.getTargetTrajectories();
-
-        // for(size_t i = 0; i < targetTrajectory.size(); ++i)
-        // {
-        //   SystemObservation currentObservation;
-        //   currentObservation.time = targetTrajectory.timeTrajectory[i];
-        //   currentObservation.state = targetTrajectory.stateTrajectory[i];
-        //   currentObservation.input = targetTrajectory.inputTrajectory[i];
-        //   observations.push_back(currentObservation);
-
-        //   const auto referenceEndEffectorTrajectoryPoint = 
-        //     referenceManager.getEndEffectorTrajectoryPoint(currentObservation.time);
-
-        //   referenceEndEffectorTrajectories.push_back(std::move(
-        //     referenceEndEffectorTrajectoryPoint));
-        // }
-        // break;
       }
 
       if(observation.time > secondGaitTime && secondChange)
@@ -352,18 +297,6 @@ int main(int argc, char* argv[])
 
       const auto targetState = referenceManager.getTargetTrajectories().getDesiredState(finalTime);
       const auto targetInput = referenceManager.getTargetTrajectories().getDesiredInput(finalTime);
-
-      // std::cerr << "Time: " << observation.time << std::endl;
-      // std::cerr << "Real base position: " << observation.state.block(6, 0, 3, 1).transpose() << std::endl;
-      // std::cerr << "Reference base position: " << targetState.block(6, 0, 3, 1).transpose() << std::endl;
-      // std::cerr << "Real base linear velocity: " << observation.state.block(0, 0, 3, 1).transpose() << std::endl;
-      // std::cerr << "Reference base linear velocity: " << targetState.block(0, 0, 3, 1).transpose() << std::endl;
-      // std::cerr << "Real joint positions: " << access_helper_functions::getJointPositions(observation.state, modelInfo).transpose() << std::endl;
-      // std::cerr << "Reference joint positions: " << access_helper_functions::getJointPositions(targetState, modelInfo).transpose() << std::endl;
-      // std::cerr << "Real joint velocities: " << access_helper_functions::getJointVelocities(observation.input, modelInfo).transpose() << std::endl;
-      // std::cerr << "Reference joint velocities: " << access_helper_functions::getJointVelocities(targetInput, modelInfo).transpose() << std::endl;
-      // std::cerr << "Real force: " << access_helper_functions::getContactForces(observation.input, 0 , modelInfo).transpose() << std::endl;
-      // std::cerr << "Refrence force: " << access_helper_functions::getContactForces(targetInput, 0 , modelInfo).transpose() << std::endl;
     } 
     catch (std::exception& e) 
     {
@@ -372,18 +305,6 @@ int main(int argc, char* argv[])
       break;
     }
   }
-
-  // for(size_t i = 0; i < optimalTrajectory.timeTrajectory.size(); ++i)
-  // {
-  //   std::cerr << "Time: " << optimalTrajectory.timeTrajectory[i] << std::endl;
-  //   std::cerr << "Base position: " << optimalTrajectory.stateTrajectory[i].block(6, 0, 3, 1).transpose() << std::endl;
-  //   std::cerr << "Base linear velocity: " << optimalTrajectory.stateTrajectory[i].block(0, 0, 3, 1).transpose() << std::endl;
-  //   std::cerr << "Joint positions: " << access_helper_functions::getJointPositions(optimalTrajectory.stateTrajectory[i], modelInfo).transpose() << std::endl;
-  //   std::cerr << "Joint velocities: " << access_helper_functions::getJointVelocities(optimalTrajectory.inputTrajectory[i], modelInfo).transpose() << std::endl;
-  //   std::cerr << "Force: " << access_helper_functions::getContactForces(optimalTrajectory.inputTrajectory[i], 0 , modelInfo).transpose() << std::endl;
-  // }
-  // std::cerr << modeSchedule << std::endl;
-
 
   rclcpp::init(argc, argv);
 
