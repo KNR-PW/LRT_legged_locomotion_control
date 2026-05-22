@@ -72,7 +72,7 @@ namespace legged_locomotion_mpc
   /******************************************************************************************************/
   /******************************************************************************************************/
   LeggedLoopshapingInterface makeLeggedLoopshapingInterface(
-    scalar_t initTime, const vector_t& currentState, 
+    scalar_t initTime, const vector_t& currentSystemState, 
     std::unique_ptr<TerrainModel> currentTerrainModel, const std::string& taskFile, 
     const std::string& modelFile, const std::string& urdfFile, 
     const std::string& loopshapingDefinitionFile)
@@ -80,7 +80,7 @@ namespace legged_locomotion_mpc
     auto loopShapingDefinition = loopshaping_property_tree::load(loopshapingDefinitionFile);
     
     std::unique_ptr<LeggedInterface> leggedInterfacePtr = std::make_unique<LeggedInterface>(
-      initTime, currentState, std::move(currentTerrainModel), taskFile, modelFile, urdfFile);
+      initTime, currentSystemState, std::move(currentTerrainModel), taskFile, modelFile, urdfFile);
     
 
     // Get cost matrix for loopshaping using starting state and input
@@ -106,6 +106,47 @@ namespace legged_locomotion_mpc
     loopShapingDefinition->costMatrix() = nominalCostApproximation.dfduu;
 
     return LeggedLoopshapingInterface(std::move(leggedInterfacePtr), 
+      std::move(loopShapingDefinition));
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  std::unique_ptr<LeggedLoopshapingInterface> makeLeggedLoopshapingInterfacePointer(
+    ocs2::scalar_t initTime, const ocs2::vector_t& currentSystemState, 
+    std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel, 
+    const std::string& taskFile, const std::string& modelFile, const std::string& urdfFile, 
+    const std::string& loopshapingDefinitionFile)
+  {
+    auto loopShapingDefinition = loopshaping_property_tree::load(loopshapingDefinitionFile);
+    
+    std::unique_ptr<LeggedInterface> leggedInterfacePtr = std::make_unique<LeggedInterface>(
+      initTime, currentSystemState, std::move(currentTerrainModel), taskFile, modelFile, urdfFile);
+    
+
+    // Get cost matrix for loopshaping using starting state and input
+    const auto& optimalProblem = leggedInterfacePtr->getOptimalControlProblem();
+
+    const auto& modelInfo = leggedInterfacePtr->floatingBaseModelInfo();
+
+    const size_t endEffectorNum = modelInfo.numThreeDofContacts 
+      + modelInfo.numSixDofContacts;
+    const size_t standingMode = ((0x01 << (endEffectorNum)) - 1);
+    const contact_flags_t standingFlags(standingMode);
+
+    auto& weightCompensator = leggedInterfacePtr->weightCompensator();
+
+    const auto& initalSystemState = leggedInterfacePtr->getInitialState();
+
+    const vector_t initialInput = weightCompensator.getInput(initalSystemState, 
+      standingFlags);
+
+    const auto nominalCostApproximation = approximateCost(optimalProblem, 0.0, 
+      initalSystemState, initialInput);
+
+    loopShapingDefinition->costMatrix() = nominalCostApproximation.dfduu;
+
+    return std::make_unique<LeggedLoopshapingInterface>(std::move(leggedInterfacePtr), 
       std::move(loopShapingDefinition));
   }
 } // namespace legged_locomotion_mpc

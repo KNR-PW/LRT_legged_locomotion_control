@@ -67,6 +67,12 @@ namespace legged_locomotion_mpc
     std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel, 
     const std::string& taskFile, const std::string& modelFile, const std::string& urdfFile, 
     const std::string& loopshapingDefinitionFile);
+
+  std::unique_ptr<LeggedLoopshapingInterface> makeLeggedLoopshapingInterfacePointer(
+    ocs2::scalar_t initTime, const ocs2::vector_t& currentSystemState, 
+    std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel, 
+    const std::string& taskFile, const std::string& modelFile, const std::string& urdfFile, 
+    const std::string& loopshapingDefinitionFile);
 } // namespace legged_locomotion_mpc
 
 #endif
