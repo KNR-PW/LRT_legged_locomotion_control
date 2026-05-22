@@ -86,8 +86,6 @@ namespace legged_locomotion_mpc
     void updateCommand(
       const planners::BaseTrajectoryPlanner::BaseReferenceCommand& currentCommand);
 
-    void updateObservation(const ocs2::SystemObservation& currentObservation);
-
     void updateContactFlags(const contact_flags_t& currentContactFlags);
 
     void updateGaitParemeters(const locomotion::GaitDynamicParameters& currentGaitParameters);
@@ -121,7 +119,6 @@ namespace legged_locomotion_mpc
 
       std::future<void> newTrajectories_;
 
-      ocs2::BufferedValue<ocs2::SystemObservation> currentObservation_;
       ocs2::BufferedValue<contact_flags_t> currentContactFlags_;
       ocs2::BufferedValue<locomotion::GaitDynamicParameters> currentGaitParameters_;
       ocs2::BufferedValue<locomotion::SwingTrajectoryPlanner::DynamicSettings> currentSwingParameters_;

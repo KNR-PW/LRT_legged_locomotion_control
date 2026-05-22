@@ -33,7 +33,6 @@ namespace legged_locomotion_mpc
       basePlanner_(std::move(basePlanner)), 
       jointPlanner_(std::move(jointPlanner)),
       forcePlanner_(std::move(forcePlanner)),
-      currentObservation_(SystemObservation()),
       currentContactFlags_(contact_flags_t()),
       currentGaitParameters_(GaitDynamicParameters()),
       currentSwingParameters_(SwingTrajectoryPlanner::DynamicSettings()),
@@ -49,10 +48,20 @@ namespace legged_locomotion_mpc
     const SwingTrajectoryPlanner::DynamicSettings& currentSwingParameters,
     std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel)
   {
-    updateObservation(currentObservation);
     updateContactFlags(currentContactFlags);
     updateGaitParemeters(currentGaitParameters);
     updateSwingParameters(currentSwingParameters);
+
+    // Setup initial target trajectory with currentObservation
+    TargetTrajectories initTargetTrajectories;
+    initTargetTrajectories.timeTrajectory.push_back(initTime);
+    initTargetTrajectories.stateTrajectory.push_back(currentObservation.state);
+    initTargetTrajectories.inputTrajectory.push_back(currentObservation.input);
+    this->setTargetTrajectories(initTargetTrajectories);
+    
+    // Set initial target trajectory
+    ReferenceManager::preSolverRun(initTime, finalTime, 
+      vector_t::Zero(modelInfo_.stateDim));
 
     // Get copy of current terrain for getter, buffered value might be changed in parallel task
     currentTerrainModel_ = std::unique_ptr<TerrainModel>(currentTerrainModel->clone());
@@ -200,8 +209,13 @@ namespace legged_locomotion_mpc
   void LeggedReferenceManager::generateNewTargetTrajectories(
     scalar_t initTime, scalar_t finalTime)
   {
-    currentObservation_.updateFromBuffer();
-    const SystemObservation& currentObservation = currentObservation_.get();
+    // Get current reference observation
+    const auto& currentTargetTrajectory = getTargetTrajectories();
+
+    SystemObservation currentObservation;
+    currentObservation.time = initTime;
+    currentObservation.state = currentTargetTrajectory.getDesiredState(initTime);
+    currentObservation.input = currentTargetTrajectory.getDesiredInput(initTime);
 
     // no new gait parameters -> no update
     if(currentGaitParameters_.updateFromBuffer())
@@ -296,12 +310,6 @@ namespace legged_locomotion_mpc
 
     referenceTrajectories_.setBuffer(std::move(endEffectorTrajectories));
     setModeSchedule(std::move(newModeSchedule));
-  }
-
-  void LeggedReferenceManager::updateObservation(
-    const SystemObservation& currentObservation)
-  {
-    currentObservation_.setBuffer(currentObservation);
   }
 
   void LeggedReferenceManager::updateContactFlags(

@@ -225,6 +225,18 @@ namespace legged_locomotion_mpc
         sphereRadiuses_.push_back(std::move(sphereRadiuses));
         frameToSpherePositons_.push_back(std::move(spherePositions));
       }
+
+      for(size_t i = 0; i < collisionSettings.collisionLinkNames.size(); ++i)
+      {
+        std::string message = "[PinocchioCollisionInterface]: Collision frame named " + collisionSettings.collisionLinkNames[i] + " has "
+          + std::to_string(sphereNumbers_[i]) + " spheres, sizes:\n";
+        std::cerr << message;
+
+        for(size_t j = 0; j < sphereRadiuses_[i].size(); ++j)
+        {
+          std::cerr << "Sphere " << j << ": " << sphereRadiuses_[i][j] << "\n";
+        }
+      }
     }
         
     void PinocchioCollisionInterface::createNeighbours(
