@@ -1,5 +1,7 @@
 legged_model_settings
 {
+  robotName                 melman
+
   algorithm                 DDP
   verbose                   true
   recompileLibrariesCppAd   true

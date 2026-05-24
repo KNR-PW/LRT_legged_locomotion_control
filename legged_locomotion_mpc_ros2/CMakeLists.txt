@@ -21,12 +21,15 @@ find_package(ament_cmake REQUIRED)
 
 set(THIS_PACKAGE_DEPENDS
   legged_locomotion_mpc
+  contact_msgs
+  legged_locomotion_msgs
 
   rclcpp
   tf2_ros
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  trajectory_msgs
   ocs2_ros_interfaces
 )
 
