@@ -38,6 +38,9 @@ namespace legged_locomotion_mpc
 {
   struct ModelSettings 
   {
+    // Robot name
+    std::string robotName;
+    
     // Algorithm type
     std::string algorithm;
 

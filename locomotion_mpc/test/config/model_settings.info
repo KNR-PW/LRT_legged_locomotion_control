@@ -1,5 +1,6 @@
 legged_model_settings
 {
+  robotName                 TEST_ROBOT
   algorithm                 SQP
   verbose                   false
   recompileLibrariesCppAd   false

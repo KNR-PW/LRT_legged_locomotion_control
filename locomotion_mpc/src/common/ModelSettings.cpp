@@ -32,6 +32,8 @@ namespace legged_locomotion_mpc
       throw std::invalid_argument(message);
     }
 
+    loadData::loadPtreeValue(pt, modelSettings.robotName, fieldName + ".robotName", verbose);
+
     loadData::loadPtreeValue(pt, modelSettings.verbose, fieldName + ".verbose", verbose);
 
     loadData::loadPtreeValue(pt, modelSettings.recompileLibrariesCppAd, fieldName + ".recompileLibrariesCppAd", verbose);

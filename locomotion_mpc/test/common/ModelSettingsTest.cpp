@@ -13,6 +13,7 @@ TEST(ModelSettingsTest, loader)
 
   const auto modelSettings = loadModelSettings(filePath);
 
+  EXPECT_TRUE(modelSettings.robotName == "TEST_ROBOT");
   EXPECT_TRUE(modelSettings.algorithm == "SQP");
   EXPECT_TRUE(modelSettings.verbose == false);
   EXPECT_TRUE(modelSettings.recompileLibrariesCppAd == false);
