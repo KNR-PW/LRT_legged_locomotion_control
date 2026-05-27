@@ -1,5 +1,6 @@
 
 #include <legged_locomotion_mpc/synchronization/DisturbanceSynchronizedModule.hpp>
+#include <iostream>
 
 namespace legged_locomotion_mpc 
 {

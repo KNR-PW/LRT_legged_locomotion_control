@@ -141,6 +141,11 @@ namespace legged_locomotion_mpc
     return referenceManagerPtr_;
   }
 
+  std::vector<std::shared_ptr<SolverSynchronizedModule>> LeggedInterface::getSynchronizedModulePtrs() const
+  {
+    return {disturbanceModulePtr_};
+  }
+
   LeggedReferenceManager& LeggedInterface::getLeggedReferenceManager()
   {
     return *referenceManagerPtr_;
@@ -234,6 +239,11 @@ namespace legged_locomotion_mpc
   PinocchioWeightCompensator& LeggedInterface::weightCompensator()
   {
     return *weightCompensator_;
+  }
+
+  synchronization::DisturbanceSynchronizedModule& LeggedInterface::disturbanceModule()
+  {
+    return *dynamic_cast<synchronization::DisturbanceSynchronizedModule*>(disturbanceModulePtr_.get());
   }
 
   const vector_t LeggedInterface::getInitialState() const
@@ -372,10 +382,11 @@ namespace legged_locomotion_mpc
     const vector_t& currentState, const std::string& modelFile)
   {
     // Setup cpp AD dynamics
+    creatSynchronizedModule();
     const std::string dynamicsModelName = "dynamics_model";
     optimalProblem_.dynamicsPtr = std::make_unique<LeggedDynamicsAD>(
       *pinocchioInterfacePtr_, floatingBaseModelInfo_, dynamicsModelName, 
-      modelSettings_, disturbanceModule_);
+      modelSettings_, disturbanceModule());
     
     // Setup precomputation
     optimalProblem_.preComputationPtr = std::make_unique<LeggedPrecomputation>(
@@ -631,7 +642,7 @@ namespace legged_locomotion_mpc
 
   void LeggedInterface::creatSynchronizedModule()
   {
-    disturbanceModule_ = DisturbanceSynchronizedModule();
+    disturbanceModulePtr_ = std::make_shared<synchronization::DisturbanceSynchronizedModule>();
   }
 
   void LeggedInterface::createRollout()

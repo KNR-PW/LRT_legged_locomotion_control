@@ -110,6 +110,11 @@ int main(int argc, char* argv[])
   secondCommand.baseVerticalVelocity = 0.0;
   secondCommand.yawRate = -0.0;
 
+  vector6_t disturbance;
+  disturbance(0) = 10.0;
+  disturbance(1) = -10.0;
+  disturbance(2) = 10.0;
+
   const scalar_t firstGaitTime = 1.0;
   bool firstChange = true;
   const scalar_t secondGaitTime = 25.0;
@@ -119,6 +124,9 @@ int main(int argc, char* argv[])
   const scalar_t secondMoveTime = 15.0;
   const scalar_t endTime = 20.0;
 
+  const scalar_t disturbanceFirstTime = 10;
+  const scalar_t disturbanceSecondTime = 15;
+
   // DDP
 
   const auto mpcSettings = leggedInterface.mpcSettings();
@@ -127,6 +135,8 @@ int main(int argc, char* argv[])
 
   const auto& optimalProblem = loopShapingInterface.getOptimalControlProblem();
   const auto& initializer = loopShapingInterface.getInitializer();
+
+  auto& disturbanceModule = leggedInterface.disturbanceModule();
 
   auto& rollout = loopShapingInterface.getRollout();
 
@@ -139,6 +149,7 @@ int main(int argc, char* argv[])
   //   optimalProblem, initializer);
 
   mpcPtr->getSolverPtr()->setReferenceManager(loopShapingInterface.getReferenceManagerPtr());
+  mpcPtr->getSolverPtr()->addSynchronizedModule(loopShapingInterface.getSynchronizedModules());
 
   std::unique_ptr<RolloutBase> rolloutPtr(rollout.clone());
 
@@ -229,6 +240,16 @@ int main(int argc, char* argv[])
       if(observation.time > secondMoveTime)
       {
         referenceManager.updateCommand(secondCommand);
+      }
+
+      if(observation.time > disturbanceFirstTime)
+      {
+        disturbanceModule.updateDistrubance(observation.time, disturbance);
+      }
+
+      if(observation.time > disturbanceSecondTime)
+      {
+        disturbanceModule.updateDistrubance(observation.time, vector6_t::Zero());
       }
 
       const auto& lastTrajectoryState = referenceManager.getTargetTrajectories().stateTrajectory.back();

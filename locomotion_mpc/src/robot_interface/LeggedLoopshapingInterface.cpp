@@ -16,7 +16,7 @@ namespace legged_locomotion_mpc
     std::unique_ptr<LeggedInterface> leggedInterfacePtr,
     std::shared_ptr<LoopshapingDefinition> loopshapingDefinitionPtr):
       LoopshapingRobotInterface(std::move(leggedInterfacePtr), 
-        std::move(loopshapingDefinitionPtr)) 
+        loopshapingDefinitionPtr) 
   {
     LeggedInterface& leggedInterface = getLeggedInterface();
 
@@ -42,6 +42,10 @@ namespace legged_locomotion_mpc
 
     loopshapingRolloutPtr_.reset(
       new TimeTriggeredRollout(*getOptimalControlProblem().dynamicsPtr, leggedInterface.rolloutSettings()));
+    
+    const auto synchronizedModules = leggedInterface.getSynchronizedModulePtrs();
+    loopshapingDisturbanceModule_ = std::make_shared<LoopshapingSynchronizedModule>(
+      loopshapingDefinitionPtr, synchronizedModules);
   }
   
   /******************************************************************************************************/
@@ -66,6 +70,13 @@ namespace legged_locomotion_mpc
   RolloutBase& LeggedLoopshapingInterface::getRollout()
   {
     return *loopshapingRolloutPtr_;
+  }
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  std::shared_ptr<LoopshapingSynchronizedModule> LeggedLoopshapingInterface::getSynchronizedModules()
+  {
+    return loopshapingDisturbanceModule_;
   }
 
   /******************************************************************************************************/

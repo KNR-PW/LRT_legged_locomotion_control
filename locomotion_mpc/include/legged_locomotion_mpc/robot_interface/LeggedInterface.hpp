@@ -93,6 +93,12 @@ namespace legged_locomotion_mpc
       std::shared_ptr<ocs2::ReferenceManagerInterface> getReferenceManagerPtr() const;
 
       /**
+       * Gets the vector of SynchronizedModule.
+       * @return a vector of shared pointers to the SynchronizedModules.
+       */
+      std::vector<std::shared_ptr<ocs2::SolverSynchronizedModule>> getSynchronizedModulePtrs() const;
+
+      /**
        * Gets the LeggedReferenceManager.
        * @return a reference to the LeggedReferenceManager.
        */
@@ -205,7 +211,13 @@ namespace legged_locomotion_mpc
        * @return reference to the weight compensator
        */
       PinocchioWeightCompensator& weightCompensator();
-      
+
+      /**
+       * @brief Get disturbance wrench synchronized module
+       * @return reference to disturbance wrench synchronized module
+       */
+      synchronization::DisturbanceSynchronizedModule& disturbanceModule();
+
       /**
        * @brief Get initial system state
        * @return const reference to the initial system state
@@ -249,7 +261,7 @@ namespace legged_locomotion_mpc
 
       std::unique_ptr<ocs2::PinocchioInterface> pinocchioInterfacePtr_;
       
-      synchronization::DisturbanceSynchronizedModule disturbanceModule_;
+      std::shared_ptr<ocs2::SolverSynchronizedModule> disturbanceModulePtr_;
       
       std::unique_ptr<PinocchioForwardEndEffectorKinematicsCppAd> endEffectorForwardKinematics_;
       std::unique_ptr<PinocchioForwardCollisionKinematicsCppAd> collisionForwardKinematics_;

@@ -39,7 +39,7 @@ namespace legged_locomotion_mpc
     const vector_t &state, const vector_t &input, const PreComputation &preComp)
   {
     const vector6_t& floatingBaseDisturbance = 
-    disturbanceSynchronizedModule_.getCurrentDisturbance();
+      disturbanceSynchronizedModule_.getCurrentDisturbance();
     return dynamicsAd_.getLinearApproximation(time, state, input, floatingBaseDisturbance);
   }
 

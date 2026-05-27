@@ -21,6 +21,7 @@
 #define __LEGGED_LOOPSHAPING_INTERFACE_LEGGED_LOCOMOTION_MPC__
 
 #include <ocs2_robotic_tools/common/LoopshapingRobotInterface.h>
+#include <ocs2_oc/synchronized_module/LoopshapingSynchronizedModule.h>
 
 #include <legged_locomotion_mpc/robot_interface/LeggedInterface.hpp>
 
@@ -41,8 +42,7 @@ namespace legged_locomotion_mpc
        * MPC, if your using it to change some parameters or references it is fine
        */
       LeggedInterface& getLeggedInterface();
-
-
+      
       /**
        * Gets the loopshaping initial state (system + filter)
        * @return const reference to the loopshaping initial state (system + filter)
@@ -55,11 +55,19 @@ namespace legged_locomotion_mpc
        */
       ocs2::RolloutBase& getRollout();
 
+      /**
+       * Gets the loopshaping disturbance synchronized module
+       * @return shared pointer to the loopshaping disturbance synchronized module
+       */
+      std::shared_ptr<ocs2::LoopshapingSynchronizedModule>  getSynchronizedModules();
+
     private:
       
       ocs2::vector_t initialState_;
 
       std::unique_ptr<ocs2::RolloutBase> loopshapingRolloutPtr_;
+
+      std::shared_ptr<ocs2::LoopshapingSynchronizedModule> loopshapingDisturbanceModule_;
   };
 
   LeggedLoopshapingInterface makeLeggedLoopshapingInterface(
