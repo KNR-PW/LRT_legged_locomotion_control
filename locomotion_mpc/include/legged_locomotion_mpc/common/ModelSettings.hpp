@@ -41,7 +41,7 @@ namespace legged_locomotion_mpc
     // Robot name
     std::string robotName;
     
-    // Algorithm type
+    // Algorithm type (SQP, DDP)
     std::string algorithm;
 
     // CppAD
