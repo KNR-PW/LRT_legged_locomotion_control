@@ -101,7 +101,9 @@ namespace legged_locomotion_mpc_ros2
 
       void setupMpc();
 
-      void advanceMpcCallback();
+      void advanceMpc();
+
+      ocs2::SystemObervation getCurrentObservation();
 
       void sendMrtCommands();
 
@@ -143,7 +145,7 @@ namespace legged_locomotion_mpc_ros2
       LeggedInterface* leggedInterfacePtr_;
       LeggedReferenceManager* referenceManagerPtr_;
       LoopshapingDefinition* loopshapingDefinitionPtr_;
-
+      
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
       std::unique_ptr<ocs2::MPC_MRT_Interface> mpcMrtPtr_;
 

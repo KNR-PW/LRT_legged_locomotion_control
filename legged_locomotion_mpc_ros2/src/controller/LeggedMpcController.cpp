@@ -288,7 +288,61 @@ namespace legged_locomotion_mpc_ros2
     }
     
     mpcMrtPtr_->initRollout(leggedInterfacePtr_->getRollout());
+  }
 
+  SystemObervation LeggedMpcController::getCurrentObservation()
+  {
+    // Current loopshaping observation
+    SystemObservation currentObservation;
+    currentObservation.time = this->get_clock()->now().seconds();
+    currentObservation.state = vector_t(modelInfo_.stateDim + modelInfo_.inputDim);
+    currentObservation.input = vector_t::Zero(modelInfo_.inputDim);
+
+    // Current system and filter state
+    auto systemState = currentObservation.state.block(0, 0, modelInfo_.stateDim, 1);
+
+    auto filterState = currentObservation.state.block(modelInfo_.stateDim, 0, 
+      modelInfo_.inputDim, 1);
+
+    if(!basePoseEstimation_.updateFromBuffer())
+    {
+      RCLCPP_WARN(this->get_logger(), 
+        "Base pose not updated in current MPC iteration!");
+    }
+
+    if(!baseTwistEstimation_.updateFromBuffer())
+    {
+      RCLCPP_WARN(this->get_logger(), 
+        "Base twist not updated in current MPC iteration!");
+    }
+
+    if(!jointPositionEstimation_.updateFromBuffer())
+    {
+      RCLCPP_WARN(this->get_logger(), 
+        "Joint states not updated in current MPC iteration!");
+    }
+
+    access_helper_functions::getBasePose(
+      systemState, modelInfo_) = basePoseEstimation_.get();
+
+    access_helper_functions::getBaseTwist(
+      systemState, modelInfo_) = baseTwistEstimation_.get();
+
+    access_helper_functions::getJointPositions(systemState, 
+      modelInfo_) = jointPositionEstimation_.get();
+
+    // Get filter state from last policy optimal trajectory
+    const size_t queryIndex = ocs2::findIndexInTimeArray(
+      mpcMrtPtr_->getPolicy().timeTrajectory_, currentObservation.time);
+    filterState = mpcMrtPtr_->getPolicy().stateTrajectory_[queryIndex].block(
+      modelInfo_.stateDim, 0, modelInfo_.inputDim, 1);
+
+    return currentObservation;
+  }
+
+  void LeggedMpcController::advanceMpc()
+  {
+    mpcMrtPtr_->advanceMpc();
   }
 
   void LeggedMpcController::updateCommand(
@@ -544,9 +598,11 @@ namespace legged_locomotion_mpc_ros2
   {
     if(mpcMrtPtr_ && mpcRunning_)
     {
-      currentLoopshapingObservation_.updateFromBuffer();
+      const auto currentObservation = getCurrentObservation();
 
-      currentState = currentLoopshapingObservation_.get().state;
+      mpcMrtPtr_->setCurrentObservation(currentObservation);
+
+      currentState = currentObservation.state;
       
       const auto currentTime = this->get_clock()->now();
 
