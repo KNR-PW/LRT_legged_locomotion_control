@@ -27,6 +27,8 @@
 
 #include <ocs2_mpc/MPC_MRT_Interface.h>
 
+#include <ocs2_core/misc/Benchmark.h>
+
 #include <terrain_model/core/TerrainModel.hpp>
 
 #include <legged_locomotion_mpc/robot_interface/LeggedLoopshapingInterface.hpp>
@@ -57,19 +59,13 @@ namespace legged_locomotion_mpc_ros2
       LeggedMpcController(bool intraProcessComms = false);
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-        on_configure(const rclcpp_lifecycle::State& state);
+        on_configure(const rclcpp_lifecycle::State& state) override;
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-        on_activate(const rclcpp_lifecycle::State& state);
+        on_activate(const rclcpp_lifecycle::State& state) override;
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-        on_deactivate(const rclcpp_lifecycle::State& state);
-
-      rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-        on_cleanup(const rclcpp_lifecycle::State& state);
-
-      rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-        on_shutdown(const rclcpp_lifecycle::State& state);
+        on_deactivate(const rclcpp_lifecycle::State& state) override;
 
     private:
 
@@ -101,70 +97,60 @@ namespace legged_locomotion_mpc_ros2
 
       void setupMpc();
 
-      void advanceMpc();
+      void runMpc();
 
-      ocs2::SystemObervation getCurrentObservation();
+      ocs2::SystemObservation getCurrentObservation();
 
-      void sendMrtCommands();
-
-      /**
-       * Parameter variables
-       */ 
-
-      // Parameter for directory of all config files (model, task and loopshaping definition)
-      std::string configDirectoryPath_;
-      
-
-      /**
-       * Non - parameter variables
-       */ 
-
-      std::unordered_map<std::string, size_t> jointNameIndexMap_;
-
-      std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
-
-      std::string robotName_;
-      rclcpp::Time initialTime_;
+      // Helper data
       ModelSettings modelSettings_;
       floating_base_model::FloatingBaseModelInfo modelInfo_;
-      ocs2::scalar_t mrtDuation_;
-      size_t endEffectorNum_;
-      size_t stateOffset_;
-      size_t inputOffset_;
-      std::vector<std::string> jointNames_;
-      std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
 
+      size_t endEffectorNum_;
+      std::vector<std::string> jointNames_;
+      std::unordered_map<std::string, size_t> jointNameIndexMap_;
+      std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
+      
+      // Data from observation
       ocs2::BufferedValue<vector6_t> basePoseEstimation_;
       ocs2::BufferedValue<vector6_t> baseTwistEstimation_;
-      ocs2::BufferedValue<vector_t> jointPositionEstimation_;
-      ocs2::BufferedValue<vector_t> jointVelocityEstimation_;
-      ocs2::SystemObservation currentLoopshapingObservation_;
-
-
+      ocs2::BufferedValue<ocs2::vector_t> jointPositionEstimation_;
+      ocs2::BufferedValue<ocs2::vector_t> jointVelocityEstimation_;
+      std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
+      
+      // Loopshaping interface and other helper objects
       std::unique_ptr<LeggedLoopshapingInterface> loopshapingInterfacePtr_;
       LeggedInterface* leggedInterfacePtr_;
       LeggedReferenceManager* referenceManagerPtr_;
-      LoopshapingDefinition* loopshapingDefinitionPtr_;
+      ocs2::LoopshapingDefinition* loopshapingDefinitionPtr_;
       
+      // MPC and MRT
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
       std::unique_ptr<ocs2::MPC_MRT_Interface> mpcMrtPtr_;
 
+      // Rollout for getting future optimal trajectory
+      std::unique_ptr<ocs2::RolloutBase> rolloutPtr_;
+
+      // MPC thread
       std::thread mpcThread_;
-      std::thread mrtThread_;
+      std::atomic_bool controllerRunning_;
 
-      std::atomic_bool controllerRunning_, mpcRunning_;
-
+      // Timer for MRT
+      ocs2::scalar_t mrtDuration_;
       rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
 
-      rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr commandTwistSubscriber_;
+      // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr basePoseSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
-      rclcpp::Subscription<contact_msgs::msg::Contacts> contactsSubscriber_;
-      rclcpp::Subscription<legged_locomotion_msgs::msg::GaitParameters> gaitParametersSubscriber_;
-      rclcpp::Subscription<legged_locomotion_msgs::msg::SwingParameters> swingParametersSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::WrenchStamped> baseWrenchSubscriber_;
-
+      rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
+      
+      // Command subscribers
+      rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr commandTwistSubscriber_;
+      rclcpp::Subscription<legged_locomotion_msgs::msg::GaitParameters>::SharedPtr gaitParametersSubscriber_;
+      rclcpp::Subscription<legged_locomotion_msgs::msg::SwingParameters>::SharedPtr swingParametersSubscriber_;
+      rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
+      
+      // Joint trajectory publisher from MRT
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
         trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
@@ -175,7 +161,11 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Time lastContactFlagsTime_;
       
       // Maximum duration between robot state messages
-      rclcpp::Duration maxDurationBetweenMessages_;
+      rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);
+      
+      // Timers
+      ocs2::benchmark::RepeatedTimer mpcTimer_;
+      ocs2::benchmark::RepeatedTimer mrtTimer_;
   };  
 } // namespace legged_locomotion_mpc_ros2
 

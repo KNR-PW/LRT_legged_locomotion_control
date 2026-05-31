@@ -1,14 +1,27 @@
 #include <legged_locomotion_mpc_ros2/controller/LeggedMpcController.hpp>
 
-#include <tf2_eigen/tf2_eigen.hpp>
+#include <ocs2_core/thread_support/ExecuteAndSleep.h>
+
+#include <ocs2_mpc/MPC_MRT_Interface.h>
+#include <ocs2_sqp/SqpMpc.h>
+#include <ocs2_ddp/GaussNewtonDDP_MPC.h>
 
 #include <terrain_model/planar_model/PlanarFactoryFunctions.hpp>
+#include <terrain_model/planar_model/PlanarTerrainModel.hpp>
+#include <terrain_model/segmented_planes_model/SegmentedPlanesFactoryFunctions.hpp>
+#include <terrain_model/segmented_planes_model/SegmentedPlanesTerrainModel.hpp>
 
+#include <floating_base_model/FactoryFunctions.hpp>
 #include <floating_base_model/AccessHelperFunctions.hpp>
 #include <floating_base_model/QuaterionEulerTransforms.hpp>
 
+#include <legged_locomotion_mpc/common/Utils.hpp>
+
+#include <tf2_eigen/tf2_eigen.hpp>
+
 namespace legged_locomotion_mpc_ros2
 {
+  using namespace ocs2;
   using namespace floating_base_model;
   using namespace legged_locomotion_mpc;
   using namespace terrain_model;
@@ -16,7 +29,11 @@ namespace legged_locomotion_mpc_ros2
   using namespace rclcpp_lifecycle;
 
   LeggedMpcController::LeggedMpcController(bool intraProcessComms):
-    LifecycleNode("legged_controller", NodeOptions().use_intra_process_comms(intraProcessComms))
+    LifecycleNode("legged_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
+    basePoseEstimation_(vector6_t::Zero()),
+    baseTwistEstimation_(vector6_t::Zero()),
+    jointPositionEstimation_(vector_t::Zero(10)),
+    jointVelocityEstimation_(vector_t::Zero(10))
   {
     // Config directory parameter
     this->declare_parameter("config_directory_path", "./");
@@ -33,16 +50,12 @@ namespace legged_locomotion_mpc_ros2
     this->declare_parameter("external_wrench_topic", "~/gait_parameters");
     this->declare_parameter("joint_trajectory_topic", "~/joint_forward_trajectory");
 
-    configDirectoryPath_ = this->get_parameter("config_directory_path").as_string();
-
-
-    maxDurationBetweenMessages_ = Time(1, 0, RCL_ROS_TIME);
+    maxDurationBetweenMessages_ = rclcpp::Duration::from_seconds(1.0);
   }
 
-  node_interfaces::LifecycleNodeInterface::CallbackReturn
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
     LeggedMpcController::on_configure(const State& state)
   {
-
     /** 
      * Setup helper data structures
      */
@@ -85,10 +98,6 @@ namespace legged_locomotion_mpc_ros2
     endEffectorNum_ = modelSettings_.endEffectorThreeDofNames.size() 
       + modelSettings_.endEffectorSixDofNames.size();
 
-    stateOffset_ = 12;
-    inputOffset_ = 3 * modelSettings_.endEffectorThreeDofNames.size() 
-      + 6 * modelSettings_.endEffectorSixDofNames.size();
-
     /**
      * Create subsciber and publishers
      */
@@ -113,7 +122,7 @@ namespace legged_locomotion_mpc_ros2
 
     // Base twist (actual) subscriber
     const std::string baseTwistTopic = this->get_parameter("base_twist_topic").as_string();
-    baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+    baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       baseTwistTopic, QoS(1).best_effort().keep_last(1), 
       std::bind(&LeggedMpcController::updateBaseTwist, this, std::placeholders::_1)); 
     
@@ -146,7 +155,6 @@ namespace legged_locomotion_mpc_ros2
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       jointTrajectoryTopic, SystemDefaultsQoS());
 
-
     /**
      * Create timer for joint trajectory commands
      */
@@ -154,12 +162,55 @@ namespace legged_locomotion_mpc_ros2
     // Get duration 
     const auto mpcSettings = mpc::loadSettings(
       configDirectoryPath + "task.info", "mpc", false);
-    mrtDuation_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+    mrtDuration_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
 
     // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
-    jointTrajectoryTimer_ = rclcpp::create_timer(*this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(mrtDuration), 
+    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
+      rclcpp::Duration::from_seconds(mrtDuration_), 
       std::bind(&LeggedMpcController::sendJointTrajectory, this));
+
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+  }
+
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+    LeggedMpcController::on_activate(const State& state)
+  {
+    try
+    {
+      setupMpc();
+    }
+    catch(const std::exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "[MPC setup] Error : %s", e.what());
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
+
+    runMpc();
+    mpcTimer_.reset();
+    mrtTimer_.reset();
+    controllerRunning_ = true;
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+  }
+
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+    LeggedMpcController::on_deactivate(const State& state)
+  {
+    controllerRunning_ = false;
+    if (mpcThread_.joinable()) mpcThread_.join();
+    std::string returnString;
+
+    returnString += "########################################################################";
+    returnString += "\n### MPC Benchmarking";
+    returnString += "\n###   Maximum : " + std::to_string(mpcTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+    returnString += "\n###   Average : " + std::to_string(mpcTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    returnString += "########################################################################";
+    returnString += "\n### WRT Benchmarking";
+    returnString += "\n###   Maximum : " + std::to_string(mrtTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+    returnString += "\n###   Average : " + std::to_string(mpcTimer_.getAverageInMilliseconds()) + "[ms].\n";
+
+    RCLCPP_INFO(this->get_logger(), "%s", returnString.c_str());
+
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
   void LeggedMpcController::setupMpc()
@@ -184,7 +235,7 @@ namespace legged_locomotion_mpc_ros2
       access_helper_functions::getBasePose(initialSystemState, 
         modelInfo_) = basePose;
       
-      access_helper_functions::getBaseTwist(initialSystemState, 
+      access_helper_functions::getBaseVelocity(initialSystemState, 
         modelInfo_) = baseTwist;
 
       access_helper_functions::getJointPositions(initialSystemState, 
@@ -196,11 +247,9 @@ namespace legged_locomotion_mpc_ros2
       const std::string basePoseTopic = this->get_parameter("base_pose_topic").as_string();
       const std::string baseTwistTopic = this->get_parameter("base_twist_topic").as_string();
       
-      RCLCPP_ERROR(this->get_logger(), 
-        "One of topics: %s, %s or %s is not active!", jointStatesTopic.c_str(), 
-        basePoseTopic.c_str(), baseTwistTopic.c_str());
-      throw std::runtime_error("One of topics: %s, %s or %s is not active!", 
-        jointStatesTopic.c_str(), basePoseTopic.c_str(), baseTwistTopic.c_str());
+      std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + basePoseTopic + " or " + baseTwistTopic + " is not active!";
+      RCLCPP_ERROR(this->get_logger(), "%s", errorMessage.c_str());
+      throw std::runtime_error(errorMessage);
     }
 
     // Make plane terrain if terrain from subscriber is not available
@@ -212,8 +261,8 @@ namespace legged_locomotion_mpc_ros2
       const vector3_t baseEulerAngles = access_helper_functions::getBaseOrientationZyx(
         initialSystemState, modelInfo_);
 
-      const auto basePlannerSettings = loadBasePlannerStaticSettings(modelFilePath
-        "base_planner_static_settings", false);
+      const auto basePlannerSettings = planners::loadBasePlannerStaticSettings(
+        modelFilePath, "base_planner_static_settings", false);
 
       const TerrainPlane initalPlane = computeTerrainPlane(basePosition, baseEulerAngles, 
         basePlannerSettings.initialBaseHeight);
@@ -231,7 +280,7 @@ namespace legged_locomotion_mpc_ros2
       modelFilePath, urdfFilePath, loopshapingFilePath);
 
     leggedInterfacePtr_ = &loopshapingInterfacePtr_->getLeggedInterface();
-    referenceManagerPtr_ = leggedInterfacePtr_->getLeggedReferenceManager();
+    referenceManagerPtr_ = &leggedInterfacePtr_->getLeggedReferenceManager();
     loopshapingDefinitionPtr_ = loopshapingInterfacePtr_->getLoopshapingDefinition().get();
 
     const auto& mpcSettings = leggedInterfacePtr_->mpcSettings();
@@ -258,6 +307,10 @@ namespace legged_locomotion_mpc_ros2
       loopshapingInterfacePtr_->getReferenceManagerPtr());
     mpcPtr_->getSolverPtr()->addSynchronizedModule(
       loopshapingInterfacePtr_->getSynchronizedModules());
+
+    // Make rollout
+    const auto& rollout = loopshapingInterfacePtr_->getRollout();
+    rolloutPtr_.reset(rollout.clone());
     
     // Make MPC MRT interface
     mpcMrtPtr_ = std::make_unique<MPC_MRT_Interface>(*mpcPtr_);
@@ -274,23 +327,23 @@ namespace legged_locomotion_mpc_ros2
     rclcpp::Duration maxInitialPolicyDuration = rclcpp::Duration::from_seconds(5);
     rclcpp::Time startTime = this->get_clock()->now();
 
-    while(!mpcInterface.initialPolicyReceived() &&  
+    while(!mpcMrtPtr_->initialPolicyReceived() &&  
       (this->get_clock()->now() - startTime) < maxInitialPolicyDuration) 
     {
-      mpcInterface.advanceMpc();
+      mpcMrtPtr_->advanceMpc();
     }
 
-    if(!mpcInterface.initialPolicyReceived())
+    if(!mpcMrtPtr_->initialPolicyReceived())
     {
       RCLCPP_ERROR(this->get_logger(), 
         "Initial policy not recived, try again later!");
       throw std::runtime_error("Initial policy not recived, try again later!");
     }
     
-    mpcMrtPtr_->initRollout(leggedInterfacePtr_->getRollout());
+    mpcMrtPtr_->initRollout(&leggedInterfacePtr_->getRollout());
   }
 
-  SystemObervation LeggedMpcController::getCurrentObservation()
+  SystemObservation LeggedMpcController::getCurrentObservation()
   {
     // Current loopshaping observation
     SystemObservation currentObservation;
@@ -325,24 +378,48 @@ namespace legged_locomotion_mpc_ros2
     access_helper_functions::getBasePose(
       systemState, modelInfo_) = basePoseEstimation_.get();
 
-    access_helper_functions::getBaseTwist(
+    access_helper_functions::getBaseVelocity(
       systemState, modelInfo_) = baseTwistEstimation_.get();
 
     access_helper_functions::getJointPositions(systemState, 
       modelInfo_) = jointPositionEstimation_.get();
 
-    // Get filter state from last policy optimal trajectory
-    const size_t queryIndex = ocs2::findIndexInTimeArray(
+    // Get filter state and input from last policy optimal trajectory
+    const size_t queryIndex = utils::findIndexInTimeArray(
       mpcMrtPtr_->getPolicy().timeTrajectory_, currentObservation.time);
+
     filterState = mpcMrtPtr_->getPolicy().stateTrajectory_[queryIndex].block(
       modelInfo_.stateDim, 0, modelInfo_.inputDim, 1);
+
+    currentObservation.input = mpcMrtPtr_->getPolicy().inputTrajectory_[queryIndex];
 
     return currentObservation;
   }
 
-  void LeggedMpcController::advanceMpc()
+  void LeggedMpcController::runMpc()
   {
-    mpcMrtPtr_->advanceMpc();
+    mpcThread_ = std::thread([&]() 
+    {
+      while(controllerRunning_) 
+      {
+        try 
+        {
+          executeAndSleep([&]() 
+          {
+            mpcTimer_.startTimer();
+            mpcMrtPtr_->advanceMpc();
+            mpcTimer_.endTimer();
+          }, leggedInterfacePtr_->mpcSettings().mpcDesiredFrequency_);
+        } 
+        catch(const std::exception& e) 
+        {
+          controllerRunning_ = false;
+          RCLCPP_ERROR(this->get_logger(), "[MPC thread] Error : %s", e.what());
+          this->trigger_transition(
+            lifecycle_msgs::msg::Transition::TRANSITION_DEACTIVATE);
+        }
+      }
+    });
   }
 
   void LeggedMpcController::updateCommand(
@@ -362,7 +439,7 @@ namespace legged_locomotion_mpc_ros2
     command.baseVerticalVelocity = baseTwist->twist.linear.z;
     command.yawRate = baseTwist->twist.angular.z;
 
-    if(referenceManagerPtr_ && mpcRunning_)
+    if(referenceManagerPtr_ && controllerRunning_)
     {
       referenceManagerPtr_->updateCommand(command);
     }
@@ -461,7 +538,7 @@ namespace legged_locomotion_mpc_ros2
         "Time between two TwistStamped messages was longer than maximum duration!");
     }
 
-    lastBaseTwistTime_ = basePose->header.stamp;
+    lastBaseTwistTime_ = baseTwist->header.stamp;
 
     vector6_t currentBaseTwist;
 
@@ -491,8 +568,8 @@ namespace legged_locomotion_mpc_ros2
         "Time between two Contacts messages was longer than maximum duration!");
     }
 
-    lastContactFlagsTime_.seconds = basePose->header.stamp.sec;
-    lastContactFlagsTime_.nanoseconds = basePose->header.stamp.nanosec;
+    // TODO SPRAWDZ CZY TO NIE JEST TAK ZE KAZDY MA INNY TIMESTAMP
+    lastContactFlagsTime_ = contactFlags->contacts[0].header.stamp;
 
     contact_flags_t contactFlagsData = 0;
 
@@ -504,7 +581,7 @@ namespace legged_locomotion_mpc_ros2
       contactFlagsData[currentIndex] = currentContactMessage.contact;
     }
 
-    if(referenceManagerPtr_ && mpcRunning_)
+    if(referenceManagerPtr_ && controllerRunning_)
     {
       referenceManagerPtr_->updateContactFlags(contactFlagsData);
     }
@@ -524,10 +601,10 @@ namespace legged_locomotion_mpc_ros2
 
     locomotion::GaitDynamicParameters parameters;
     parameters.steppingFrequency = gaitParameters->stepping_frequency;
-    parameters.swingRatio = gaitParameters->swing_ratio
+    parameters.swingRatio = gaitParameters->swing_ratio;
     parameters.phaseOffsets = gaitParameters->phase_offsets;
 
-    if(referenceManagerPtr_ && mpcRunning_)
+    if(referenceManagerPtr_ && controllerRunning_)
     {
       referenceManagerPtr_->updateGaitParemeters(parameters);
     }
@@ -555,9 +632,9 @@ namespace legged_locomotion_mpc_ros2
     swingDynamicSettings.tangentialProgresses = swingParameters->tangential_progresses;
     swingDynamicSettings.tangentialVelocityFactors = swingParameters->tangential_velocity_factors;
 
-    if(referenceManagerPtr_ && mpcRunning_)
+    if(referenceManagerPtr_ && controllerRunning_)
     {
-      referenceManagerPtr_->updateSwingParemeters(swingDynamicSettings);
+      referenceManagerPtr_->updateSwingParameters(swingDynamicSettings);
     }
   }
 
@@ -572,12 +649,7 @@ namespace legged_locomotion_mpc_ros2
       return;
     }
 
-    rclcpp::Time currentTime;
-
-    currentTime.seconds = externalWrench->header.stamp.sec;
-    currentTime.nanoseconds = externalWrench->header.stamp.nanosec;
-
-    scalar_t currentTime = currentTime.seconds();
+    const rclcpp::Time currentTime = externalWrench->header.stamp;
 
     vector6_t baseWrench;
     baseWrench(0) = externalWrench->wrench.force.x;
@@ -587,24 +659,27 @@ namespace legged_locomotion_mpc_ros2
     baseWrench(4) = externalWrench->wrench.torque.y;
     baseWrench(5) = externalWrench->wrench.torque.z;
 
-    if(loopshapingInterfacePtr_ && mpcRunning_)
+    if(loopshapingInterfacePtr_ && controllerRunning_)
     {
       leggedInterfacePtr_->disturbanceModule().updateDistrubance(
-        currentTime, baseWrench);
+        currentTime.seconds(), baseWrench);
     }
   }
 
   void LeggedMpcController::sendJointTrajectory()
   {
-    if(mpcMrtPtr_ && mpcRunning_)
+    if(mpcMrtPtr_ && controllerRunning_)
     {
+      mrtTimer_.startTimer();
       const auto currentObservation = getCurrentObservation();
 
       mpcMrtPtr_->setCurrentObservation(currentObservation);
 
-      currentState = currentObservation.state;
+      mpcMrtPtr_->updatePolicy();
+
+      const auto& currentState = currentObservation.state;
       
-      const auto currentTime = this->get_clock()->now();
+      const scalar_t currentTime = this->get_clock()->now().seconds();
 
       std::array<scalar_t, 2> times;
       std::array<vector_t, 2> optimizedStates;
@@ -615,7 +690,7 @@ namespace legged_locomotion_mpc_ros2
       vector_t loopshapingInput;
 
       // Get current optimized system state and input
-      times[0] = currentTime.seconds();
+      times[0] = currentTime;
       mpcMrtPtr_->evaluatePolicy(times[0],
         currentState, loopshapingState, loopshapingInput, plannedMode);
 
@@ -630,7 +705,7 @@ namespace legged_locomotion_mpc_ros2
 
       times[1] = times[0] + mrtDuration_;
       auto modeschedule = mpcMrtPtr_->getPolicy().modeSchedule_;
-      rolloutPtr->run(observation.time, observation.state, times[1],
+      rolloutPtr_->run(currentObservation.time, currentObservation.state, times[1],
         mpcMrtPtr_->getPolicy().controllerPtr_.get(), modeschedule,
         timeTrajectory, postEventIndicesStock, loopshapingStateTrajectory,
         loopshapingInputTrajectory);
@@ -653,22 +728,37 @@ namespace legged_locomotion_mpc_ros2
       for(size_t i = 0; i < times.size(); ++i)
       {
         jointTrajectory->points[i].time_from_start = rclcpp::Duration::from_seconds(
-          times[i] - currentTime.seconds());
-        
-        jointTrajectory->points[i].positions = access_helper_functions::getJointPositions(
-          optimizedStates[i], modelInfo_);
-        
-        jointTrajectory->points[i].velocities = access_helper_functions::getJointPositions(
-          optimizedInputs[i], modelInfo_);
+          times[i] - currentTime);
 
-        jointTrajectory->points[i].effort = 
-          leggedInterfacePtr_->torqueApproximator().getValue(
-            optimizedStates[i], optimizedInputs[i]);
+
+        auto positionVector = access_helper_functions::getJointPositions(optimizedStates[i], 
+          modelInfo_);
+
+        const std::vector<scalar_t> positions(positionVector.data(), 
+          positionVector.data() + positionVector.size());
+        
+        jointTrajectory->points[i].positions = std::move(positions);
+
+        const auto velocityVector = loopshapingDefinitionPtr_->getSystemInput(
+          optimizedStates[i], optimizedInputs[i]);
+
+        const std::vector<scalar_t> velocities(velocityVector.data(), 
+          velocityVector.data() + velocityVector.size());
+        
+        jointTrajectory->points[i].velocities = std::move(velocities);
+
+        const auto effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
+          optimizedStates[i], optimizedInputs[i]);
+
+        const std::vector<scalar_t> efforts(effortVector.data(), 
+          effortVector.data() + effortVector.size());
+
+        jointTrajectory->points[i].effort = std::move(efforts);
       }
+      mrtTimer_.endTimer();
 
       // Publish 
       jointTrajectoryPublisher_->publish(std::move(jointTrajectory));
     }
   }
-
 } // namespace legged_locomotion_mpc_ros2
