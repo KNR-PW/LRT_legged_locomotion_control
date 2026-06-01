@@ -46,7 +46,7 @@ legged_interface_settings
   useEndEffectorPlacementSoftConstraint   true
   useJointLimitsSoftConstraint            true
   useJointTorqueLimitsSoftConstraint      true
-  useTerrainAvoidanceSoftConstraint       false
+  useTerrainAvoidanceSoftConstraint       true
   useSelfCollisionAvoidanceSoftConstraint false
 
   useNormalOrientationSoftConstraint      true
@@ -104,17 +104,17 @@ legged_collision_settings
 
   terrainRelaxations
   {
-    [0] 0.01
-    [1] 0.01
+    [0] 0.05
+    [1] 0.05
   }
 
   selfCollisionRelaxations
   {
-    [0] 0.005
-    [1] 0.005
+    [0] 0.05
+    [1] 0.05
   }
 
-  shrinkRatio 0.1
+  shrinkRatio 0.75
 
   maxSphereNeighbours 10
 }

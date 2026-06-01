@@ -52,11 +52,11 @@ ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_DEPENDS})
 target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 
 # Legged MPC controller
-add_executable(legged_mpc_controller_node
-  src/controller/LeggedMpcController.cpp
-)
-target_link_libraries(legged_mpc_controller_node ${PROJECT_NAME})
-ament_target_dependencies(legged_mpc_controller_node ${THIS_PACKAGE_DEPENDS})
+# add_executable(legged_mpc_controller_node
+#   src/controller/LeggedMpcController.cpp
+# )
+# target_link_libraries(legged_mpc_controller_node ${PROJECT_NAME})
+# ament_target_dependencies(legged_mpc_controller_node ${THIS_PACKAGE_DEPENDS})
 
 # Meldog demos
 add_executable(${PROJECT_NAME}_meldog_demo_planar_terrain
@@ -98,8 +98,8 @@ endif (cmake_clang_tools_FOUND)
 ## Install ##
 #############
 
-install(TARGETS legged_mpc_controller_node
-    DESTINATION lib/${PROJECT_NAME})
+# install(TARGETS legged_mpc_controller_node
+#     DESTINATION lib/${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME}_meldog_demo_planar_terrain
     DESTINATION lib/${PROJECT_NAME})

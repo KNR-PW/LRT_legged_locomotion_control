@@ -275,7 +275,6 @@ namespace legged_locomotion_mpc
       const auto& positionDerivative = leggedPrecomputation.getCollisionLinkPositionDerivatives(collisionIndex);
       const auto& eulerDerivative = leggedPrecomputation.getCollisionLinkOrientationDerivatives(collisionIndex);
 
-      // TOOOOOOOOOOOOOOOOOOOOOOOOO
       const auto rotationVectorGradient = 
         leggedPrecomputation.getRotationTimesVectorGradient(frameEulerAngles, 
           sphereRelativePositions[minIndex]);

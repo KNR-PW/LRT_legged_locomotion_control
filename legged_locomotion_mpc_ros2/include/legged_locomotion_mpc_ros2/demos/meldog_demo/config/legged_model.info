@@ -73,21 +73,27 @@ base_planner_static_settings
 
   maximumYawRate 1.0
   
-  nominalBaseWidthLateral 0.2
+  nominalBaseWidthLateral 0.55
 
-  nominalBaseWidthHeading 0.3
+  nominalBaseWidthHeading 0.8
 }
 
 legged_collision_settings
 {
   collisionLinkNames
   {
-
+    [0] LFLL_link
+    [1] RFLL_link
+    [2] LRLL_link
+    [3] RRLL_link
   }
 
   terrainCollisionLinkNames
   {
-
+    [0] LFLL_link
+    [1] RFLL_link
+    [2] LRLL_link
+    [3] RRLL_link
   }
 
   selfCollisionPairNames
@@ -101,6 +107,10 @@ legged_collision_settings
     [1] 0.075
     [2] 0.075
     [3] 0.075
+    [4] 0.005
+    [5] 0.005
+    [6] 0.005
+    [7] 0.005
   }
 
   terrainRelaxations
@@ -109,6 +119,10 @@ legged_collision_settings
     [1] 0.005
     [2] 0.005
     [3] 0.005
+    [4] 0.050
+    [5] 0.050
+    [6] 0.050
+    [7] 0.050
   }
 
   selfCollisionRelaxations
@@ -116,7 +130,7 @@ legged_collision_settings
 
   }
 
-  shrinkRatio 0.1
+  shrinkRatio 0.75
 
   maxSphereNeighbours 10
 }
