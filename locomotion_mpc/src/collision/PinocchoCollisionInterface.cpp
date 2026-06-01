@@ -41,8 +41,7 @@ namespace legged_locomotion_mpc
       const FloatingBaseModelInfo& info,
       const ModelSettings& modelSettings,
       const CollisionSettings& collisionSettings,
-      const PinocchioInterface& pinocchioInterface,
-      const std::string& modelFolder, bool recompileLibraries, bool verbose)
+      const PinocchioInterface& pinocchioInterface)
     {
       if(collisionSettings.maxExcesses.size() != (info.endEffectorFrameIndices.size() + collisionSettings.collisionLinkNames.size()))
       {
@@ -65,27 +64,6 @@ namespace legged_locomotion_mpc
       createCollisionIndices(info, modelSettings, collisionSettings);
 
       createNeighbours(collisionSettings);
-
-      // Create CppAD function
-      auto systemFlowMapFunc = [&](const ocs2::ad_vector_t& x, const ocs2::ad_vector_t& p, 
-        ocs2::ad_vector_t& y) 
-      {
-        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1> eulerAnglesAD = x;
-        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1> vector = p;
-        y = getRotationTimesVectorCppAd(eulerAnglesAD, vector);
-      };
-    
-      rotationMatrixVectorAdInterfacePtr_.reset(
-          new ocs2::CppAdInterface(systemFlowMapFunc, 3, 3, "rotation_times_vector_euler", modelFolder));
-    
-      if(recompileLibraries) 
-      {
-        rotationMatrixVectorAdInterfacePtr_->createModels(ocs2::CppAdInterface::ApproximationOrder::First, verbose);
-      } 
-      else 
-      {
-        rotationMatrixVectorAdInterfacePtr_->loadModelsIfAvailable(ocs2::CppAdInterface::ApproximationOrder::First, verbose);
-      }
     }
 
     void PinocchioCollisionInterface::createGeometryModel(
@@ -115,6 +93,7 @@ namespace legged_locomotion_mpc
         collisionSettings.collisionLinkNames.begin(), 
         collisionSettings.collisionLinkNames.end());
 
+      terrainAvoidanceIndices_.clear();
       for(const auto& terrainLinkName: collisionSettings.terrainCollisionLinkNames)
       {
         const auto iter = std::find(collisionNames.cbegin(), collisionNames.cend(), terrainLinkName);
@@ -167,6 +146,10 @@ namespace legged_locomotion_mpc
       // Get collision frame indexes
       std::vector<size_t> collisionFrames = info.endEffectorFrameIndices;
 
+      std::vector<std::string> collisionNames = modelSettings.endEffectorThreeDofNames;
+      collisionNames.insert(collisionNames.end(), 
+        modelSettings.endEffectorSixDofNames.begin(), modelSettings.endEffectorSixDofNames.end());
+
       for(const std::string& frameName: collisionSettings.collisionLinkNames)
       {
         const size_t frameIndex = pinocchioInterface.getModel().getFrameId(frameName);
@@ -176,6 +159,7 @@ namespace legged_locomotion_mpc
           throw std::invalid_argument(message);
         }
         collisionFrames.push_back(frameIndex);
+        collisionNames.push_back(frameName);
       }
 
       frameNumber_ = collisionFrames.size();
@@ -226,15 +210,15 @@ namespace legged_locomotion_mpc
         frameToSpherePositons_.push_back(std::move(spherePositions));
       }
 
-      for(size_t i = 0; i < collisionSettings.collisionLinkNames.size(); ++i)
+      for(size_t i = 0; i < collisionNames.size(); ++i)
       {
-        std::string message = "[PinocchioCollisionInterface]: Collision frame named " + collisionSettings.collisionLinkNames[i] + " has "
-          + std::to_string(sphereNumbers_[i]) + " spheres, sizes:\n";
+        std::string message = "[PinocchioCollisionInterface]: Collision frame named " + collisionNames[i] + " has "
+          + std::to_string(sphereNumbers_[i]) + " spheres:\n";
         std::cerr << message;
 
-        for(size_t j = 0; j < sphereRadiuses_[i].size(); ++j)
+        for(size_t j = 0; j < sphereNumbers_[i]; ++j)
         {
-          std::cerr << "Sphere " << j << ": " << sphereRadiuses_[i][j] << "\n";
+          std::cerr << "Sphere " << j << ": " << sphereRadiuses_[i][j] << ", [" << frameToSpherePositons_[i][j].transpose() << "]\n";
         }
       }
     }
@@ -304,26 +288,6 @@ namespace legged_locomotion_mpc
     {
       assert(collisionIndex < frameNumber_);
       return frameToSpherePositons_[collisionIndex];
-    }
-
-    matrix3_t PinocchioCollisionInterface::getRotationTimesVectorGradient(
-      const vector3_t& eulerAnglesZYX, const vector3_t& vector) const
-    {
-      const ocs2::vector_t x = (ocs2::vector_t(3) << eulerAnglesZYX).finished();
-      const ocs2::vector_t p = (ocs2::vector_t(3) << vector).finished();
-      const ocs2::matrix_t dynamicsJacobian = rotationMatrixVectorAdInterfacePtr_->getJacobian(x, p);
-      const matrix3_t approx = matrix3_t::Map(dynamicsJacobian.data());
-
-      return approx;
-    }
-
-    ocs2::ad_vector_t PinocchioCollisionInterface::getRotationTimesVectorCppAd(
-      const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& eulerAnglesAD, 
-      const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& vector)
-    {
-      const Eigen::Matrix<ocs2::ad_scalar_t, 3, 3> rotationMatrix = getRotationMatrixFromZyxEulerAngles(
-        eulerAnglesAD);
-      return rotationMatrix * vector;
     }
 
     const std::vector<size_t>& PinocchioCollisionInterface::getSphereNeighbours(

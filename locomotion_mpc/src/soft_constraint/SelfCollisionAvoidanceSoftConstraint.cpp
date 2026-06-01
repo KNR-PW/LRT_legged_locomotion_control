@@ -544,7 +544,7 @@ namespace legged_locomotion_mpc
         secondIndex).dfdx;
       const auto& secondOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         secondIndex).dfdx;
-      const matrix3_t rotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t rotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         frameEulerAngles, sphereRelativePositions[minIndex]);
       secondPositionDerivatives += rotationVectorGradient * secondOrientationDerivatives;
 
@@ -642,7 +642,7 @@ namespace legged_locomotion_mpc
         firstIndex).dfdx;
       const auto& firstOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         firstIndex).dfdx;
-      const matrix3_t firstRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t firstRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         firstFrameEulerAngles, firstSphereRelativePositions[minFirstIndex]);
       firstPositionDerivatives += firstRotationVectorGradient * firstOrientationDerivatives;
 
@@ -650,7 +650,7 @@ namespace legged_locomotion_mpc
         secondIndex).dfdx;
       const auto& secondOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         secondIndex).dfdx;
-      const matrix3_t secondRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t secondRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         secondFrameEulerAngles, secondSphereRelativePositions[minSecondIndex]);
       secondPositionDerivatives += secondRotationVectorGradient * secondOrientationDerivatives;
 
@@ -732,7 +732,7 @@ namespace legged_locomotion_mpc
         collisionIndex).dfdx;
       const auto& collisionOrientationDerivatives = leggedPrecomputation.getCollisionLinkOrientationDerivatives(
         collisionIndex).dfdx;
-      const matrix3_t rotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t rotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         collisionEulerAngles, sphereRelativePositions[minIndex]);
       collisionPositionDerivatives += rotationVectorGradient * collisionOrientationDerivatives;
 
@@ -826,7 +826,7 @@ namespace legged_locomotion_mpc
         frameIndex).dfdx;
       const auto& frameOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         frameIndex).dfdx;
-      const matrix3_t frameRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t frameRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         frameEulerAngles, frameSphereRelativePositions[minFrameIndex]);
       framePositionDerivatives += frameRotationVectorGradient * frameOrientationDerivatives;
 
@@ -834,7 +834,7 @@ namespace legged_locomotion_mpc
         collisionIndex).dfdx;
       const auto& collisionOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         collisionIndex).dfdx;
-      const matrix3_t collisionRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t collisionRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         collisionEulerAngles, collisionSphereRelativePositions[minCollisionIndex]);
       collisionPositionDerivatives += collisionRotationVectorGradient * collisionOrientationDerivatives;
 
@@ -929,7 +929,7 @@ namespace legged_locomotion_mpc
         firstIndex).dfdx;
       const auto& firstOrientationDerivatives = leggedPrecomputation.getCollisionLinkOrientationDerivatives(
         firstIndex).dfdx;
-      const matrix3_t firstRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t firstRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         firstEulerAngles, firstSphereRelativePositions[minFirstIndex]);
       firstPositionDerivatives += firstRotationVectorGradient * firstOrientationDerivatives;
 
@@ -937,7 +937,7 @@ namespace legged_locomotion_mpc
         secondIndex).dfdx;
       const auto& secondOrientationDerivatives = leggedPrecomputation.getCollisionLinkOrientationDerivatives(
         secondIndex).dfdx;
-      const matrix3_t secondRotationVectorGradient = collisionInterface_.getRotationTimesVectorGradient(
+      const matrix3_t secondRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         secondEulerAngles, secondSphereRelativePositions[minSecondIndex]);
       secondPositionDerivatives += secondRotationVectorGradient * secondOrientationDerivatives;
 

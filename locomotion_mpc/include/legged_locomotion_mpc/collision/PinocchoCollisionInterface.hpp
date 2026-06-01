@@ -75,10 +75,7 @@ namespace legged_locomotion_mpc
           const floating_base_model::FloatingBaseModelInfo& info,
           const ModelSettings& modelSettings,
           const CollisionSettings& collisionSettings,
-          const ocs2::PinocchioInterface& pinocchioInterface,
-          const std::string& modelFolder = "/tmp/legged_locomotion_mpc",
-          bool recompileLibraries = true,
-          bool verbose = true);
+          const ocs2::PinocchioInterface& pinocchioInterface);
         
         /**
          * Get vector with number of spheres in frame
@@ -116,14 +113,6 @@ namespace legged_locomotion_mpc
          */
         const std::vector<size_t>& getSphereNeighbours(size_t collisionIndex, 
           size_t sphereIndex) const;
-
-        /**
-         * Get partial derivative w.r.t euler ZYX angles 
-         * from rotation matrix and vector multiplication: d(R * v)/de.
-         * Used for calculating partial derivatives of sphere positions.
-         */
-        matrix3_t getRotationTimesVectorGradient(const vector3_t& eulerAnglesZYX, 
-          const vector3_t& vector) const;
         
         /**
          * Get all indices from range(0 : endEffectorNum + collisionNum - 1) 
@@ -192,12 +181,6 @@ namespace legged_locomotion_mpc
          * Important: also includes queried sphere
          */
         std::vector<std::vector<std::vector<size_t>>> sphereNeighbours_;
-
-        /**
-         * Helper Cpp AD function for getting partial derivative w.r.t euler ZYX angles
-         * from rotation matrix and vector multiplication: d(R * v)/de
-         */
-        std::unique_ptr<ocs2::CppAdInterface> rotationMatrixVectorAdInterfacePtr_;
     };
   } // namespace collision
 } // namespace legged_locomotion_mpc

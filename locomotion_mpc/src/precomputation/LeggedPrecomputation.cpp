@@ -14,7 +14,8 @@ namespace legged_locomotion_mpc
     const PinocchioForwardEndEffectorKinematicsCppAd& forwardKinematics,
     const PinocchioForwardCollisionKinematicsCppAd& collisionKinematics,
     const PinocchioTorqueApproximationCppAd& torqueApproximator, 
-    const PinocchioWeightCompensator& weightCompensator):
+    const PinocchioWeightCompensator& weightCompensator, 
+    const std::string& modelFolder, bool recompileLibraries, bool verbose):
       PreComputation(), 
       endEffectorNumber_(modelInfo.numThreeDofContacts + modelInfo.numSixDofContacts),
       modelInfo_(std::move(modelInfo)), 
@@ -24,8 +25,58 @@ namespace legged_locomotion_mpc
       weightCompensator_(weightCompensator)
   {
     rotationWorldToTerrains_.resize(endEffectorNumber_);
+
+    // Create CppAD function
+    auto systemFlowMapFunc = [&](const ad_vector_t& x, const ad_vector_t& p, 
+      ad_vector_t& y) 
+    {
+      const Eigen::Matrix<ad_scalar_t, 3, 1> eulerAnglesAD = x;
+      const Eigen::Matrix<ad_scalar_t, 3, 1> vector = p;
+      y = getRotationTimesVectorCppAd(eulerAnglesAD, vector);
+    };
+  
+    rotationMatrixVectorAdInterfacePtr_.reset(
+      new CppAdInterface(systemFlowMapFunc, 3, 3, "rotation_times_vector_euler", modelFolder));
+  
+    if(recompileLibraries) 
+    {
+      rotationMatrixVectorAdInterfacePtr_->createModels(CppAdInterface::ApproximationOrder::First, verbose);
+    } 
+    else 
+    {
+      rotationMatrixVectorAdInterfacePtr_->loadModelsIfAvailable(CppAdInterface::ApproximationOrder::First, verbose);
+    }
   }
 
+  LeggedPrecomputation::LeggedPrecomputation(const LeggedPrecomputation& other):
+    modelInfo_(other.modelInfo_),
+    endEffectorNumber_(other.endEffectorNumber_),
+    collisionLinkNumber_(other.collisionLinkNumber_),
+    referenceManager_(other.referenceManager_),
+    forwardKinematics_(other.forwardKinematics_),
+    collisionKinematics_(other.collisionKinematics_),
+    torqueApproximator_(other.torqueApproximator_),
+    weightCompensator_(other.weightCompensator_),
+    endEffectorPositions_(other.endEffectorPositions_),
+    endEffectorPositionDerivaties_(other.endEffectorPositionDerivaties_),
+    endEffectorEulerAngles_(other.endEffectorEulerAngles_),
+    endEffectorEulerAngleDerivaties_(other.endEffectorEulerAngleDerivaties_),
+    endEffectorLinearVelocities_(other.endEffectorLinearVelocities_),
+    endEffectorLinearVelocityDerivaties_(other.endEffectorLinearVelocityDerivaties_),
+    endEffectorAngularVelocities_(other.endEffectorAngularVelocities_),
+    endEffectorAngularVelocityDerivaties_(other.endEffectorAngularVelocityDerivaties_),
+    rotationWorldToTerrains_(other.rotationWorldToTerrains_),
+    collisionLinkPositions_(other.collisionLinkPositions_),
+    collisionLinkPositionDerivaties_(other.collisionLinkPositionDerivaties_),
+    collisionLinkEulerAngles_(other.collisionLinkEulerAngles_),
+    collisionLinkEulerAngleDerivaties_(other.collisionLinkEulerAngleDerivaties_),
+    referenceTrajectoryPoint_(other.referenceTrajectoryPoint_),
+    torqueApproximation_(other.torqueApproximation_),
+    torqueApproximationDerivatives_(other.torqueApproximationDerivatives_),
+    endEffectorCompensationContactWrenches_(other.endEffectorCompensationContactWrenches_),
+    rotationMatrixVectorAdInterfacePtr_(new CppAdInterface(
+      *other.rotationMatrixVectorAdInterfacePtr_)) {}
+  
   LeggedPrecomputation* LeggedPrecomputation::clone() const
   { 
     return new LeggedPrecomputation(*this); 
@@ -350,5 +401,25 @@ namespace legged_locomotion_mpc
     const auto contactFlags = referenceManager_.getContactFlags(time);
     endEffectorCompensationContactWrenches_ = weightCompensator_.getContactWrenches(state, 
       contactFlags);
+  }
+
+  matrix3_t LeggedPrecomputation::getRotationTimesVectorGradient(
+    const vector3_t& eulerAnglesZYX, const vector3_t& vector) const
+  {
+    const vector_t x = (vector_t(3) << eulerAnglesZYX).finished();
+    const vector_t p = (vector_t(3) << vector).finished();
+    const matrix_t dynamicsJacobian = rotationMatrixVectorAdInterfacePtr_->getJacobian(x, p);
+    const matrix3_t approx = matrix3_t::Map(dynamicsJacobian.data());
+
+    return approx;
+  }
+
+  ad_vector_t LeggedPrecomputation::getRotationTimesVectorCppAd(
+    const Eigen::Matrix<ad_scalar_t, 3, 1>& eulerAnglesAD, 
+    const Eigen::Matrix<ad_scalar_t, 3, 1>& vector)
+  {
+    const Eigen::Matrix<ad_scalar_t, 3, 3> rotationMatrix = getRotationMatrixFromZyxEulerAngles(
+      eulerAnglesAD);
+    return rotationMatrix * vector;
   }
 } // namespace legged_locomotion_mpc

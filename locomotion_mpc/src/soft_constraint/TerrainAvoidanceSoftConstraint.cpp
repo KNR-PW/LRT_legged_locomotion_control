@@ -221,7 +221,7 @@ namespace legged_locomotion_mpc
       const auto& eulerDerivative = leggedPrecomputation.getEndEffectorOrientationDerivatives(i);
 
       const auto rotationVectorGradient = 
-        collisionInterface_.getRotationTimesVectorGradient(frameEulerAngles, 
+        leggedPrecomputation.getRotationTimesVectorGradient(frameEulerAngles, 
           sphereRelativePositions[minIndex]);
 
       const matrix_t positionStateDerivative = positionDerivative.dfdx + rotationVectorGradient * eulerDerivative.dfdx;
@@ -245,6 +245,7 @@ namespace legged_locomotion_mpc
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
       size_t minIndex = 0;
+
       for(size_t j = 0; j < sphereRelativePositions.size(); ++j)
       {
         const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[j];
@@ -274,8 +275,9 @@ namespace legged_locomotion_mpc
       const auto& positionDerivative = leggedPrecomputation.getCollisionLinkPositionDerivatives(collisionIndex);
       const auto& eulerDerivative = leggedPrecomputation.getCollisionLinkOrientationDerivatives(collisionIndex);
 
+      // TOOOOOOOOOOOOOOOOOOOOOOOOO
       const auto rotationVectorGradient = 
-        collisionInterface_.getRotationTimesVectorGradient(frameEulerAngles, 
+        leggedPrecomputation.getRotationTimesVectorGradient(frameEulerAngles, 
           sphereRelativePositions[minIndex]);
 
       const matrix_t positionStateDerivative = positionDerivative.dfdx + rotationVectorGradient * eulerDerivative.dfdx;
@@ -286,7 +288,6 @@ namespace legged_locomotion_mpc
       // Approximated second derivative (sdf and postion second gradients are omitted)
       cost.dfdxx.noalias() += penaltySecondDerivative * scaledGradient * scaledGradient.transpose();
     }
-
     return cost;
   }
 

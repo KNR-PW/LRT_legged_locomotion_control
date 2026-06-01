@@ -45,7 +45,10 @@ namespace legged_locomotion_mpc
         const PinocchioForwardEndEffectorKinematicsCppAd& forwardKinematics,
         const PinocchioForwardCollisionKinematicsCppAd& collisionKinematics,
         const PinocchioTorqueApproximationCppAd& torqueApproximator, 
-        const PinocchioWeightCompensator& weightCompensator);
+        const PinocchioWeightCompensator& weightCompensator,
+        const std::string& modelFolder = "/tmp/legged_locomotion_mpc",
+        bool recompileLibraries = true,
+        bool verbose = true);
 
       ~LeggedPrecomputation() override = default;
 
@@ -100,9 +103,17 @@ namespace legged_locomotion_mpc
 
       const vector6_t& getEndEffectorCompensationContactWrench(size_t endEffectorIndex) const;
 
+      /**
+       * Get partial derivative w.r.t euler ZYX angles 
+       * from rotation matrix and vector multiplication: d(R * v)/de.
+       * Used for calculating partial derivatives of sphere positions.
+       */
+      matrix3_t getRotationTimesVectorGradient(const vector3_t& eulerAnglesZYX, 
+        const vector3_t& vector) const;
+
     private:
 
-      LeggedPrecomputation(const LeggedPrecomputation& other) = default;
+      LeggedPrecomputation(const LeggedPrecomputation& other);
 
       /**
        * Updates:
@@ -204,6 +215,11 @@ namespace legged_locomotion_mpc
       void updateEndEffectorCompensationContactWrenches(ocs2::scalar_t time, 
         const ocs2::vector_t& state);
 
+      // Cpp AD version of rotation matrix and vector multiplication: R * v
+      ocs2::ad_vector_t getRotationTimesVectorCppAd(
+        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& eulerAnglesAD, 
+        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& vector);
+
       const floating_base_model::FloatingBaseModelInfo modelInfo_;
       const size_t endEffectorNumber_;
       const size_t collisionLinkNumber_;
@@ -245,6 +261,12 @@ namespace legged_locomotion_mpc
       ocs2::VectorFunctionLinearApproximation torqueApproximationDerivatives_;
 
       std::vector<vector6_t> endEffectorCompensationContactWrenches_;
+
+      /**
+       * Helper Cpp AD function for getting partial derivative w.r.t euler ZYX angles
+       * from rotation matrix and vector multiplication: d(R * v)/de
+       */
+      std::unique_ptr<ocs2::CppAdInterface> rotationMatrixVectorAdInterfacePtr_;
   };
 } // namespace legged_locomotion_mpc
 
