@@ -215,7 +215,7 @@ namespace legged_locomotion_mpc
 
       for(const auto time: times)
       {
-        const auto position = getEndEffectorPositions(time);
+        auto position = getEndEffectorPositions(time);
         positions.emplace_back(std::move(position));
       }
       return positions;
@@ -230,7 +230,7 @@ namespace legged_locomotion_mpc
 
       for(const auto time: times)
       {
-        const auto velocity = getEndEffectorVelocities(time);
+        auto velocity = getEndEffectorVelocities(time);
         velocities.emplace_back(std::move(velocity));
       }
       return velocities;
@@ -244,7 +244,7 @@ namespace legged_locomotion_mpc
       footClerances.reserve(times.size());
       for(const auto time: times)
       {
-        const auto footClerance = getEndEffectorClearances(time);
+        auto footClerance = getEndEffectorClearances(time);
         footClerances.emplace_back(std::move(footClerance));
       }
       return footClerances;
@@ -258,7 +258,7 @@ namespace legged_locomotion_mpc
       normals.reserve(times.size());
       for(const auto time: times)
       {
-        const auto normal = getEndEffectorSurfaceNormals(time);
+        auto normal = getEndEffectorSurfaceNormals(time);
         normals.emplace_back(std::move(normal));
       }
       return normals;
@@ -298,7 +298,7 @@ namespace legged_locomotion_mpc
 
       for(const auto time: times)
       {
-        const auto point = getEndEffectorTrajectoryPoint(time);
+        auto point = getEndEffectorTrajectoryPoint(time);
         trajectories.positions.emplace_back(std::move(point.positions));
         trajectories.velocities.emplace_back(std::move(point.velocities));
         trajectories.clearances.emplace_back(std::move(point.clearances));

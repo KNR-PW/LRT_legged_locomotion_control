@@ -199,7 +199,7 @@ namespace legged_locomotion_mpc
 
             for(size_t k = 0; k < objectSphereNumber; ++k)
             {
-              const vector3_t frameToSphere = frameToCenterPosition + centerToFrameRotation * 
+              vector3_t frameToSphere = frameToCenterPosition + centerToFrameRotation * 
                 centerToSpherePositions[k];
               spherePositions.push_back(std::move(frameToSphere));
             }
