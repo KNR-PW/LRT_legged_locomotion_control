@@ -31,6 +31,9 @@
 
 #include <terrain_model/core/TerrainModel.hpp>
 
+#include <pinocchio/fwd.hpp>
+#include <convex_plane_decomposition/PlaneDecompositionPipeline.h>
+
 #include <legged_locomotion_mpc/robot_interface/LeggedLoopshapingInterface.hpp>
 
 #include <rclcpp/rclcpp.hpp>
@@ -39,14 +42,19 @@
 #include <rclcpp_lifecycle/lifecycle_publisher.hpp>
 
 #include <sensor_msgs/msg/joint_state.hpp>
+
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
 #include <contact_msgs/msg/contacts.hpp>
+
 #include <legged_locomotion_msgs/msg/gait_parameters.hpp>
 #include <legged_locomotion_msgs/msg/swing_parameters.hpp>
+
+#include <grid_map_ros/GridMapRosConverter.hpp>
 
 namespace legged_locomotion_mpc_ros2
 {
@@ -92,6 +100,9 @@ namespace legged_locomotion_mpc_ros2
 
       void updateExternalWrench(
         const geometry_msgs::msg::WrenchStamped::ConstSharedPtr externalWrench);
+
+      void updateSegmentedTerrain(
+        grid_map_msgs::msg::GridMap::UniquePtr gridMap);
 
       void sendJointTrajectory();
 
@@ -143,6 +154,7 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr basePoseSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
       rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
+      rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr terrainSubscriber_;
       
       // Command subscribers
       rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr commandTwistSubscriber_;
@@ -166,6 +178,9 @@ namespace legged_locomotion_mpc_ros2
       // Timers
       ocs2::benchmark::RepeatedTimer mpcTimer_;
       ocs2::benchmark::RepeatedTimer mrtTimer_;
+
+      // Decomposition pipeline for segmented terrain model
+      std::unique_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipelinePtr_;
   };  
 } // namespace legged_locomotion_mpc_ros2
 

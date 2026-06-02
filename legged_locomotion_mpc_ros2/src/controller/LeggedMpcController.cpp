@@ -27,6 +27,7 @@ namespace legged_locomotion_mpc_ros2
   using namespace terrain_model;
   using namespace rclcpp;
   using namespace rclcpp_lifecycle;
+  using namespace grid_map;
 
   LeggedMpcController::LeggedMpcController(bool intraProcessComms):
     LifecycleNode("legged_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
@@ -99,6 +100,16 @@ namespace legged_locomotion_mpc_ros2
       + modelSettings_.endEffectorSixDofNames.size();
 
     /**
+     * Prepare decompostion pipeline for segmented terrain model
+     */
+
+    // Get default decomposition pipeline config (for now at least)
+    convex_plane_decomposition::PlaneDecompositionPipeline::Config config;
+
+    decompositionPipelinePtr_ = std::make_unique<
+      convex_plane_decomposition::PlaneDecompositionPipeline>(config);
+
+    /**
      * Create subsciber and publishers
      */
 
@@ -131,6 +142,12 @@ namespace legged_locomotion_mpc_ros2
     contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
       contactFlagsTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateContactFlags, this, std::placeholders::_1));
+    
+    // Terrain subscriber
+    const std::string terrainTopic = this->get_parameter("terrain_topic").as_string();
+    terrainSubscriber_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
+      terrainTopic, QoS(1).reliable().keep_last(1), 
+      std::bind(&LeggedMpcController::updateSegmentedTerrain, this, std::placeholders::_1));
     
     // Gait parameters subscriber
     const std::string gaitParametersTopic = this->get_parameter("gait_parameters_topic").as_string();
@@ -663,6 +680,36 @@ namespace legged_locomotion_mpc_ros2
     {
       leggedInterfacePtr_->disturbanceModule().updateDistrubance(
         currentTime.seconds(), baseWrench);
+    }
+  }
+
+  void LeggedMpcController::updateSegmentedTerrain(
+    grid_map_msgs::msg::GridMap::UniquePtr gridMap)
+  {
+    if(!decompositionPipelinePtr_) return;
+ 
+    // Make gridMap object
+    grid_map::GridMap elevationMap;
+
+    if(!GridMapRosConverter::fromMessage(*gridMap, elevationMap, 
+      {terrain_model::elevationLayerName}, true, false))
+    {
+      RCLCPP_ERROR(this->get_logger(), 
+        "Error during GridMapRosConverter::fromMessage()!");
+      return;
+    }
+
+    decompositionPipelinePtr_->update(std::move(elevationMap), 
+      terrain_model::elevationLayerName);
+
+    auto planarTerrain = decompositionPipelinePtr_->movePlanarTerrain();
+
+    terrainModelPtr_ = std::make_unique<terrain_model::SegmentedPlanesTerrainModel>(
+      std::move(planarTerrain), modelSettings_.worldLinkName); 
+
+    if(referenceManagerPtr_ && controllerRunning_)
+    {
+      referenceManagerPtr_->updateTerrainModel(std::move(terrainModelPtr_));
     }
   }
 
