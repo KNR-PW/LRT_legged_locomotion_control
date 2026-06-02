@@ -174,7 +174,7 @@ namespace legged_locomotion_mpc
   {
     if(settings_.threaded)
     {
-      if(newTrajectories_.wait_for(std::chrono::seconds(0)) == std::future_status::timeout)
+      if(newTrajectories_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
       {
         return;
       }
