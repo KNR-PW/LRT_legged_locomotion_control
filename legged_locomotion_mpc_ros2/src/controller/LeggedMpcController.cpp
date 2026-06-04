@@ -30,7 +30,7 @@ namespace legged_locomotion_mpc_ros2
   using namespace grid_map;
 
   LeggedMpcController::LeggedMpcController(bool intraProcessComms):
-    LifecycleNode("legged_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
+    LifecycleNode("legged_mpc_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
     basePoseEstimation_(vector6_t::Zero()),
     baseTwistEstimation_(vector6_t::Zero()),
     jointPositionEstimation_(vector_t::Zero(10)),
@@ -41,17 +41,20 @@ namespace legged_locomotion_mpc_ros2
     this->declare_parameter("urdf_path", "./");
 
     // Topic name parameters
-    this->declare_parameter("command_twist_topic", "~/commandTwist");
-    this->declare_parameter("joint_states_topic", "~/joint_states");
-    this->declare_parameter("base_pose_topic", "~/base_pose");
-    this->declare_parameter("base_twist_topic", "~/base_twist");
-    this->declare_parameter("contact_flags_topic", "~/contact_flags");
-    this->declare_parameter("gait_parameters_topic", "~/gait_parameters");
-    this->declare_parameter("swing_parameters_topic", "~/swing_parameters");
-    this->declare_parameter("external_wrench_topic", "~/gait_parameters");
-    this->declare_parameter("joint_trajectory_topic", "~/joint_forward_trajectory");
+    this->declare_parameter("command_twist_topic", "/command_twist");
+    this->declare_parameter("joint_states_topic", "/joint_states");
+    this->declare_parameter("base_pose_topic", "/base_pose");
+    this->declare_parameter("base_twist_topic", "/base_twist");
+    this->declare_parameter("contact_flags_topic", "/contact_flags");
+    this->declare_parameter("gait_parameters_topic", "/gait_parameters");
+    this->declare_parameter("swing_parameters_topic", "/swing_parameters");
+    this->declare_parameter("external_wrench_topic", "/external_wrench");
+    this->declare_parameter("joint_trajectory_topic", "/joint_forward_trajectory");
+    this->declare_parameter("terrain_topic", "/elevation");
 
     maxDurationBetweenMessages_ = rclcpp::Duration::from_seconds(1.0);
+
+    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller started in unconfigured state!");
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
@@ -63,7 +66,16 @@ namespace legged_locomotion_mpc_ros2
 
     const std::string configDirectoryPath = this->get_parameter("config_directory_path").as_string();
 
-    modelSettings_ = loadModelSettings(configDirectoryPath + "legged_model.info");
+    try
+    {
+      modelSettings_ = loadModelSettings(configDirectoryPath + "/legged_model.info", 
+        "legged_model_settings", false);
+    }
+    catch(const std::exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Error: Cannot find legged_model.info file!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
 
     for(size_t i = 0; i < modelSettings_.endEffectorThreeDofNames.size(); ++i)
     {
@@ -178,7 +190,7 @@ namespace legged_locomotion_mpc_ros2
 
     // Get duration 
     const auto mpcSettings = mpc::loadSettings(
-      configDirectoryPath + "task.info", "mpc", false);
+      configDirectoryPath + "/task.info", "mpc", false);
     mrtDuration_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
 
     // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
@@ -186,6 +198,7 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Duration::from_seconds(mrtDuration_), 
       std::bind(&LeggedMpcController::sendJointTrajectory, this));
 
+    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -198,7 +211,7 @@ namespace legged_locomotion_mpc_ros2
     }
     catch(const std::exception& e)
     {
-      RCLCPP_ERROR(this->get_logger(), "[MPC setup] Error : %s", e.what());
+      RCLCPP_ERROR(this->get_logger(), "MPC setup error: %s", e.what());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
@@ -206,6 +219,8 @@ namespace legged_locomotion_mpc_ros2
     mpcTimer_.reset();
     mrtTimer_.reset();
     controllerRunning_ = true;
+    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller activated successfully!");
+    RCLCPP_INFO(this->get_logger(), "MPC/MRT loop activated!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
@@ -233,9 +248,9 @@ namespace legged_locomotion_mpc_ros2
   void LeggedMpcController::setupMpc()
   {
     const std::string configDirectoryPath = this->get_parameter("config_directory_path").as_string();
-    const std::string taskFilePath = configDirectoryPath + "task.info";
-    const std::string modelFilePath = configDirectoryPath + "legged_model.info";
-    const std::string loopshapingFilePath = configDirectoryPath + "loopshaping.info";
+    const std::string taskFilePath = configDirectoryPath + "/task.info";
+    const std::string modelFilePath = configDirectoryPath + "/legged_model.info";
+    const std::string loopshapingFilePath = configDirectoryPath + "/loopshaping.info";
     const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
 
     vector_t initialSystemState = vector_t(modelInfo_.stateDim);
@@ -265,7 +280,6 @@ namespace legged_locomotion_mpc_ros2
       const std::string baseTwistTopic = this->get_parameter("base_twist_topic").as_string();
       
       std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + basePoseTopic + " or " + baseTwistTopic + " is not active!";
-      RCLCPP_ERROR(this->get_logger(), "%s", errorMessage.c_str());
       throw std::runtime_error(errorMessage);
     }
 
@@ -352,9 +366,8 @@ namespace legged_locomotion_mpc_ros2
 
     if(!mpcMrtPtr_->initialPolicyReceived())
     {
-      RCLCPP_ERROR(this->get_logger(), 
-        "Initial policy not recived, try again later!");
-      throw std::runtime_error("Initial policy not recived, try again later!");
+      const std::string errorMessage = "Initial policy not recived, try again later!";
+      throw std::runtime_error(errorMessage);
     }
     
     mpcMrtPtr_->initRollout(&leggedInterfacePtr_->getRollout());
@@ -431,7 +444,8 @@ namespace legged_locomotion_mpc_ros2
         catch(const std::exception& e) 
         {
           controllerRunning_ = false;
-          RCLCPP_ERROR(this->get_logger(), "[MPC thread] Error : %s", e.what());
+          RCLCPP_ERROR(this->get_logger(), "MPC thread error : %s", e.what());
+          RCLCPP_ERROR(this->get_logger(), "MPC loop deactivation!");
           this->trigger_transition(
             lifecycle_msgs::msg::Transition::TRANSITION_DEACTIVATE);
         }
