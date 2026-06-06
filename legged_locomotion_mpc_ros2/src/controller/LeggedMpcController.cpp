@@ -31,7 +31,7 @@ namespace legged_locomotion_mpc_ros2
 
   LeggedMpcController::LeggedMpcController(bool intraProcessComms):
     LifecycleNode("legged_mpc_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
-    basePoseEstimation_(vector6_t::Zero()),
+    baseTransformEstimation_(vector6_t::Zero()),
     baseTwistEstimation_(vector6_t::Zero()),
     jointPositionEstimation_(vector_t::Zero(10)),
     jointVelocityEstimation_(vector_t::Zero(10))
@@ -40,19 +40,12 @@ namespace legged_locomotion_mpc_ros2
     this->declare_parameter("config_directory_path", "./");
     this->declare_parameter("urdf_path", "./");
 
-    // Topic name parameters
-    this->declare_parameter("command_twist_topic", "/command_twist");
-    this->declare_parameter("joint_states_topic", "/joint_states");
-    this->declare_parameter("base_pose_topic", "/base_pose");
-    this->declare_parameter("base_twist_topic", "/base_twist");
-    this->declare_parameter("contact_flags_topic", "/contact_flags");
-    this->declare_parameter("gait_parameters_topic", "/gait_parameters");
-    this->declare_parameter("swing_parameters_topic", "/swing_parameters");
-    this->declare_parameter("external_wrench_topic", "/external_wrench");
-    this->declare_parameter("joint_trajectory_topic", "/joint_forward_trajectory");
-    this->declare_parameter("terrain_topic", "/elevation");
-
     maxDurationBetweenMessages_ = rclcpp::Duration::from_seconds(1.0);
+
+    lastJointStateTime_ = this->get_clock()->now();
+    lastBaseTransformTime_ = this->get_clock()->now();
+    lastBaseTwistTime_ = this->get_clock()->now();
+    lastContactFlagsTime_ = this->get_clock()->now();
 
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller started in unconfigured state!");
   }
@@ -126,61 +119,61 @@ namespace legged_locomotion_mpc_ros2
      */
 
     // Command base twist subscriber
-    const std::string twistTopic = this->get_parameter("command_twist_topic").as_string();
+    const std::string twistTopic = "/command_twist";
     commandTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       twistTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateCommand, this, std::placeholders::_1));
     
     // Joint states subscriber
-    const std::string jointSatesTopic = this->get_parameter("joint_states_topic").as_string();
+    const std::string jointSatesTopic = "/joint_states";
     jointStateSubscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
       jointSatesTopic, QoS(1).best_effort().keep_last(1), 
       std::bind(&LeggedMpcController::updateJointStates, this, std::placeholders::_1));
     
     // Base pose subscriber
-    const std::string basePoseTopic = this->get_parameter("base_pose_topic").as_string();
-    basePoseSubscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      basePoseTopic, QoS(1).best_effort().keep_last(1), 
-      std::bind(&LeggedMpcController::updateBasePose, this, std::placeholders::_1));
+    const std::string baseTransformTopic = "/base_transform";
+    baseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
+      baseTransformTopic, QoS(1).best_effort().keep_last(1), 
+      std::bind(&LeggedMpcController::updateBaseTransform, this, std::placeholders::_1));
 
     // Base twist (actual) subscriber
-    const std::string baseTwistTopic = this->get_parameter("base_twist_topic").as_string();
+    const std::string baseTwistTopic = "/base_twist";
     baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       baseTwistTopic, QoS(1).best_effort().keep_last(1), 
       std::bind(&LeggedMpcController::updateBaseTwist, this, std::placeholders::_1)); 
     
     // Contact flags subscriber
-    const std::string contactFlagsTopic = this->get_parameter("contact_flags_topic").as_string();
+    const std::string contactFlagsTopic = "/contact_flags";
     contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
       contactFlagsTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateContactFlags, this, std::placeholders::_1));
     
     // Terrain subscriber
-    const std::string terrainTopic = this->get_parameter("terrain_topic").as_string();
+    const std::string terrainTopic = "/elevation";
     terrainSubscriber_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
       terrainTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateSegmentedTerrain, this, std::placeholders::_1));
     
     // Gait parameters subscriber
-    const std::string gaitParametersTopic = this->get_parameter("gait_parameters_topic").as_string();
+    const std::string gaitParametersTopic = "/gait_parameters";
     gaitParametersSubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::GaitParameters>(
       gaitParametersTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateGaitParameters, this, std::placeholders::_1));
 
     // Swing paremeters subsciber
-    const std::string swingParametersTopic = this->get_parameter("swing_parameters_topic").as_string();
+    const std::string swingParametersTopic = "/swing_parameters";
     swingParametersSubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::SwingParameters>(
       swingParametersTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateSwingParameters, this, std::placeholders::_1));
 
     // Base external wrench subsciber
-    const std::string baseWrenchTopic = this->get_parameter("external_wrench_topic").as_string();
+    const std::string baseWrenchTopic = "/base_external_wrench";
     baseWrenchSubscriber_ = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateExternalWrench, this, std::placeholders::_1));
 
     // Joint trajectory publisher
-    const std::string jointTrajectoryTopic = this->get_parameter("joint_trajectory_topic").as_string();
+    const std::string jointTrajectoryTopic = "/joint_trajectory";
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       jointTrajectoryTopic, SystemDefaultsQoS());
 
@@ -256,16 +249,16 @@ namespace legged_locomotion_mpc_ros2
     vector_t initialSystemState = vector_t(modelInfo_.stateDim);
 
     // Get initial system state
-    if(basePoseEstimation_.updateFromBuffer() && 
+    if(baseTransformEstimation_.updateFromBuffer() && 
        baseTwistEstimation_.updateFromBuffer() && 
        jointPositionEstimation_.updateFromBuffer())
     {
-      const vector6_t basePose = basePoseEstimation_.get();
+      const vector6_t baseTransform = baseTransformEstimation_.get();
       const vector6_t baseTwist = baseTwistEstimation_.get();
       const vector_t jointPositions = jointPositionEstimation_.get();
 
       access_helper_functions::getBasePose(initialSystemState, 
-        modelInfo_) = basePose;
+        modelInfo_) = baseTransform;
       
       access_helper_functions::getBaseVelocity(initialSystemState, 
         modelInfo_) = baseTwist;
@@ -275,11 +268,11 @@ namespace legged_locomotion_mpc_ros2
     }
     else
     {
-      const std::string jointStatesTopic = this->get_parameter("joint_states_topic").as_string();
-      const std::string basePoseTopic = this->get_parameter("base_pose_topic").as_string();
-      const std::string baseTwistTopic = this->get_parameter("base_twist_topic").as_string();
+      const std::string jointStatesTopic = std::string(jointStateSubscriber_->get_topic_name());
+      const std::string baseTransformTopic = std::string(baseTransformSubscriber_->get_topic_name());
+      const std::string baseTwistTopic = std::string(baseTwistSubscriber_->get_topic_name());
       
-      std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + basePoseTopic + " or " + baseTwistTopic + " is not active!";
+      std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + baseTransformTopic + " or " + baseTwistTopic + " is not active!";
       throw std::runtime_error(errorMessage);
     }
 
@@ -387,7 +380,7 @@ namespace legged_locomotion_mpc_ros2
     auto filterState = currentObservation.state.block(modelInfo_.stateDim, 0, 
       modelInfo_.inputDim, 1);
 
-    if(!basePoseEstimation_.updateFromBuffer())
+    if(!baseTransformEstimation_.updateFromBuffer())
     {
       RCLCPP_WARN(this->get_logger(), 
         "Base pose not updated in current MPC iteration!");
@@ -406,7 +399,7 @@ namespace legged_locomotion_mpc_ros2
     }
 
     access_helper_functions::getBasePose(
-      systemState, modelInfo_) = basePoseEstimation_.get();
+      systemState, modelInfo_) = baseTransformEstimation_.get();
 
     access_helper_functions::getBaseVelocity(
       systemState, modelInfo_) = baseTwistEstimation_.get();
@@ -511,45 +504,46 @@ namespace legged_locomotion_mpc_ros2
     jointVelocityEstimation_.setBuffer(std::move(jointVelocities));
   }
 
-  void LeggedMpcController::updateBasePose(
-    const geometry_msgs::msg::PoseStamped::ConstSharedPtr basePose)
+  void LeggedMpcController::updateBaseTransform(
+    const geometry_msgs::msg::TransformStamped::ConstSharedPtr baseTransform)
   {
     // Check if message has good base link in header
-    if(basePose->header.frame_id != modelSettings_.baseLinkName)
+    if(baseTransform->header.frame_id != modelSettings_.worldLinkName ||
+       baseTransform->child_frame_id != modelSettings_.baseLinkName)
     {
       RCLCPP_ERROR(this->get_logger(), 
-        "Base pose has wrong base frame ID!");
+        "Base transform has wrong base or world frame ID!");
       return;
     }
 
-    if(this->get_clock()->now() - lastBasePoseTime_ > maxDurationBetweenMessages_)
+    if(this->get_clock()->now() - lastBaseTransformTime_ > maxDurationBetweenMessages_)
     {
       RCLCPP_WARN(this->get_logger(), 
-        "Time between two PoseStamped messages was longer than maximum duration!");
+        "Time between two TransformStamped messages was longer than maximum duration!");
     }
 
-    lastBasePoseTime_ = basePose->header.stamp;
+    lastBaseTransformTime_ = baseTransform->header.stamp;
 
-    vector6_t currentBasePose;
+    vector6_t currentBaseTransform;
 
-    currentBasePose(0) = basePose->pose.position.x;
-    currentBasePose(1) = basePose->pose.position.y;
-    currentBasePose(2) = basePose->pose.position.z;
+    currentBaseTransform(0) = baseTransform->transform.translation.x;
+    currentBaseTransform(1) = baseTransform->transform.translation.y;
+    currentBaseTransform(2) = baseTransform->transform.translation.z;
 
     Eigen::Quaterniond quaterion;
 
-    tf2::fromMsg(basePose->pose.orientation, quaterion);
+    tf2::fromMsg(baseTransform->transform.rotation, quaterion);
 
     const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
 
     const vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
       rotationMatrix);
 
-    currentBasePose(3) = eulerAngles(1);
-    currentBasePose(4) = eulerAngles(2);
-    currentBasePose(5) = eulerAngles(3);
+    currentBaseTransform(3) = eulerAngles(1);
+    currentBaseTransform(4) = eulerAngles(2);
+    currentBaseTransform(5) = eulerAngles(3);
 
-    basePoseEstimation_.setBuffer(std::move(currentBasePose));
+    baseTransformEstimation_.setBuffer(std::move(currentBaseTransform));
   }
 
   void LeggedMpcController::updateBaseTwist(

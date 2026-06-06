@@ -43,7 +43,7 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
 
@@ -83,8 +83,8 @@ namespace legged_locomotion_mpc_ros2
       void updateJointStates(
         const sensor_msgs::msg::JointState::ConstSharedPtr jointStates);
 
-      void updateBasePose(
-        const geometry_msgs::msg::PoseStamped::ConstSharedPtr basePose);
+      void updateBaseTransform(
+        const geometry_msgs::msg::TransformStamped::ConstSharedPtr baseTransform);
 
       void updateBaseTwist(
         const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist);
@@ -122,7 +122,7 @@ namespace legged_locomotion_mpc_ros2
       std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       
       // Data from observation
-      ocs2::BufferedValue<vector6_t> basePoseEstimation_;
+      ocs2::BufferedValue<vector6_t> baseTransformEstimation_;
       ocs2::BufferedValue<vector6_t> baseTwistEstimation_;
       ocs2::BufferedValue<ocs2::vector_t> jointPositionEstimation_;
       ocs2::BufferedValue<ocs2::vector_t> jointVelocityEstimation_;
@@ -151,7 +151,7 @@ namespace legged_locomotion_mpc_ros2
 
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr basePoseSubscriber_;
+      rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr baseTransformSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
       rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
       rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr terrainSubscriber_;
@@ -168,7 +168,7 @@ namespace legged_locomotion_mpc_ros2
 
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;
-      rclcpp::Time lastBasePoseTime_;
+      rclcpp::Time lastBaseTransformTime_;
       rclcpp::Time lastBaseTwistTime_;
       rclcpp::Time lastContactFlagsTime_;
       
