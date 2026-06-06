@@ -79,16 +79,7 @@ namespace legged_locomotion_mpc
 
     BaseTrajectoryPlanner::BaseTrajectoryPlanner(FloatingBaseModelInfo modelInfo,
       BaseTrajectoryPlanner::StaticSettings settings): 
-        modelInfo_(std::move(modelInfo)), settings_(std::move(settings))
-    {
-      currentBaseHeight_ = settings.initialBaseHeight;
-    }
-
-    void BaseTrajectoryPlanner::updateBaseHeight(ocs2::scalar_t baseHeight)
-    {
-      currentBaseHeight_ = std::clamp(baseHeight, settings_.minimumBaseHeight, 
-        settings_.maximumBaseHeight);
-    }
+        modelInfo_(std::move(modelInfo)), settings_(std::move(settings)) {}
 
     scalar_t BaseTrajectoryPlanner::getBaseHeight() const
     {
@@ -160,6 +151,15 @@ namespace legged_locomotion_mpc
 
       access_helper_functions::
         getBaseOrientationZyx(initStateVector, modelInfo_) = currentBaseOrientationZyx;
+
+      // Get current base height above terrain
+      const auto currentPlane = 
+        terrainModel_->getLocalTerrainAtPositionInWorldAlongGravity(currentBasePosition);
+
+      currentBaseHeight_ = (currentBasePosition - currentPlane.getPosition()).dot(
+        currentPlane.getSurfaceNormalInWorld());
+      currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight, 
+          settings_.maximumBaseHeight);
 
       for (size_t i = 1; i < referenceSize; ++i) 
       {
@@ -331,13 +331,6 @@ namespace legged_locomotion_mpc
       if(settings.maximumBaseHeight < 0.0 || settings.maximumBaseHeight < settings.minimumBaseHeight)
       {
         throw std::invalid_argument("[BaseTrajectoryPlanner]: Maximum base height smaller than 0.0 or minimum base height!");
-      }
-
-      loadData::loadPtreeValue(pt, settings.initialBaseHeight, 
-        fieldName + ".initialBaseHeight", verbose);
-      if(settings.initialBaseHeight > settings.maximumBaseHeight || settings.initialBaseHeight < settings.minimumBaseHeight)
-      {
-        throw std::invalid_argument("[BaseTrajectoryPlanner]: Initial base height needs to be between [minimumBaseHeight, maximumBaseHeight]!");
       }
 
       loadData::loadPtreeValue(pt, settings.maximumBaseHeadingVelocity, 

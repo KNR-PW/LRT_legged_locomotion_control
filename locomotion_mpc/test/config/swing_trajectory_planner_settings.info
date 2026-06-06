@@ -29,7 +29,6 @@ swing_planner_static_settings
 
 swing_planner_dynamic_settings
 {
-  invertedPendulumHeight 0.1
 
   swingHeights
   {

@@ -85,11 +85,6 @@ namespace legged_locomotion_mpc
 
         struct DynamicSettings
         {
-          /** Height used for the inverted pendulum foothold adjustment.
-           *  This is just base height.
-          */
-          ocs2::scalar_t invertedPendulumHeight = 0.35;
-
           /** Maximum height of foots at midpoint of swing phase */
           std::vector<ocs2::scalar_t> swingHeights;
 
@@ -279,6 +274,8 @@ namespace legged_locomotion_mpc
         const floating_base_model::FloatingBaseModelInfo modelInfo_;
         const StaticSettings staticSettings_;
         DynamicSettings dynamicSettings_;
+        ocs2::scalar_t invertedPendulumHeight_ = -1.0;
+
         const forwardKinematics& forwardKinematics_;
 
         ocs2::ModeSchedule modeSchedule_;

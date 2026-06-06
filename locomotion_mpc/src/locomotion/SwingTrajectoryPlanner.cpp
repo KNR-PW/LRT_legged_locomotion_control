@@ -47,7 +47,7 @@ namespace legged_locomotion_mpc
     void SwingTrajectoryPlanner::updateInvertedPendulumHeight(
       scalar_t invertedPendulumHeight)
     {
-      dynamicSettings_.invertedPendulumHeight = invertedPendulumHeight;
+      invertedPendulumHeight_ = invertedPendulumHeight;
     }
 
     void SwingTrajectoryPlanner::updateTerrain(const terrain_model::TerrainModel& terrainModel) 
@@ -80,6 +80,11 @@ namespace legged_locomotion_mpc
       {
         throw std::runtime_error("[SwingTrajectoryPlanner] terrain cannot be null. " 
           "Update the terrain before planning swing motions");
+      }
+
+      if(invertedPendulumHeight_ <= 0.0)
+      {
+        throw std::runtime_error("[SwingTrajectoryPlanner] Inverted pendulum height less than 0.0. Please use updateInvertedPendulumHeight() before running swing trajectory planner!");
       }
 
       modeSchedule_ = modeSchedule;
@@ -452,7 +457,7 @@ namespace legged_locomotion_mpc
        * Compute zmp / inverted pendulum foot placement offset: 
        * delta p = sqrt(h / g) * (v - v_des) 
        */ 
-      scalar_t pendulumFrequency = std::sqrt(dynamicSettings_.invertedPendulumHeight / PLUS_GRAVITY_VALUE);
+      scalar_t pendulumFrequency = std::sqrt(invertedPendulumHeight_ / PLUS_GRAVITY_VALUE);
       scalar_t zmpX = pendulumFrequency * (initBaseLinearVelocityInWorld.x() 
         - initDesiredBaseLinearVelocityInWorld.x());
       scalar_t zmpY = pendulumFrequency * (initBaseLinearVelocityInWorld.y() 
@@ -850,13 +855,6 @@ namespace legged_locomotion_mpc
       {
         std::cerr << "\n #### Legged Locomotion MPC Swing Planner Static Settings:";
         std::cerr << "\n #### =============================================================================\n";
-      }
-
-      loadData::loadPtreeValue(pt, settings.invertedPendulumHeight, 
-        fieldName + ".invertedPendulumHeight", verbose);
-      if(settings.invertedPendulumHeight < 0.0)
-      {
-        throw std::invalid_argument("[SwingTrajectoryPlanner]: Inverted pendulum height smaller than 0.0!");
       }
 
       const size_t endEffectorNum = info.numThreeDofContacts + info.numSixDofContacts;

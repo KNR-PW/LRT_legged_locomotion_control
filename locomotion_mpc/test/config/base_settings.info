@@ -1,7 +1,5 @@
 base_planner_static_settings
 {
-  initialBaseHeight 0.1
-
   minimumBaseHeight 0.05
 
   maximumBaseHeight 0.2

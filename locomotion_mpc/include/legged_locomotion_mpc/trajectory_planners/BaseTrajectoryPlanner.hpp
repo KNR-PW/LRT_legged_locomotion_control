@@ -47,13 +47,10 @@ namespace legged_locomotion_mpc
           // Time between trajectory points
           ocs2::scalar_t deltaTime = 0.1;
 
-          // Initial base height
-          ocs2::scalar_t initialBaseHeight;
-
-          // Minimum base height
+          // Minimum base height above the current terrain
           ocs2::scalar_t minimumBaseHeight;
 
-          // Maximum base height
+          // Maximum base height above the current terrain
           ocs2::scalar_t maximumBaseHeight;
 
           // Maximum base heading velocity
@@ -90,12 +87,6 @@ namespace legged_locomotion_mpc
          */
         BaseTrajectoryPlanner(floating_base_model::FloatingBaseModelInfo modelInfo,
           StaticSettings settings);
-        
-        /** 
-         * Update base height 
-         * @param [in] baseHeight: New base height
-         */
-        void updateBaseHeight(ocs2::scalar_t baseHeight);
         
         /**
          * Get current base height

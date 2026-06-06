@@ -54,7 +54,7 @@ TEST(SwingTrajectoryPlannerTest, standingInPlace)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 0.5;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -81,7 +81,7 @@ TEST(SwingTrajectoryPlannerTest, standingInPlace)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
+  scalar_t invertedPendulumHeight = initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -116,6 +116,8 @@ TEST(SwingTrajectoryPlannerTest, standingInPlace)
 
   SwingTrajectoryPlanner swingPlanner(modelInfo, swingStaticSettings, 
     swingDynamicSettings, forwardKinematics, penalty);
+
+  swingPlanner.updateInvertedPendulumHeight(invertedPendulumHeight);
 
   const auto modeSchedule = gaitPlanner.getModeSchedule(initTime, finalTime);
 
@@ -153,7 +155,7 @@ TEST(SwingTrajectoryPlannerTest, standingInPlace)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -220,7 +222,7 @@ TEST(SwingTrajectoryPlannerTest, TrotInPlace)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 0.5;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -247,7 +249,7 @@ TEST(SwingTrajectoryPlannerTest, TrotInPlace)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
+  scalar_t invertedPendulumHeight = initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -281,6 +283,8 @@ TEST(SwingTrajectoryPlannerTest, TrotInPlace)
 
   SwingTrajectoryPlanner swingPlanner(modelInfo, swingStaticSettings, 
     swingDynamicSettings, forwardKinematics, penalty);
+
+  swingPlanner.updateInvertedPendulumHeight(invertedPendulumHeight);
 
   const auto modeSchedule = gaitPlanner.getModeSchedule(initTime, finalTime);
 
@@ -318,7 +322,7 @@ TEST(SwingTrajectoryPlannerTest, TrotInPlace)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -384,7 +388,7 @@ TEST(SwingTrajectoryPlannerTest, Troting)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 0.5;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -411,7 +415,7 @@ TEST(SwingTrajectoryPlannerTest, Troting)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
+  scalar_t invertedPendulumHeight = initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -444,7 +448,9 @@ TEST(SwingTrajectoryPlannerTest, Troting)
     penaltyName);
 
   SwingTrajectoryPlanner swingPlanner(modelInfo, swingStaticSettings, 
-    swingDynamicSettings, forwardKinematics, penalty);;
+    swingDynamicSettings, forwardKinematics, penalty);
+
+  swingPlanner.updateInvertedPendulumHeight(invertedPendulumHeight);
 
   const auto modeSchedule = gaitPlanner.getModeSchedule(initTime, finalTime);
 
@@ -482,7 +488,7 @@ TEST(SwingTrajectoryPlannerTest, Troting)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -628,7 +634,6 @@ TEST(SwingTrajectoryPlannerTest, loaders)
 
   const std::vector<scalar_t> trueTangentialVelocityFactors{0.95, 0.97, 0.99};
 
-  EXPECT_TRUE(dynamicSettings.invertedPendulumHeight == 0.1);
   EXPECT_TRUE(dynamicSettings.swingHeights == trueSwingHeights);
   EXPECT_TRUE(dynamicSettings.phases == truePhases);
   EXPECT_TRUE(dynamicSettings.tangentialProgresses == trueTangentialProgresses);

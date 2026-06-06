@@ -270,7 +270,7 @@ namespace legged_locomotion_mpc
     basePlanner_.updateTargetTrajectory(initTime, finalTime, currentCommand, 
       currentObservation, newTrajectory);
     
-    // Update current base height in swingPlanner dynamic settings
+    // Update current base height in swing trajectory planner
     const scalar_t currentBaseHeight = basePlanner_.getBaseHeight();
     swingPlanner_.updateInvertedPendulumHeight(currentBaseHeight);
 

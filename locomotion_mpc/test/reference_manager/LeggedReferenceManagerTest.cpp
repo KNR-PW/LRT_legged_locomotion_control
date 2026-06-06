@@ -54,7 +54,7 @@ TEST(LeggedReferenceManagerTest, getContactFlags)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -93,7 +93,6 @@ TEST(LeggedReferenceManagerTest, getContactFlags)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -168,7 +167,7 @@ TEST(LeggedReferenceManagerTest, getContactFlags)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -232,7 +231,7 @@ TEST(LeggedReferenceManagerTest, getTerrainModel)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -271,7 +270,6 @@ TEST(LeggedReferenceManagerTest, getTerrainModel)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -346,7 +344,7 @@ TEST(LeggedReferenceManagerTest, getTerrainModel)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -405,7 +403,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorTrajectoryPoint)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -444,7 +442,6 @@ TEST(LeggedReferenceManagerTest, getEndEffectorTrajectoryPoint)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -519,7 +516,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorTrajectoryPoint)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -598,7 +595,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorConstraintMatrixes)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = deltaTime;
-  staticSettings.initialBaseHeight = 0.25 * std::sqrt(2.0);
+  scalar_t initialBaseHeight = 0.25 * std::sqrt(2.0);
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -637,7 +634,6 @@ TEST(LeggedReferenceManagerTest, getEndEffectorConstraintMatrixes)
 
   SwingTrajectoryPlanner::StaticSettings swingStaticSettings;
   SwingTrajectoryPlanner::DynamicSettings swingDynamicSettings;
-  swingDynamicSettings.invertedPendulumHeight = staticSettings.initialBaseHeight;
   swingDynamicSettings.phases.resize(4);
   swingDynamicSettings.swingHeights.resize(4);
   swingDynamicSettings.tangentialProgresses.resize(4);
@@ -712,7 +708,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorConstraintMatrixes)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);

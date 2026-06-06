@@ -46,7 +46,7 @@ TEST(BaseTrajectoryPlannerTest, translationOnFlatTerrain)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = 0.1;
-  staticSettings.initialBaseHeight = 2.5;
+  scalar_t initialBaseHeight = 2.5;
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -92,7 +92,7 @@ TEST(BaseTrajectoryPlannerTest, translationOnFlatTerrain)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -176,7 +176,7 @@ TEST(BaseTrajectoryPlannerTest, rotationOnFlatTerrain)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = 0.1;
-  staticSettings.initialBaseHeight = 2.5;
+  scalar_t initialBaseHeight = 2.5;
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -222,7 +222,7 @@ TEST(BaseTrajectoryPlannerTest, rotationOnFlatTerrain)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -306,7 +306,7 @@ TEST(BaseTrajectoryPlannerTest, translationAndrotationOnSlopyTerrain)
 
   BaseTrajectoryPlanner::StaticSettings staticSettings;
   staticSettings.deltaTime = 0.1;
-  staticSettings.initialBaseHeight = 2.5;
+  scalar_t initialBaseHeight = 2.5;
   staticSettings.minimumBaseHeight = 0.1;
   staticSettings.maximumBaseHeight = 5.0;
   staticSettings.nominalBaseWidthHeading = 0.2;
@@ -352,7 +352,7 @@ TEST(BaseTrajectoryPlannerTest, translationAndrotationOnSlopyTerrain)
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
     terrainModel.getSmoothedPositon(initPositionXY).z());
   
-  initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
   SystemObservation initialObservation;
   initialObservation.state = vector_t::Zero(modelInfo.stateDim);
@@ -432,13 +432,13 @@ TEST(BaseTrajectoryPlannerTest, loader)
 
   const auto baseSettings = loadBasePlannerStaticSettings(baseFilePath);
 
-  EXPECT_TRUE(baseSettings.initialBaseHeight        == 0.1);
-  EXPECT_TRUE(baseSettings.minimumBaseHeight        == 0.05);
-  EXPECT_TRUE(baseSettings.maximumBaseHeight        == 0.2);
-  EXPECT_TRUE(baseSettings.nominalBaseWidthLateral   == 0.2);
-  EXPECT_TRUE(baseSettings.nominalBaseWidthHeading  == 0.3);
-  EXPECT_TRUE(baseSettings.maximumBaseHeadingVelocity == 0.4);
-  EXPECT_TRUE(baseSettings.maximumBaseLateralVelocity  == 0.6);
-  EXPECT_TRUE(baseSettings.maximumBaseVerticalVelocity == 0.7);
-  EXPECT_TRUE(baseSettings.maximumYawRate == 0.8);
+
+  EXPECT_TRUE(baseSettings.minimumBaseHeight            == 0.05);
+  EXPECT_TRUE(baseSettings.maximumBaseHeight            == 0.2);
+  EXPECT_TRUE(baseSettings.nominalBaseWidthLateral      == 0.2);
+  EXPECT_TRUE(baseSettings.nominalBaseWidthHeading      == 0.3);
+  EXPECT_TRUE(baseSettings.maximumBaseHeadingVelocity   == 0.4);
+  EXPECT_TRUE(baseSettings.maximumBaseLateralVelocity   == 0.6);
+  EXPECT_TRUE(baseSettings.maximumBaseVerticalVelocity  == 0.7);
+  EXPECT_TRUE(baseSettings.maximumYawRate               == 0.8);
 }
