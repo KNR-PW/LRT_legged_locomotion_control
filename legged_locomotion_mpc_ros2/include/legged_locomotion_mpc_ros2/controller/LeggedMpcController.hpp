@@ -163,8 +163,7 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
       
       // Joint trajectory publisher from MRT
-      std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
-        trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
+      rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr jointTrajectoryPublisher_;
 
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;

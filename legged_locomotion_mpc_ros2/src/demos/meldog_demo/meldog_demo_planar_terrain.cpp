@@ -39,6 +39,8 @@ int main(int argc, char* argv[])
   const std::string urdfFilePath = urdfFile;
   const std::string loopshapingFilePath = configFilePath + "loopshaping.info";
 
+  const ocs2::scalar_t initialBaseHeight = 0.36301270189;
+
   const scalar_t initTime = 0.0;
 
   const vector3_t terrainEulerZyx{0.0, 0.0, 0.0};
@@ -58,11 +60,8 @@ int main(int argc, char* argv[])
 
   vector3_t initialBasePosition(initPositionXY.x(), initPositionXY.y(),
     terrainModel->getSmoothedPositon(initPositionXY).z());
-
-  BaseTrajectoryPlanner::StaticSettings baseSettings = 
-    loadBasePlannerStaticSettings(modelFilePath);
   
-  initialBasePosition.z() += baseSettings.initialBaseHeight / terrainPlane.getSurfaceNormalInWorld().z();
+  initialBasePosition.z() += initialBaseHeight / terrainPlane.getSurfaceNormalInWorld().z();
 
   vector_t initialState = vector_t::Zero(STATE_DIM);
   initialState.block<3,1>(6, 0) = initialBasePosition;

@@ -74,7 +74,7 @@ ddp
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
   maxNumStepsPerSecond            100000
-  timeStep                        0.015
+  timeStep                        0.005
   backwardPassIntegratorType      ODE45
 
   constraintPenaltyInitialValue   20.0
@@ -99,7 +99,7 @@ rollout
 {
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
-  timeStep                        0.015
+  timeStep                        0.005
   integratorType                  ODE45
   maxNumStepsPerSecond            100000
   checkNumericalStability         true

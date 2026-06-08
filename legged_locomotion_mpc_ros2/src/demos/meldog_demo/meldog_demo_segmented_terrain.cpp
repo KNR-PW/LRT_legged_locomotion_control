@@ -42,6 +42,8 @@ int main(int argc, char* argv[])
   const std::string loopshapingFilePath = configFilePath + "loopshaping.info";
   const std::string terrainFilePath = configFilePath + "../../terrain_images/step.png";
 
+  const ocs2::scalar_t initialBaseHeight = 0.36301270189;
+
   const scalar_t initTime = 0.0;
 
   const auto modelSettings = loadModelSettings(modelFilePath);
@@ -68,11 +70,8 @@ int main(int argc, char* argv[])
 
   vector3_t initialBasePosition(initPositionXY.x(), initPositionXY.y(),
     terrainModel->getSmoothedPositon(initPositionXY).z());
-
-  BaseTrajectoryPlanner::StaticSettings baseSettings = 
-    loadBasePlannerStaticSettings(modelFilePath);
   
-  initialBasePosition.z() += baseSettings.initialBaseHeight;
+  initialBasePosition.z() += initialBaseHeight;
 
   vector_t initialState = vector_t::Zero(STATE_DIM);
   initialState.block<3,1>(6, 0) = initialBasePosition;
