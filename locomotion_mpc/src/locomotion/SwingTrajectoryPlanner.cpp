@@ -767,9 +767,9 @@ namespace legged_locomotion_mpc
 
       loadData::loadPtreeValue(pt, settings.errorGain, 
         fieldName + ".errorGain", verbose);
-      if(settings.errorGain > 1.0 || settings.errorGain < 0.0)
+      if(settings.errorGain < 0.0)
       {
-        throw std::invalid_argument("[SwingTrajectoryPlanner]: Error gain needs to be between [0.0, 1.0]!");
+        throw std::invalid_argument("[SwingTrajectoryPlanner]: Error gain less than 0.0!");
       }
 
       loadData::loadPtreeValue(pt, settings.swingTimeScale, 
