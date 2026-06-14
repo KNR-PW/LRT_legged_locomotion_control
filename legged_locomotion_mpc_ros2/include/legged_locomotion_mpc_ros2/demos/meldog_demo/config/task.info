@@ -59,22 +59,22 @@ ddp
 {
   algorithm                       SLQ
 
-  nThreads                        4
+  nThreads                        1
   threadPriority                  50
 
   maxNumIterations                1
   minRelCost                      1e-1
   constraintTolerance             5e-3
 
-  displayInfo                     true
-  displayShortSummary             true
-  checkNumericalStability         true
-  debugPrintRollout               true
+  displayInfo                     false
+  displayShortSummary             false
+  checkNumericalStability         false
+  debugPrintRollout               false
 
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
   maxNumStepsPerSecond            100000
-  timeStep                        0.005
+  timeStep                        0.015
   backwardPassIntegratorType      ODE45
 
   constraintPenaltyInitialValue   20.0
@@ -99,7 +99,7 @@ rollout
 {
   AbsTolODE                       1e-5
   RelTolODE                       1e-3
-  timeStep                        0.005
+  timeStep                        0.015
   integratorType                  ODE45
   maxNumStepsPerSecond            100000
   checkNumericalStability         true
@@ -111,7 +111,7 @@ mpc
   solutionTimeWindow              -1  ; [s]
   coldStart                       false
 
-  debugPrint                      true
+  debugPrint                      false
 
   mpcDesiredFrequency             20  ; [Hz]
   mrtDesiredFrequency             400 ; [Hz]

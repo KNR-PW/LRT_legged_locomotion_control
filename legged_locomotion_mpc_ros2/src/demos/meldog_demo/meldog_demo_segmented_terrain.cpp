@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
   const std::string loopshapingFilePath = configFilePath + "loopshaping.info";
   const std::string terrainFilePath = configFilePath + "../../terrain_images/step.png";
 
-  const ocs2::scalar_t initialBaseHeight = 0.36301270189;
+  const ocs2::scalar_t initialBaseHeight = 0.33301270189;
 
   const scalar_t initTime = 0.0;
 
@@ -109,13 +109,13 @@ int main(int argc, char* argv[])
   secondDynamicParams.phaseOffsets = {-secondOffset + 0.03 / 0.6, -secondOffset + 0.03 / 0.6, 0};
 
   BaseTrajectoryPlanner::BaseReferenceCommand firstCommand;
-  firstCommand.baseHeadingVelocity = 0.2;
+  firstCommand.baseHeadingVelocity = 0.35;
   firstCommand.baseLateralVelocity = 0.0;
   firstCommand.baseVerticalVelocity = 0.0;
   firstCommand.yawRate = 0.0; // 1 * 0.314;
 
   BaseTrajectoryPlanner::BaseReferenceCommand secondCommand;
-  secondCommand.baseHeadingVelocity = 0.30;
+  secondCommand.baseHeadingVelocity = 0.3;
   secondCommand.baseLateralVelocity = -0.0;
   secondCommand.baseVerticalVelocity = 0.0;
   secondCommand.yawRate = 0.0; // -1 * 0.314;
@@ -187,6 +187,8 @@ int main(int argc, char* argv[])
   std::vector<scalar_array_t> optimizedTimeTrajectories;
   std::vector<vector_array_t> optimizedStateTrajectories;
 
+  std::vector<TargetTrajectories> targetTrajectories;
+
   while(observation.time < endTime) 
   {
     std::cout << "Time: " << observation.time << "\n";
@@ -201,6 +203,8 @@ int main(int argc, char* argv[])
       systemObservation.input = loopshapeDefinition.getSystemInput(observation.state, observation.input);
   
       observations.push_back(systemObservation);
+
+      // observations.push_back(observation);
 
       if(observation.time > firstGaitTime && firstChange)
       {
@@ -224,6 +228,8 @@ int main(int argc, char* argv[])
         referenceManager.updateCommand(secondCommand);
       }
 
+      // referenceManager.preSolverRun(observation.time, observation.time + 1.0, observation.state);
+
       const auto& lastTrajectoryState = referenceManager.getTargetTrajectories().stateTrajectory.back();
 
       // std::cerr << "Ostatni euler angle z targetu: ";
@@ -241,6 +247,8 @@ int main(int argc, char* argv[])
       mpcInterface.updatePolicy();
 
       performances.push_back(mpcInterface.getPerformanceIndices());
+
+      targetTrajectories.push_back(referenceManager.getTargetTrajectories());
 
       // Evaluate the optimized solution - change to optimal controller
       vector_t tmp;
@@ -295,6 +303,10 @@ int main(int argc, char* argv[])
 
       const auto targetState = referenceManager.getTargetTrajectories().getDesiredState(finalTime);
       const auto targetInput = referenceManager.getTargetTrajectories().getDesiredInput(finalTime);
+
+      // observation.time = finalTime;
+      // observation.state = targetState;
+      // observation.input = targetInput;
     } 
     catch (std::exception& e) 
     {
@@ -323,6 +335,7 @@ int main(int argc, char* argv[])
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);
       leggedVisualizer->publishTerrainModel(referenceManager.getTerrainModel());
+      leggedVisualizer->publishTargetTrajectory(currentTimeStamp, targetTrajectories[visualizationIndex]);
       if(visualizationIndex < optimizedTimeTrajectories.size())
       {
         leggedVisualizer->publishOptimizedTrajectory(currentTimeStamp, 

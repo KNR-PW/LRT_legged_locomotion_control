@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
   const std::string urdfFilePath = urdfFile;
   const std::string loopshapingFilePath = configFilePath + "loopshaping.info";
 
-  const ocs2::scalar_t initialBaseHeight = 0.36301270189;
+  const ocs2::scalar_t initialBaseHeight = 0.34301270189;
 
   const scalar_t initTime = 0.0;
 
@@ -189,6 +189,8 @@ int main(int argc, char* argv[])
 
   std::vector<std::unique_ptr<PlanarTerrainModel>> terrainModels;
 
+  std::vector<TargetTrajectories> targetTrajectories;
+
   while(observation.time < endTime) 
   {
     std::cout << "Time: " << observation.time << "\n";
@@ -255,6 +257,8 @@ int main(int argc, char* argv[])
 
       mpcInterface.advanceMpc();
       mpcInterface.updatePolicy();
+
+      targetTrajectories.push_back(referenceManager.getTargetTrajectories());
 
       performances.push_back(mpcInterface.getPerformanceIndices());
 
@@ -339,6 +343,7 @@ int main(int argc, char* argv[])
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);
       leggedVisualizer->publishTerrainModel(*terrainModels[visualizationIndex]);
+      leggedVisualizer->publishTargetTrajectory(currentTimeStamp, targetTrajectories[visualizationIndex]);
       if(visualizationIndex < optimizedTimeTrajectories.size())
       {
         leggedVisualizer->publishOptimizedTrajectory(currentTimeStamp, 
