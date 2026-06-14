@@ -190,6 +190,7 @@ TEST(LeggedReferenceManagerTest, getContactFlags)
   const auto mySequence = manager.getModeSchedule().modeSequence;
 
   EXPECT_TRUE(mySequence == goodSequence);
+  
   for(size_t i = 0; i < goodTimings.size(); ++i)
   {
     const scalar_t time = goodTimings[i];

@@ -109,7 +109,7 @@ namespace legged_locomotion_mpc
          * @param [in] initTime: initial time
          * @param [in] finalTime: final time
          * @param [in] command: base command
-         * @param [in] initialState: current robot state (taken from sensors)
+         * @param [in] currentObservation: current robot observation 
          * @param [out] targetTrajectories: target trajectories
          * 
          * @remark target trajectories should be empty, planner generates 
@@ -132,6 +132,7 @@ namespace legged_locomotion_mpc
 
         BaseReferenceCommand clampReferenceCommand(const BaseReferenceCommand& command) const;
         
+        bool baseHeightInitialized_ = false;
         ocs2::scalar_t currentBaseHeight_;
         floating_base_model::FloatingBaseModelInfo modelInfo_;
         StaticSettings settings_;

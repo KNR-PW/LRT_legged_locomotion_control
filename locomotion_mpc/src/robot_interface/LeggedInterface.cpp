@@ -627,8 +627,6 @@ namespace legged_locomotion_mpc
 
       auto lqrSolution = continuous_time_lqr::solve(optimalProblem_, initTime, 
         currentState, currentInput);
-
-      lqrSolution.valueFunction *= 10.0;
       
       const auto weightMatrix = lqrSolution.valueFunction;
 

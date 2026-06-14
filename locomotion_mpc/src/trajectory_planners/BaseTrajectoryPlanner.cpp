@@ -151,15 +151,20 @@ namespace legged_locomotion_mpc
 
       access_helper_functions::
         getBaseOrientationZyx(initStateVector, modelInfo_) = currentBaseOrientationZyx;
+      
+      // Check if base height is initialized
+      if(!baseHeightInitialized_)
+      {
+        baseHeightInitialized_ = true;
 
-      // Get current base height above terrain
-      const auto currentPlane = 
-        terrainModel_->getLocalTerrainAtPositionInWorldAlongGravity(currentBasePosition);
+        const auto currentPlane = 
+          terrainModel_->getLocalTerrainAtPositionInWorldAlongGravity(currentBasePosition);
 
-      currentBaseHeight_ = (currentBasePosition - currentPlane.getPosition()).dot(
-        currentPlane.getSurfaceNormalInWorld());
-      currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight, 
+        currentBaseHeight_ = (currentBasePosition - currentPlane.getPosition()).dot(
+          currentPlane.getSurfaceNormalInWorld());
+        currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight, 
           settings_.maximumBaseHeight);
+      }
 
       for (size_t i = 1; i < referenceSize; ++i) 
       {

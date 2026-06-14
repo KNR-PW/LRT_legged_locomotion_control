@@ -520,7 +520,7 @@ namespace legged_locomotion_mpc
         -weightedJointVelocityError;
 
       cost.dfduu.block(forceIndexOffset, forceIndexOffset, info_.actuatedDofNum, 
-        info_.actuatedDofNum).diagonal().noalias() = jointWeights_.velocities;
+        info_.actuatedDofNum).diagonal().noalias() += jointWeights_.velocities;
       
       // 1 / 2 of sum
       cost.f *= 0.5;

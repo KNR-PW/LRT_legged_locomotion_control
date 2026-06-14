@@ -48,15 +48,32 @@ namespace legged_locomotion_mpc
     const SwingTrajectoryPlanner::DynamicSettings& currentSwingParameters,
     std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel)
   {
+    // Reset base orientation to be the parallel to terrain 
+    auto stampedCurrentObservation = currentObservation;
+    auto baseEulerZyx = access_helper_functions::getBaseOrientationZyx(
+      stampedCurrentObservation.state, modelInfo_);
+
+    const vector3_t currentBasePosition = access_helper_functions::getBasePosition(
+      stampedCurrentObservation.state, modelInfo_);
+
+    const TerrainPlane currentPlane = currentTerrainModel->getLocalTerrainAtPositionInWorldAlongGravity(
+      currentBasePosition);
+
+    const matrix3_t terrainToWorldRotation = currentPlane.getOrientationToTerrain().transpose();
+    const auto terrainEuler = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
+      terrainToWorldRotation);
+    baseEulerZyx(1) = terrainEuler(1);
+    baseEulerZyx(2) = terrainEuler(2);
+
     updateContactFlags(currentContactFlags);
     updateGaitParemeters(currentGaitParameters);
     updateSwingParameters(currentSwingParameters);
 
-    // Setup initial target trajectory with currentObservation
+    // Setup initial target trajectory with stampedCurrentObservation
     TargetTrajectories initTargetTrajectories;
     initTargetTrajectories.timeTrajectory.push_back(initTime);
-    initTargetTrajectories.stateTrajectory.push_back(currentObservation.state);
-    initTargetTrajectories.inputTrajectory.push_back(currentObservation.input);
+    initTargetTrajectories.stateTrajectory.push_back(stampedCurrentObservation.state);
+    initTargetTrajectories.inputTrajectory.push_back(stampedCurrentObservation.input);
     this->setTargetTrajectories(initTargetTrajectories);
     
     // Set initial target trajectory
