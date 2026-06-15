@@ -533,9 +533,9 @@ swing_planner_static_settings
           
   swingTimeScale                  0.15
 
-  sdfMidswingMargin               0.05
+  sdfMidswingMargin               0.07
 
-  terrainMargin                   0.05
+  terrainMargin                   0.07
           
   previousFootholdFactor          0.0
 

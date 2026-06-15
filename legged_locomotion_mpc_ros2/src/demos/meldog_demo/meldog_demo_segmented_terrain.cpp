@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
   secondDynamicParams.phaseOffsets = {-secondOffset + 0.03 / 0.6, -secondOffset + 0.03 / 0.6, 0};
 
   BaseTrajectoryPlanner::BaseReferenceCommand firstCommand;
-  firstCommand.baseHeadingVelocity = 0.2;
+  firstCommand.baseHeadingVelocity = 0.25;
   firstCommand.baseLateralVelocity = 0.0;
   firstCommand.baseVerticalVelocity = 0.0;
   firstCommand.yawRate = 0.0; // 1 * 0.314;
