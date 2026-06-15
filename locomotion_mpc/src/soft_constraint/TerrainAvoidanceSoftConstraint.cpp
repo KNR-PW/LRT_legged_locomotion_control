@@ -49,7 +49,10 @@ namespace legged_locomotion_mpc
       relaxations_(collisionSettings.terrainRelaxations),
       referenceManager_(referenceManager),
       collisionInterface_(collisionInterface),
-      terrainAvoidancePenaltyPtr_(new RelaxedBarrierPenalty(settings.barrierSettings)) {}
+      endEffectorAvoidancePenaltyPtr_(new RelaxedBarrierPenalty(
+        settings.endEffectorBarrierSettings)),
+      collisionLinksAvoidancePenaltyPtr_(new RelaxedBarrierPenalty(
+        settings.collisionLinksBarrierSettings)) {}
 
   TerrainAvoidanceSoftConstraint* TerrainAvoidanceSoftConstraint::clone() const
   {
@@ -79,7 +82,7 @@ namespace legged_locomotion_mpc
       const scalar_t relaxation = relaxations_[i];
       const scalar_t distance = sdf->value(position) - terrainClearance
         - radius + relaxation;
-      cost += terrainAvoidancePenaltyPtr_->getValue(0.0, distance);
+      cost += endEffectorAvoidancePenaltyPtr_->getValue(0.0, distance);
     }
 
     // Six Dof End Effectors (many spheres)
@@ -102,7 +105,7 @@ namespace legged_locomotion_mpc
       const scalar_t relaxation = relaxations_[i];
       const scalar_t terrainClearance = leggedPrecomputation.getReferenceEndEffectorTerrainClearance(i);
       
-      cost += terrainAvoidancePenaltyPtr_->getValue(0.0, 
+      cost += endEffectorAvoidancePenaltyPtr_->getValue(0.0, 
         minDistance - terrainClearance + relaxation);
     }
 
@@ -124,7 +127,7 @@ namespace legged_locomotion_mpc
         if(distance < minDistance) minDistance = distance;
       }      
       const scalar_t relaxation = relaxations_[i + endEffectorNum_];
-      cost += terrainAvoidancePenaltyPtr_->getValue(0.0, 
+      cost += collisionLinksAvoidancePenaltyPtr_->getValue(0.0, 
         minDistance + relaxation);
     }
     return cost;
@@ -159,12 +162,12 @@ namespace legged_locomotion_mpc
 
       const scalar_t distance = sdfDistance - radius - terrainClearance + relaxation;
 
-      cost.f += terrainAvoidancePenaltyPtr_->getValue(0.0, distance);
+      cost.f += endEffectorAvoidancePenaltyPtr_->getValue(0.0, distance);
 
-      const scalar_t penaltyDerivative = terrainAvoidancePenaltyPtr_->getDerivative(
+      const scalar_t penaltyDerivative = endEffectorAvoidancePenaltyPtr_->getDerivative(
         0.0, distance);
 
-      const scalar_t penaltySecondDerivative = terrainAvoidancePenaltyPtr_->getSecondDerivative(
+      const scalar_t penaltySecondDerivative = endEffectorAvoidancePenaltyPtr_->getSecondDerivative(
         0.0, distance);
 
       const auto& positionDerivative = leggedPrecomputation.getEndEffectorPositionDerivatives(i);
@@ -204,17 +207,17 @@ namespace legged_locomotion_mpc
       const scalar_t terrainClearance = leggedPrecomputation.getReferenceEndEffectorTerrainClearance(i);
       minDistance += - terrainClearance + relaxation;
       
-      cost.f += terrainAvoidancePenaltyPtr_->getValue(0.0, 
+      cost.f += endEffectorAvoidancePenaltyPtr_->getValue(0.0, 
         minDistance);
 
       const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[minIndex];
 
       const vector3_t sdfGradient = sdf->derivative(minSpherePosition);
 
-      const scalar_t penaltyDerivative = terrainAvoidancePenaltyPtr_->getDerivative(
+      const scalar_t penaltyDerivative = endEffectorAvoidancePenaltyPtr_->getDerivative(
         0.0, minDistance);
 
-      const scalar_t penaltySecondDerivative = terrainAvoidancePenaltyPtr_->getSecondDerivative(
+      const scalar_t penaltySecondDerivative = endEffectorAvoidancePenaltyPtr_->getSecondDerivative(
         0.0, minDistance);
 
       const auto& positionDerivative = leggedPrecomputation.getEndEffectorPositionDerivatives(i);
@@ -260,16 +263,16 @@ namespace legged_locomotion_mpc
 
       minDistance += relaxation;
       
-      cost.f += terrainAvoidancePenaltyPtr_->getValue(0.0, minDistance);
+      cost.f += collisionLinksAvoidancePenaltyPtr_->getValue(0.0, minDistance);
 
       const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[minIndex];
 
       const vector3_t sdfGradient = sdf->derivative(minSpherePosition);
 
-      const scalar_t penaltyDerivative = terrainAvoidancePenaltyPtr_->getDerivative(
+      const scalar_t penaltyDerivative = collisionLinksAvoidancePenaltyPtr_->getDerivative(
         0.0, minDistance);
 
-      const scalar_t penaltySecondDerivative = terrainAvoidancePenaltyPtr_->getSecondDerivative(
+      const scalar_t penaltySecondDerivative = collisionLinksAvoidancePenaltyPtr_->getSecondDerivative(
         0.0, minDistance);
 
       const auto& positionDerivative = leggedPrecomputation.getCollisionLinkPositionDerivatives(collisionIndex);
@@ -287,6 +290,7 @@ namespace legged_locomotion_mpc
       // Approximated second derivative (sdf and postion second gradients are omitted)
       cost.dfdxx.noalias() += penaltySecondDerivative * scaledGradient * scaledGradient.transpose();
     }
+    
     return cost;
   }
 
@@ -299,7 +303,8 @@ namespace legged_locomotion_mpc
       referenceManager_(rhs.referenceManager_),
       collisionInterface_(rhs.collisionInterface_),
       relaxations_(rhs.relaxations_),
-      terrainAvoidancePenaltyPtr_(rhs.terrainAvoidancePenaltyPtr_->clone()) {}
+      endEffectorAvoidancePenaltyPtr_(rhs.endEffectorAvoidancePenaltyPtr_->clone()),
+      collisionLinksAvoidancePenaltyPtr_(rhs.collisionLinksAvoidancePenaltyPtr_->clone()) {}
 
   using Settings = TerrainAvoidanceSoftConstraint::Settings;
   Settings loadTerrainAvoidanceSoftConstraintSettings(
@@ -316,20 +321,36 @@ namespace legged_locomotion_mpc
       std::cerr << "\n #### =============================================================================\n";
     }
 
-    loadData::loadPtreeValue(pt, settings.barrierSettings.mu, 
-        fieldName + ".mu", verbose);
+    loadData::loadPtreeValue(pt, settings.endEffectorBarrierSettings.mu, 
+        fieldName + ".endEffectorSettings.mu", verbose);
 
-    if(settings.barrierSettings.mu < 0.0)
+    if(settings.endEffectorBarrierSettings.mu < 0.0)
     {
-      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty mu smaller than 0.0!");
+      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty mu for end effectors smaller than 0.0!");
     }
 
-    loadData::loadPtreeValue(pt, settings.barrierSettings.delta, 
-        fieldName + ".delta", verbose);
+    loadData::loadPtreeValue(pt, settings.endEffectorBarrierSettings.delta, 
+        fieldName + ".endEffectorSettings.delta", verbose);
 
-    if(settings.barrierSettings.delta < 0.0)
+    if(settings.endEffectorBarrierSettings.delta < 0.0)
     {
-      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty delta smaller than 0.0!");
+      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty delta for end effectors smaller than 0.0!");
+    }
+
+    loadData::loadPtreeValue(pt, settings.collisionLinksBarrierSettings.mu, 
+        fieldName + ".collisionLinksSettings.mu", verbose);
+
+    if(settings.collisionLinksBarrierSettings.mu < 0.0)
+    {
+      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty mu for collision links smaller than 0.0!");
+    }
+
+    loadData::loadPtreeValue(pt, settings.collisionLinksBarrierSettings.delta, 
+        fieldName + ".collisionLinksSettings.delta", verbose);
+
+    if(settings.collisionLinksBarrierSettings.delta < 0.0)
+    {
+      throw std::invalid_argument("[TerrainAvoidanceSoftConstraint]: Relaxed barrier penalty delta for collision links smaller than 0.0!");
     }
 
     if(verbose) 

@@ -80,12 +80,18 @@ legged_collision_settings
 {
   collisionLinkNames
   {
-  
+    [0] LFLL_link
+    [1] RFLL_link
+    [2] LRLL_link
+    [3] RRLL_link
   }
 
   terrainCollisionLinkNames
   {
-    
+    [0] LFLL_link
+    [1] RFLL_link
+    [2] LRLL_link
+    [3] RRLL_link
   }
 
   selfCollisionPairNames
@@ -99,7 +105,10 @@ legged_collision_settings
     [1] 0.075
     [2] 0.075
     [3] 0.075
-    
+    [4] 0.005
+    [5] 0.005
+    [6] 0.005
+    [7] 0.005
   }
 
   terrainRelaxations
@@ -108,7 +117,10 @@ legged_collision_settings
     [1] 0.005
     [2] 0.005
     [3] 0.005
-    
+    [4] 0.050
+    [5] 0.050
+    [6] 0.050
+    [7] 0.050
   }
 
   selfCollisionRelaxations
@@ -144,9 +156,16 @@ self_collison_avoidance_soft_constraint_settings
 
 terrain_avoidance_soft_constraint_settings
 {
-  mu 1.5
-
-  delta 0.005
+  endEffectorSettings
+  {
+    mu 1.5
+    delta 0.005
+  }
+  collisionLinksSettings
+  {
+    mu 0.1
+    delta 0.05
+  }
 }
 
 end_effector_soft_constraint_settings
@@ -207,7 +226,7 @@ gait_dynamic_settings
 
 inverse_solver_settings
 {
-  maxIterations         100
+  maxIterations         150
 
   tolerance             1e-3
 
@@ -215,7 +234,7 @@ inverse_solver_settings
 
   dampingCoefficient    1e-2
 
-  stepCoefficient       0.75
+  stepCoefficient       0.5
 
   singularityThreshold  1e-6
 }
@@ -510,13 +529,13 @@ swing_planner_static_settings
 
   touchDownVelocity               -0.2
         
-  errorGain                       0.0
+  errorGain                       20.0
           
   swingTimeScale                  0.15
 
-  sdfMidswingMargin               0.04
+  sdfMidswingMargin               0.05
 
-  terrainMargin                   0.04
+  terrainMargin                   0.05
           
   previousFootholdFactor          0.0
 

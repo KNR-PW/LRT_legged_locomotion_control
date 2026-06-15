@@ -142,9 +142,16 @@ self_collison_avoidance_soft_constraint_settings
 
 terrain_avoidance_soft_constraint_settings
 {
-  mu 0.15
-
-  delta 0.005
+  endEffectorSettings
+  {
+    mu 1.5
+    delta 0.005
+  }
+  collisionLinksSettings
+  {
+    mu 0.1
+    delta 0.05
+  }
 }
 
 end_effector_soft_constraint_settings

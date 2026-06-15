@@ -45,7 +45,11 @@ namespace legged_locomotion_mpc
 
       struct Settings
       {
-        ocs2::RelaxedBarrierPenalty::Config barrierSettings;
+        // Barrier settings for end effectors
+        ocs2::RelaxedBarrierPenalty::Config endEffectorBarrierSettings;
+
+        // Barrier settings for other collision links
+        ocs2::RelaxedBarrierPenalty::Config collisionLinksBarrierSettings;
       };
 
       /**
@@ -97,7 +101,8 @@ namespace legged_locomotion_mpc
       const LeggedReferenceManager& referenceManager_;
       const collision::PinocchioCollisionInterface& collisionInterface_;
       
-      std::unique_ptr<ocs2::RelaxedBarrierPenalty> terrainAvoidancePenaltyPtr_;
+      std::unique_ptr<ocs2::RelaxedBarrierPenalty> endEffectorAvoidancePenaltyPtr_;
+      std::unique_ptr<ocs2::RelaxedBarrierPenalty> collisionLinksAvoidancePenaltyPtr_;
   };
 
   /**

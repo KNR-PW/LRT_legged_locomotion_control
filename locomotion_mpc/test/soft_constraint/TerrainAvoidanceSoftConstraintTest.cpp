@@ -13,6 +13,8 @@ TEST(TerrainAvoidanceSoftConstraintTest, loader)
 
   const auto constraintSettings = loadTerrainAvoidanceSoftConstraintSettings(constraintFilePath);
 
-  EXPECT_TRUE(constraintSettings.barrierSettings.mu == 0.5);
-  EXPECT_TRUE(constraintSettings.barrierSettings.delta == 0.6);
+  EXPECT_TRUE(constraintSettings.endEffectorBarrierSettings.mu == 0.5);
+  EXPECT_TRUE(constraintSettings.endEffectorBarrierSettings.delta == 0.6);
+  EXPECT_TRUE(constraintSettings.collisionLinksBarrierSettings.mu == 0.1);
+  EXPECT_TRUE(constraintSettings.collisionLinksBarrierSettings.delta == 0.2);
 }
