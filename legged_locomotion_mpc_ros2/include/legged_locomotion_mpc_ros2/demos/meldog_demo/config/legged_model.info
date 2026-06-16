@@ -6,7 +6,7 @@ legged_model_settings
   verbose                   false
   recompileLibrariesCppAd   false
 
-  modelFolderCppAd          /home/bartek/Magisterka/legged_mpc/cppAD_libs
+  modelFolderCppAd          /tmp/legged_locomotion_mpc
   worldLinkName             world
   baseLinkName              trunk_link
   
