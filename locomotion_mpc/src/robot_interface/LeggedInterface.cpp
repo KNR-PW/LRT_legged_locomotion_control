@@ -394,6 +394,14 @@ namespace legged_locomotion_mpc
     const bool verbose = modelSettings_.verbose;
     const bool recompileLibrariesCppAd = modelSettings_.recompileLibrariesCppAd;
     const std::string modelFolderCppAd = modelSettings_.modelFolderCppAd;
+
+    // Get optimal, weight compensating input
+    const size_t endEffectorNum = floatingBaseModelInfo_.numThreeDofContacts 
+      + floatingBaseModelInfo_.numSixDofContacts;
+    const size_t standingMode = ((0x01 << (endEffectorNum)) - 1);
+    const contact_flags_t standingFlags(standingMode);
+
+    const vector_t currentInput = weightCompensator_->getInput(currentState, standingFlags);
     
     // Setup cppAD dynamics
     this->creatSynchronizedModule();
@@ -441,8 +449,6 @@ namespace legged_locomotion_mpc
     }
 
     // Setup all constraints for each end effector
-    const size_t endEffectorNum = floatingBaseModelInfo_.numThreeDofContacts 
-      + floatingBaseModelInfo_.numSixDofContacts;
     for(size_t i = 0; i < endEffectorNum; ++i)
     {
       if(interfaceSettings_.useNormalVelocityConstraint)
@@ -572,13 +578,17 @@ namespace legged_locomotion_mpc
       const auto& model = pinocchioInterfacePtr_->getModel();
       const vector_t jointMaxTorque =  model.effortLimit.segment(6, 
         floatingBaseModelInfo_.actuatedDofNum);
+      
+      // Get nominal joint torques
+      const vector_t nominalTorques = torqueApproximator_->getValue(currentState, 
+        currentInput);
 
       const auto jointTorqueLimitsSettings = 
         loadJointTorqueLimitsSoftConstraintSettings(modelFile, 
           "joint_torque_limits_soft_constraint_settings", verbose);
 
       auto jointTorqueLimitsSoftConstraint = std::make_unique<JointTorqueLimitsSoftConstraint>(
-        floatingBaseModelInfo_, jointMaxTorque, jointTorqueLimitsSettings);
+        floatingBaseModelInfo_, nominalTorques, jointMaxTorque, jointTorqueLimitsSettings);
 
       optimalProblem_.softConstraintPtr->add("JointTorqueLimitsSoftConstraint", 
         std::move(jointTorqueLimitsSoftConstraint));
@@ -631,13 +641,6 @@ namespace legged_locomotion_mpc
     // Setup all terminal costs
     if(interfaceSettings_.useTerminalTrackingCost)
     {
-      const size_t endEffectorNum = floatingBaseModelInfo_.numThreeDofContacts 
-        + floatingBaseModelInfo_.numSixDofContacts;
-      const size_t standingMode = ((0x01 << (endEffectorNum)) - 1);
-      const contact_flags_t standingFlags(standingMode);
-
-      const vector_t currentInput = weightCompensator_->getInput(currentState, standingFlags);
-
       optimalProblem_.targetTrajectoriesPtr = &referenceManagerPtr_->getTargetTrajectories();
 
       auto lqrSolution = continuous_time_lqr::solve(optimalProblem_, initTime, 

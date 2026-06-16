@@ -45,7 +45,7 @@ namespace legged_locomotion_mpc
       };
     
       JointTorqueLimitsSoftConstraint(floating_base_model::FloatingBaseModelInfo info,
-        ocs2::vector_t torqueLimits, Settings settings);
+        ocs2::vector_t nominalTorque, ocs2::vector_t torqueLimits, Settings settings);
 
       ~JointTorqueLimitsSoftConstraint() override = default;
 
@@ -71,6 +71,8 @@ namespace legged_locomotion_mpc
       std::unique_ptr<ocs2::RelaxedBarrierPenalty> torqueRelaxedBarrierPenaltyPtr_;
 
       const ocs2::vector_t torqueLimits_;
+      
+      ocs2::scalar_t nominalTorqueOffset_;
     };
 
     /**

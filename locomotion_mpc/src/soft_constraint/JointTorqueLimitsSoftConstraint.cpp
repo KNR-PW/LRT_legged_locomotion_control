@@ -35,13 +35,32 @@ namespace legged_locomotion_mpc
   /******************************************************************************************************/
   /******************************************************************************************************/
   JointTorqueLimitsSoftConstraint::JointTorqueLimitsSoftConstraint(
-    FloatingBaseModelInfo info,
-    const vector_t torqueLimits,
-    JointTorqueLimitsSoftConstraint::Settings settings):
+    FloatingBaseModelInfo info, vector_t nominalTorque, 
+    vector_t torqueLimits, JointTorqueLimitsSoftConstraint::Settings settings):
       StateInputCost(),
       info_(std::move(info)),
       torqueRelaxedBarrierPenaltyPtr_(new RelaxedBarrierPenalty(settings.barrierSettings)),
-      torqueLimits_(std::move(torqueLimits)) {}
+      torqueLimits_(std::move(torqueLimits)), nominalTorqueOffset_(0.0)
+  {
+    /**
+     * Get offset
+     * Taking a penalty on constraint bounds that are far away can create a large 
+     * (negative) value inside the feasible set, for example when
+     * using a relaxed barrier constraint. Adding a constant 
+     * offset does not change the optimal solution, but gives peace of mind that the
+     * cost values are in a reasonable absolute range.
+     */
+    const vector_t upperBoundTorqueOffset = torqueLimits_ - nominalTorque;
+    const vector_t lowerBoundTorqueOffset = torqueLimits_ + nominalTorque;
+
+    nominalTorqueOffset_ = upperBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum() + lowerBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum();
+  }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
@@ -70,7 +89,7 @@ namespace legged_locomotion_mpc
       }).sum() + lowerBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
       {
         return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
-      }).sum();
+      }).sum() + nominalTorqueOffset_;
   }
     
   /******************************************************************************************************/
@@ -107,7 +126,7 @@ namespace legged_locomotion_mpc
       }).sum() + lowerBoundTorqueOffset.unaryExpr([&](scalar_t hi)
       {
         return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
-      }).sum();
+      }).sum() + nominalTorqueOffset_;
 
     // Penalty derivatives w.r.t. the constraint
     const vector_t penaltyDerivatives = lowerBoundTorqueOffset.unaryExpr([&](scalar_t hi)
@@ -149,7 +168,7 @@ namespace legged_locomotion_mpc
   JointTorqueLimitsSoftConstraint::JointTorqueLimitsSoftConstraint(const JointTorqueLimitsSoftConstraint &rhs):
     StateInputCost(), info_(rhs.info_), 
     torqueRelaxedBarrierPenaltyPtr_(rhs.torqueRelaxedBarrierPenaltyPtr_->clone()),
-    torqueLimits_(rhs.torqueLimits_) {}
+    torqueLimits_(rhs.torqueLimits_), nominalTorqueOffset_(rhs.nominalTorqueOffset_) {}
 
   /******************************************************************************************************/
   /******************************************************************************************************/
