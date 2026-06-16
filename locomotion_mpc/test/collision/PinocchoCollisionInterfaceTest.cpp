@@ -119,7 +119,7 @@ TEST(PinocchoCollisionInterfaceTest, getters)
 
   for(size_t i = 0; i < 8; ++i)
   {
-    EXPECT_TRUE(circleNumber[i] == collisionInterface.getFrameSphereNumbers(i));
+    EXPECT_TRUE(circleNumber[i] == collisionInterface.getFrameSphereNumber(i));
     EXPECT_TRUE(std::abs(circleRadius[i] - collisionInterface.getFrameSphereRadiuses(i)[0]) < tolerance);
     EXPECT_TRUE((circlePositon[i] - collisionInterface.getFrameSpherePositions(i)[0]).norm() < tolerance);
     

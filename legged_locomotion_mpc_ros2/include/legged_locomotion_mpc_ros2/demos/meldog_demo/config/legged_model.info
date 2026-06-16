@@ -3,10 +3,10 @@ legged_model_settings
   robotName                 meldog
 
   algorithm                 DDP
-  verbose                   true
-  recompileLibrariesCppAd   true
+  verbose                   false
+  recompileLibrariesCppAd   false
 
-  modelFolderCppAd          /tmp/legged_locomotion_mpc
+  modelFolderCppAd          /home/bartek/Magisterka/legged_mpc/cppAD_libs
   worldLinkName             world
   baseLinkName              trunk_link
   

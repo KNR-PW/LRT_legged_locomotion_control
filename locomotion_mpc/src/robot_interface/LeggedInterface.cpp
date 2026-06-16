@@ -253,27 +253,35 @@ namespace legged_locomotion_mpc
 
   void LeggedInterface::createHelperClasses()
   {
+    const bool verbose = modelSettings_.verbose;
+    const bool recompileLibrariesCppAd = modelSettings_.recompileLibrariesCppAd;
+    const std::string modelFolderCppAd = modelSettings_.modelFolderCppAd;
+
     // Setup forward kinematics
     const std::string forwardKinematicsName = "forward_kinematics";
     endEffectorForwardKinematics_ = 
       std::make_unique<PinocchioForwardEndEffectorKinematicsCppAd>(*pinocchioInterfacePtr_, 
-        floatingBaseModelInfo_, forwardKinematicsName);
+        floatingBaseModelInfo_, forwardKinematicsName, modelFolderCppAd, 
+        recompileLibrariesCppAd, verbose);
 
     // Setup collision interface
     collisionInterface_ = std::make_unique<collision::PinocchioCollisionInterface>(
-      floatingBaseModelInfo_, modelSettings_, collisionSettings_, *pinocchioInterfacePtr_);
+      floatingBaseModelInfo_, modelSettings_, collisionSettings_, *pinocchioInterfacePtr_, 
+      verbose);
     
     // Setup collision kinematics
     const std::string collisionKinematicsName = "collision_kinematics";
     collisionForwardKinematics_ = 
       std::make_unique<PinocchioForwardCollisionKinematicsCppAd>(*pinocchioInterfacePtr_, 
-        floatingBaseModelInfo_, collisionSettings_, collisionKinematicsName);
+        floatingBaseModelInfo_, collisionSettings_, collisionKinematicsName, 
+        modelFolderCppAd, recompileLibrariesCppAd, verbose);
 
     // Setup torque approximatior
     const std::string torqueApproximatorName = "torque_approximator";
     torqueApproximator_ = std::make_unique<PinocchioTorqueApproximationCppAd>(
       *pinocchioInterfacePtr_, floatingBaseModelInfo_, 
-      vector_t::Zero(floatingBaseModelInfo_.actuatedDofNum), torqueApproximatorName);
+      vector_t::Zero(floatingBaseModelInfo_.actuatedDofNum), torqueApproximatorName, 
+      modelFolderCppAd, recompileLibrariesCppAd, verbose);
 
     // Setup weight compensator
 
@@ -286,6 +294,8 @@ namespace legged_locomotion_mpc
     const std::string& modelFile, const std::string& urdfFile)
   {
     const bool verbose = modelSettings_.verbose;
+    const bool recompileLibrariesCppAd = modelSettings_.recompileLibrariesCppAd;
+    const std::string modelFolderCppAd = modelSettings_.modelFolderCppAd;
 
     // Load settings for gait planner
     const auto gaitStaticSettings = loadGaitStaticParameters(modelFile, 
@@ -334,7 +344,7 @@ namespace legged_locomotion_mpc
     const std::string overExtensionPenaltyName = "over_extension_penalty";
     const OverExtensionPenalty overExtensionPenalty(*pinocchioInterfacePtr_,
       modelSettings_, overExtensionPenaltySettings, floatingBaseModelInfo_, 
-      overExtensionPenaltyName);
+      overExtensionPenaltyName, modelFolderCppAd, recompileLibrariesCppAd, verbose);
 
     SwingTrajectoryPlanner swingPlanner(floatingBaseModelInfo_, 
       swingStaticSettings, swingDynamicSettings, *endEffectorForwardKinematics_, 
@@ -381,8 +391,13 @@ namespace legged_locomotion_mpc
   void LeggedInterface::createOptimalProblem(scalar_t initTime, 
     const vector_t& currentState, const std::string& modelFile)
   {
-    // Setup cpp AD dynamics
-    creatSynchronizedModule();
+    const bool verbose = modelSettings_.verbose;
+    const bool recompileLibrariesCppAd = modelSettings_.recompileLibrariesCppAd;
+    const std::string modelFolderCppAd = modelSettings_.modelFolderCppAd;
+    
+    // Setup cppAD dynamics
+    this->creatSynchronizedModule();
+
     const std::string dynamicsModelName = "dynamics_model";
     optimalProblem_.dynamicsPtr = std::make_unique<LeggedDynamicsAD>(
       *pinocchioInterfacePtr_, floatingBaseModelInfo_, dynamicsModelName, 
@@ -391,9 +406,8 @@ namespace legged_locomotion_mpc
     // Setup precomputation
     optimalProblem_.preComputationPtr = std::make_unique<LeggedPrecomputation>(
       floatingBaseModelInfo_, *referenceManagerPtr_, *endEffectorForwardKinematics_, 
-      *collisionForwardKinematics_, *torqueApproximator_, *weightCompensator_);
-
-    const bool verbose = modelSettings_.verbose;
+      *collisionForwardKinematics_, *torqueApproximator_, *weightCompensator_, 
+      modelFolderCppAd, recompileLibrariesCppAd, verbose);
     
     // Setup all intermediate costs
     if(interfaceSettings_.useTrajectoryTrackingCost)
@@ -409,7 +423,7 @@ namespace legged_locomotion_mpc
 
       auto trajectoryTrackingCost = std::make_unique<TrajectoryTrackingCost>(
         floatingBaseModelInfo_, *referenceManagerPtr_, baseWeights, jointWeights, 
-        endEffectorWeights);
+        endEffectorWeights, modelFolderCppAd, recompileLibrariesCppAd, verbose);
       
       optimalProblem_.costPtr->add("TrajectoryTrackingCost", std::move(trajectoryTrackingCost));
     }
@@ -607,7 +621,8 @@ namespace legged_locomotion_mpc
 
       auto normalOrientationSoftConstraint = 
         std::make_unique<NormalOrientationSoftConstraint>(*referenceManagerPtr_, 
-          normalOrientationSettings, floatingBaseModelInfo_);
+          normalOrientationSettings, floatingBaseModelInfo_, 
+          modelFolderCppAd, recompileLibrariesCppAd, verbose);
 
       optimalProblem_.stateSoftConstraintPtr->add("NormalOrientationSoftConstraint", 
         std::move(normalOrientationSoftConstraint));

@@ -66,25 +66,22 @@ namespace legged_locomotion_mpc
          * @param [in] modelSettings: model settings
          * @param [in] collisionSettings: collision settings
          * @param [in] pinocchioInterface: Pinocchio interface of Floating Base model
-         * @param [in] modelFolder: folder to save the model library files to
-         * @param [in] recompileLibraries: If true, the model library will be newly
-         * compiled. If false, an existing library will be loaded if available.
          * @param [in] verbose: print information.
          */
         PinocchioCollisionInterface(
           const floating_base_model::FloatingBaseModelInfo& info,
           const ModelSettings& modelSettings,
           const CollisionSettings& collisionSettings,
-          const ocs2::PinocchioInterface& pinocchioInterface);
+          const ocs2::PinocchioInterface& pinocchioInterface, bool verbose = true);
         
         /**
-         * Get vector with number of spheres in frame
+         * Get number of spheres in frame
          * Rule of indexes:
          * 1. 3 DoF end effectors
          * 2. 6 DoF end effectors
          * 3. other collision objects, as defined in otherCollisionLinks
          */
-        size_t getFrameSphereNumbers(size_t collisionIndex) const;
+        size_t getFrameSphereNumber(size_t collisionIndex) const;
 
         /**
          * Get vector with radius of every sphere in every geometry in frame
@@ -150,7 +147,7 @@ namespace legged_locomotion_mpc
         void createSphereDataStructs(const floating_base_model::FloatingBaseModelInfo& info, 
           const ModelSettings& modelSettings, 
           const CollisionSettings& collisionSettings, 
-          const ocs2::PinocchioInterface& pinocchioInterface);
+          const ocs2::PinocchioInterface& pinocchioInterface, bool verbose);
         
         // Create sphereNeighbours_
         void createNeighbours(const CollisionSettings& collisionSettings);

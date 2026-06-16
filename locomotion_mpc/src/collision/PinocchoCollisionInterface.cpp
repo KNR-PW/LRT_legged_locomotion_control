@@ -41,7 +41,7 @@ namespace legged_locomotion_mpc
       const FloatingBaseModelInfo& info,
       const ModelSettings& modelSettings,
       const CollisionSettings& collisionSettings,
-      const PinocchioInterface& pinocchioInterface)
+      const PinocchioInterface& pinocchioInterface, bool verbose)
     {
       if(collisionSettings.maxExcesses.size() != (info.endEffectorFrameIndices.size() + collisionSettings.collisionLinkNames.size()))
       {
@@ -59,7 +59,8 @@ namespace legged_locomotion_mpc
 
       createGeometryModel(pinocchioInterface);
 
-      createSphereDataStructs(info, modelSettings, collisionSettings, pinocchioInterface);
+      createSphereDataStructs(info, modelSettings, collisionSettings, pinocchioInterface, 
+        verbose);
 
       createCollisionIndices(info, modelSettings, collisionSettings);
 
@@ -141,7 +142,7 @@ namespace legged_locomotion_mpc
       const FloatingBaseModelInfo& info, 
       const ModelSettings& modelSettings, 
       const CollisionSettings& collisionSettings, 
-      const PinocchioInterface& pinocchioInterface)
+      const PinocchioInterface& pinocchioInterface, bool verbose)
     {
       // Get collision frame indexes
       std::vector<size_t> collisionFrames = info.endEffectorFrameIndices;
@@ -210,15 +211,18 @@ namespace legged_locomotion_mpc
         frameToSpherePositons_.push_back(std::move(spherePositions));
       }
 
-      for(size_t i = 0; i < collisionNames.size(); ++i)
+      if(verbose)
       {
-        std::string message = "[PinocchioCollisionInterface]: Collision frame named " + collisionNames[i] + " has "
-          + std::to_string(sphereNumbers_[i]) + " spheres:\n";
-        std::cerr << message;
-
-        for(size_t j = 0; j < sphereNumbers_[i]; ++j)
+        for(size_t i = 0; i < collisionNames.size(); ++i)
         {
-          std::cerr << "Sphere " << j << ": " << sphereRadiuses_[i][j] << ", [" << frameToSpherePositons_[i][j].transpose() << "]\n";
+          std::string message = "[PinocchioCollisionInterface]: Collision frame named " + collisionNames[i] + " has "
+            + std::to_string(sphereNumbers_[i]) + " spheres:\n";
+          std::cerr << message;
+
+          for(size_t j = 0; j < sphereNumbers_[i]; ++j)
+          {
+            std::cerr << "Sphere " << j << ": " << sphereRadiuses_[i][j] << ", [" << frameToSpherePositons_[i][j].transpose() << "]\n";
+          }
         }
       }
     }
@@ -269,7 +273,7 @@ namespace legged_locomotion_mpc
       }
     }
 
-    size_t PinocchioCollisionInterface::getFrameSphereNumbers(
+    size_t PinocchioCollisionInterface::getFrameSphereNumber(
       size_t collisionIndex) const
     {
       assert(collisionIndex < frameNumber_);
