@@ -543,10 +543,6 @@ swing_planner_static_settings
 
   previousFootholdTimeDeadzone    0.0
           
-  nominalLegExtension             0.35
-
-  legOverExtensionWeight          0.5
-          
   referenceExtensionAfterHorizon  1.0
 
   maxSwingHeightAdaptation        0.3

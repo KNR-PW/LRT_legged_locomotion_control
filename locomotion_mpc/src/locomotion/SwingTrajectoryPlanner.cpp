@@ -806,20 +806,6 @@ namespace legged_locomotion_mpc
         throw std::invalid_argument("[SwingTrajectoryPlanner]: Previous foothold time deadzone smaller than 0.0!");
       }
 
-      loadData::loadPtreeValue(pt, settings.nominalLegExtension, 
-        fieldName + ".nominalLegExtension", verbose);
-       if(settings.nominalLegExtension < 0.0)
-      {
-        throw std::invalid_argument("[SwingTrajectoryPlanner]: Nominal leg extension smaller than 0.0!");
-      }
-
-      loadData::loadPtreeValue(pt, settings.legOverExtensionWeight, 
-        fieldName + ".legOverExtensionWeight", verbose);
-       if(settings.legOverExtensionWeight < 0.0)
-      {
-        throw std::invalid_argument("[SwingTrajectoryPlanner]: Leg over extension penalty weight smaller than 0.0!");
-      }
-
       loadData::loadPtreeValue(pt, settings.referenceExtensionAfterHorizon, 
         fieldName + ".referenceExtensionAfterHorizon", verbose);
        if(settings.referenceExtensionAfterHorizon < 0.0)

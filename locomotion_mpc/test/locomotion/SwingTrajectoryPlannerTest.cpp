@@ -613,9 +613,7 @@ TEST(SwingTrajectoryPlannerTest, loaders)
   EXPECT_TRUE(staticSettings.terrainMargin                   == 0.6);  
   EXPECT_TRUE(staticSettings.previousFootholdFactor          == 0.7);
   EXPECT_TRUE(staticSettings.previousFootholdDeadzone        == 0.8);
-  EXPECT_TRUE(staticSettings.previousFootholdTimeDeadzone    == 0.9);       
-  EXPECT_TRUE(staticSettings.nominalLegExtension             == 1.0);
-  EXPECT_TRUE(staticSettings.legOverExtensionWeight          == 1.1);  
+  EXPECT_TRUE(staticSettings.previousFootholdTimeDeadzone    == 0.9); 
   EXPECT_TRUE(staticSettings.referenceExtensionAfterHorizon  == 1.2);
   EXPECT_TRUE(staticSettings.maxSwingHeightAdaptation        == 1.3);
 

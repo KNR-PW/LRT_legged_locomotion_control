@@ -67,12 +67,6 @@ namespace legged_locomotion_mpc
           /** Previous foothold is taken if the contact phase is starting withing this time. [s] */
           ocs2::scalar_t previousFootholdTimeDeadzone = 0.0; 
           
-          /** Leg extension beyond this length [m] will be penalized in terrain selection */
-          ocs2::scalar_t nominalLegExtension = 0.35;
-
-          /** Weight of the end effector overextension penalty */
-          ocs2::scalar_t legOverExtensionWeight = 5.0; 
-          
           /** 
            * Base and foot references generated for this amount of seconds
            * after the horizon ends. 
