@@ -19,11 +19,12 @@
 
 #include <legged_locomotion_mpc/soft_constraint/TerrainAvoidanceSoftConstraint.hpp>
 
+#include <random>
+
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
 #include <ocs2_core/misc/LoadData.h>
-
 #include <ocs2_robotic_tools/common/RotationTransforms.h>
 
 #include <legged_locomotion_mpc/precomputation/LeggedPrecomputation.hpp>
@@ -52,7 +53,34 @@ namespace legged_locomotion_mpc
       endEffectorAvoidancePenaltyPtr_(new RelaxedBarrierPenalty(
         settings.endEffectorBarrierSettings)),
       collisionLinksAvoidancePenaltyPtr_(new RelaxedBarrierPenalty(
-        settings.collisionLinksBarrierSettings)) {}
+        settings.collisionLinksBarrierSettings)) 
+    {
+      // Get random index of sphere for every 6 DoF end effector and collision link
+      const size_t multipleSpheresSize = info.numSixDofContacts 
+        + collisionLinkindices_.size();
+
+      std::random_device randomDevice;
+      std::mt19937 generator(randomDevice());
+
+      currentCollisionLinksSphere_.reserve(multipleSpheresSize);
+
+      // Six Dof End Effectors (many spheres)
+      for(size_t i = info.numThreeDofContacts; i < endEffectorNum_; ++i)
+      {
+        const size_t numberOfSpheres = collisionInterface_.getFrameSphereNumber(i);
+        std::uniform_int_distribution<> distribution(0, numberOfSpheres - 1);
+        currentCollisionLinksSphere_.push_back(distribution(generator));
+      }
+
+      // Collison links (one or many spheres)
+      for(size_t i = 0; i < collisionLinkindices_.size(); ++i)
+      {
+        const size_t collisionIndex = collisionLinkindices_[i];
+        const size_t numberOfSpheres = collisionInterface_.getFrameSphereNumber(collisionIndex );
+        std::uniform_int_distribution<> distribution(0, numberOfSpheres - 1);
+        currentCollisionLinksSphere_.push_back(distribution(generator));
+      }
+    }
 
   TerrainAvoidanceSoftConstraint* TerrainAvoidanceSoftConstraint::clone() const
   {
@@ -90,18 +118,28 @@ namespace legged_locomotion_mpc
     {
       // If end effector is in contact, does not add cost
       if(contactFlags[i]) continue;
-      const std::vector<scalar_t>& radiuses = collisionInterface_.getFrameSphereRadiuses(i);
-      const std::vector<vector3_t>& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(i);
-      const vector3_t& framePosition = leggedPrecomputation.getEndEffectorPosition(i);
-      const vector3_t& frameEulerAngles = leggedPrecomputation.getEndEffectorOrientation(i);
+      const auto& radiuses = collisionInterface_.getFrameSphereRadiuses(i);
+      const auto& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(i);
+      const auto& framePosition = leggedPrecomputation.getEndEffectorPosition(i);
+      const auto& frameEulerAngles = leggedPrecomputation.getEndEffectorOrientation(i);
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
+      size_t currentBestSphereIndex = currentCollisionLinksSphere_[i 
+        - threeDofEndEffectorNum_];
+      const auto& neighbourIndexes = collisionInterface_.getSphereNeighbours(i, 
+        currentBestSphereIndex);
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
-      for(size_t j = 0; j < sphereRelativePositions.size(); ++j)
+      for(const auto neighbourIndex: neighbourIndexes)
       {
-        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[j];
-        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[j];
-        if(distance < minDistance) minDistance = distance;
-      }      
+        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[neighbourIndex];
+        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[neighbourIndex];
+        if(distance < minDistance)
+        {
+          minDistance = distance;
+          currentBestSphereIndex = neighbourIndex;
+        }
+      }
+      currentCollisionLinksSphere_[i - threeDofEndEffectorNum_] = currentBestSphereIndex;
+      
       const scalar_t relaxation = relaxations_[i];
       const scalar_t terrainClearance = leggedPrecomputation.getReferenceEndEffectorTerrainClearance(i);
       
@@ -113,19 +151,28 @@ namespace legged_locomotion_mpc
     for(size_t i = 0; i < collisionLinkindices_.size(); ++i)
     {
       const size_t collisionIndex = collisionLinkindices_[i];
-      const std::vector<scalar_t>& radiuses = collisionInterface_.getFrameSphereRadiuses(
+      const auto& radiuses = collisionInterface_.getFrameSphereRadiuses(
         collisionIndex);
-      const std::vector<vector3_t>& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(collisionIndex);
-      const vector3_t& framePosition = leggedPrecomputation.getCollisionLinkPosition(i);
-      const vector3_t& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(i);
+      const auto& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(collisionIndex);
+      const auto& framePosition = leggedPrecomputation.getCollisionLinkPosition(i);
+      const auto& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(i);
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
+      size_t currentBestSphereIndex = currentCollisionLinksSphere_[i + sixDofEndEffectorNum_];
+      const auto& neighbourIndexes = collisionInterface_.getSphereNeighbours(collisionIndex, 
+        currentBestSphereIndex);
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
-      for(size_t j = 0; j < sphereRelativePositions.size(); ++j)
+      for(const auto neighbourIndex: neighbourIndexes)
       {
-        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[j];
-        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[j];
-        if(distance < minDistance) minDistance = distance;
-      }      
+        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[neighbourIndex];
+        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[neighbourIndex];
+        if(distance < minDistance)
+        {
+          minDistance = distance;
+          currentBestSphereIndex = neighbourIndex;
+        }
+      }
+      currentCollisionLinksSphere_[i + sixDofEndEffectorNum_] = currentBestSphereIndex;
+
       const scalar_t relaxation = relaxations_[i + endEffectorNum_];
       cost += collisionLinksAvoidancePenaltyPtr_->getValue(0.0, 
         minDistance + relaxation);
@@ -185,24 +232,28 @@ namespace legged_locomotion_mpc
     {
       // If end effector is in contact, does not add cost
       if(contactFlags[i]) continue;
-      const std::vector<scalar_t>& radiuses = collisionInterface_.getFrameSphereRadiuses(i);
-      const std::vector<vector3_t>& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(i);
-      const vector3_t& framePosition = leggedPrecomputation.getEndEffectorPosition(i);
-      const vector3_t& frameEulerAngles = leggedPrecomputation.getEndEffectorOrientation(i);
+      const auto& radiuses = collisionInterface_.getFrameSphereRadiuses(i);
+      const auto& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(i);
+      const auto& framePosition = leggedPrecomputation.getEndEffectorPosition(i);
+      const auto& frameEulerAngles = leggedPrecomputation.getEndEffectorOrientation(i);
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
+      size_t currentBestSphereIndex = currentCollisionLinksSphere_[i 
+        - threeDofEndEffectorNum_];
+      const auto& neighbourIndexes = collisionInterface_.getSphereNeighbours(i, 
+        currentBestSphereIndex);
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
-      size_t minIndex = 0;
-      for(size_t j = 0; j < sphereRelativePositions.size(); ++j)
+      for(const auto neighbourIndex: neighbourIndexes)
       {
-        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[j];
-        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[j];
+        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[neighbourIndex];
+        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[neighbourIndex];
         if(distance < minDistance)
         {
           minDistance = distance;
-          minIndex = j;
+          currentBestSphereIndex = neighbourIndex;
         }
-      }      
-
+      }
+      currentCollisionLinksSphere_[i - threeDofEndEffectorNum_] = currentBestSphereIndex;
+      
       const scalar_t relaxation = relaxations_[i];
       const scalar_t terrainClearance = leggedPrecomputation.getReferenceEndEffectorTerrainClearance(i);
       minDistance += - terrainClearance + relaxation;
@@ -210,7 +261,7 @@ namespace legged_locomotion_mpc
       cost.f += endEffectorAvoidancePenaltyPtr_->getValue(0.0, 
         minDistance);
 
-      const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[minIndex];
+      const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[currentBestSphereIndex];
 
       const vector3_t sdfGradient = sdf->derivative(minSpherePosition);
 
@@ -225,7 +276,7 @@ namespace legged_locomotion_mpc
 
       const auto rotationVectorGradient = 
         leggedPrecomputation.getRotationTimesVectorGradient(frameEulerAngles, 
-          sphereRelativePositions[minIndex]);
+          sphereRelativePositions[currentBestSphereIndex]);
 
       const matrix_t positionStateDerivative = positionDerivative.dfdx + rotationVectorGradient * eulerDerivative.dfdx;
       const vector_t scaledGradient = positionStateDerivative.transpose() * sdfGradient;
@@ -240,32 +291,38 @@ namespace legged_locomotion_mpc
     for(size_t i = 0; i < collisionLinkindices_.size(); ++i)
     {
       const size_t collisionIndex = collisionLinkindices_[i];
-      const std::vector<scalar_t>& radiuses = collisionInterface_.getFrameSphereRadiuses(
+      const auto& radiuses = collisionInterface_.getFrameSphereRadiuses(
         collisionIndex);
-      const std::vector<vector3_t>& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(collisionIndex);
-      const vector3_t& framePosition = leggedPrecomputation.getCollisionLinkPosition(collisionIndex);
-      const vector3_t& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(collisionIndex);
+      const auto& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(
+        collisionIndex);
+      const auto& framePosition = leggedPrecomputation.getCollisionLinkPosition(
+        collisionIndex);
+      const auto& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(
+        collisionIndex);
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
+      size_t currentBestSphereIndex = currentCollisionLinksSphere_[i + sixDofEndEffectorNum_];
+      const auto& neighbourIndexes = collisionInterface_.getSphereNeighbours(collisionIndex, 
+        currentBestSphereIndex);
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
-      size_t minIndex = 0;
-
-      for(size_t j = 0; j < sphereRelativePositions.size(); ++j)
+      for(const auto neighbourIndex: neighbourIndexes)
       {
-        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[j];
-        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[j];
+        const vector3_t spherePositionInWorld = framePosition + rotationMatrix * sphereRelativePositions[neighbourIndex];
+        const scalar_t distance = sdf->value(spherePositionInWorld) - radiuses[neighbourIndex];
         if(distance < minDistance)
         {
           minDistance = distance;
-          minIndex = j;
+          currentBestSphereIndex = neighbourIndex;
         }
-      }      
+      }
+      currentCollisionLinksSphere_[i + sixDofEndEffectorNum_] = currentBestSphereIndex;
+      
       const scalar_t relaxation = relaxations_[i + endEffectorNum_];
 
       minDistance += relaxation;
       
       cost.f += collisionLinksAvoidancePenaltyPtr_->getValue(0.0, minDistance);
 
-      const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[minIndex];
+      const vector3_t minSpherePosition = framePosition + rotationMatrix * sphereRelativePositions[currentBestSphereIndex];
 
       const vector3_t sdfGradient = sdf->derivative(minSpherePosition);
 
@@ -280,7 +337,7 @@ namespace legged_locomotion_mpc
 
       const auto rotationVectorGradient = 
         leggedPrecomputation.getRotationTimesVectorGradient(frameEulerAngles, 
-          sphereRelativePositions[minIndex]);
+          sphereRelativePositions[currentBestSphereIndex]);
 
       const matrix_t positionStateDerivative = positionDerivative.dfdx + rotationVectorGradient * eulerDerivative.dfdx;
       const vector_t scaledGradient = positionStateDerivative.transpose() * sdfGradient;
@@ -300,6 +357,7 @@ namespace legged_locomotion_mpc
       sixDofEndEffectorNum_(rhs.sixDofEndEffectorNum_),
       endEffectorNum_(rhs.endEffectorNum_),
       collisionLinkindices_(rhs.collisionLinkindices_),
+      currentCollisionLinksSphere_(rhs.currentCollisionLinksSphere_),
       referenceManager_(rhs.referenceManager_),
       collisionInterface_(rhs.collisionInterface_),
       relaxations_(rhs.relaxations_),

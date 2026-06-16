@@ -96,6 +96,8 @@ namespace legged_locomotion_mpc
       const size_t endEffectorNum_;
       const std::vector<size_t> collisionLinkindices_;
 
+      mutable std::vector<size_t> currentCollisionLinksSphere_;
+
       const std::vector<ocs2::scalar_t> relaxations_;
 
       const LeggedReferenceManager& referenceManager_;
