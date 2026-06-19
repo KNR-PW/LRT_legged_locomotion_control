@@ -114,12 +114,12 @@ int main(int argc, char* argv[])
   disturbance(1) = -10.0;
   disturbance(2) = 10.0;
 
-  const scalar_t firstGaitTime = 1.0;
+  const scalar_t firstGaitTime = 5.0;
   bool firstChange = true;
   const scalar_t secondGaitTime = 25.0;
   bool secondChange = true;
 
-  const scalar_t firstMoveTime = 2.0;
+  const scalar_t firstMoveTime = 6.0;
   const scalar_t secondMoveTime = 15.0;
   const scalar_t endTime = 20.0;
 

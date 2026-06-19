@@ -35,13 +35,23 @@ namespace legged_locomotion_mpc
   /******************************************************************************************************/
   /******************************************************************************************************/
   JointTorqueLimitsSoftConstraint::JointTorqueLimitsSoftConstraint(
-    FloatingBaseModelInfo info, vector_t nominalTorque, 
+    FloatingBaseModelInfo info, vector_t nominalTorques, 
     vector_t torqueLimits, JointTorqueLimitsSoftConstraint::Settings settings):
       StateInputCost(),
       info_(std::move(info)),
       torqueRelaxedBarrierPenaltyPtr_(new RelaxedBarrierPenalty(settings.barrierSettings)),
       torqueLimits_(std::move(torqueLimits)), nominalTorqueOffset_(0.0)
   {
+
+    if(nominalTorques.size() != info_.actuatedDofNum)
+    {
+      throw std::invalid_argument("[JointTorqueLimitsSoftConstraint]: Wrong size of nominal torques!");
+    }
+    if(torqueLimits_.size() != info_.actuatedDofNum)
+    {
+      throw std::invalid_argument("[JointTorqueLimitsSoftConstraint]: Wrong size of torque limits!");
+    }
+
     /**
      * Get offset
      * Taking a penalty on constraint bounds that are far away can create a large 
@@ -50,16 +60,16 @@ namespace legged_locomotion_mpc
      * offset does not change the optimal solution, but gives peace of mind that the
      * cost values are in a reasonable absolute range.
      */
-    const vector_t upperBoundTorqueOffset = torqueLimits_ - nominalTorque;
-    const vector_t lowerBoundTorqueOffset = torqueLimits_ + nominalTorque;
+    const vector_t upperBoundTorqueOffset = torqueLimits_ - nominalTorques;
+    const vector_t lowerBoundTorqueOffset = torqueLimits_ + nominalTorques;
 
-    nominalTorqueOffset_ = upperBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
+    nominalTorqueOffset_ = -1.0 * (upperBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
       {
         return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
       }).sum() + lowerBoundTorqueOffset.unaryExpr([&](scalar_t hi) 
       {
         return torqueRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
-      }).sum();
+      }).sum());
   }
 
   /******************************************************************************************************/

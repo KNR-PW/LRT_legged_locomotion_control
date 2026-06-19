@@ -16,10 +16,12 @@ namespace legged_locomotion_mpc
   /******************************************************************************************************/
   /******************************************************************************************************/
   JointLimitsSoftConstraint::JointLimitsSoftConstraint(
-    floating_base_model::FloatingBaseModelInfo info,
-    vector_t jointPositionUpperLimits,
-    vector_t jointPositionLowerLimits,
-    vector_t jointVelocityLimits,
+    floating_base_model::FloatingBaseModelInfo info, 
+    vector_t jointNominalPositions, 
+    vector_t jointPositionUpperLimits, 
+    vector_t jointPositionLowerLimits, 
+    vector_t jointNominalVelocities, 
+    vector_t jointVelocityLimits, 
     JointLimitsSoftConstraint::Settings settings):
       StateInputCost(),
       jointPositionLowerLimits_(std::move(jointPositionLowerLimits)), 
@@ -28,6 +30,10 @@ namespace legged_locomotion_mpc
       info_(std::move(info)),
       jointRelaxedBarrierPenaltyPtr_(new RelaxedBarrierPenalty(settings.barrierSettings)) 
   {
+    if(jointNominalPositions.size() != info_.actuatedDofNum)
+    {
+      throw std::invalid_argument("[JointLimitsSoftConstraint]: Wrong size of nominal poisitions!");
+    }
     if(jointPositionLowerLimits_.size() != info_.actuatedDofNum)
     {
       throw std::invalid_argument("[JointLimitsSoftConstraint]: Wrong size of position lower limits!");
@@ -36,10 +42,42 @@ namespace legged_locomotion_mpc
     {
       throw std::invalid_argument("[JointLimitsSoftConstraint]: Wrong size of positon upper limits!");
     }
+    if(jointNominalVelocities.size() != info_.actuatedDofNum)
+    {
+      throw std::invalid_argument("[JointLimitsSoftConstraint]: Wrong size of nominal velocities!");
+    }
     if(jointVelocityLimits_.size() != info_.actuatedDofNum)
     {
       throw std::invalid_argument("[JointLimitsSoftConstraint]: Wrong size of velocity limits!");
     }
+
+    /**
+     * Get offset
+     * Taking a penalty on constraint bounds that are far away can create a large 
+     * (negative) value inside the feasible set, for example when
+     * using a relaxed barrier constraint. Adding a constant 
+     * offset does not change the optimal solution, but gives peace of mind that the
+     * cost values are in a reasonable absolute range.
+     */
+
+    const vector_t upperBoundJointPositionOffset = jointPositionUpperLimits_ - jointNominalPositions;
+    const vector_t lowerBoundJointPositionOffset = jointNominalPositions - jointPositionLowerLimits_;
+    const vector_t upperBoundJointVelocitiesOffset = jointVelocityLimits_ - jointNominalVelocities;
+    const vector_t lowerBoundJointVelocitiesOffset = jointVelocityLimits_ + jointNominalVelocities;
+
+    jointPositionVelocityOffset_ = -1.0 * (upperBoundJointPositionOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum() + lowerBoundJointPositionOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum() + upperBoundJointVelocitiesOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum() + lowerBoundJointVelocitiesOffset.unaryExpr([&](scalar_t hi) 
+      {
+        return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
+      }).sum());
   }
 
   /******************************************************************************************************/
@@ -76,7 +114,7 @@ namespace legged_locomotion_mpc
       }).sum() + lowerBoundJointVelocitiesOffset.unaryExpr([&](scalar_t hi) 
       {
         return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
-      }).sum();
+      }).sum() + jointPositionVelocityOffset_;
 
     return cost;
   }
@@ -106,7 +144,7 @@ namespace legged_locomotion_mpc
       }).sum() + lowerBoundJointVelocitiesOffset.unaryExpr([&](scalar_t hi) 
       {
         return jointRelaxedBarrierPenaltyPtr_->getValue(0.0, hi);
-      }).sum();
+      }).sum() + jointPositionVelocityOffset_;
 
     const vector_t penaltyDerivativesState = 
       -upperBoundJointPositionOffset.unaryExpr([&](scalar_t hi) 
@@ -174,7 +212,8 @@ namespace legged_locomotion_mpc
     jointPositionLowerLimits_(rhs.jointPositionLowerLimits_),
     jointPositionUpperLimits_(rhs.jointPositionUpperLimits_),
     jointVelocityLimits_(rhs.jointVelocityLimits_),
-    jointRelaxedBarrierPenaltyPtr_(rhs.jointRelaxedBarrierPenaltyPtr_->clone()) {}
+    jointRelaxedBarrierPenaltyPtr_(rhs.jointRelaxedBarrierPenaltyPtr_->clone()),
+    jointPositionVelocityOffset_(rhs.jointPositionVelocityOffset_) {}
 
   /******************************************************************************************************/
   /******************************************************************************************************/

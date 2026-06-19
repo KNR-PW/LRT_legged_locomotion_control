@@ -44,15 +44,19 @@ namespace legged_locomotion_mpc
       /**
        * Constructor
        * @param [in] info: Floating Base model info.
+       * @param [in] jointNominalPositions: Nominal joint positions.
        * @param [in] jointPositionUpperLimits: Maximum joint positions.
        * @param [in] jointPositionLowerLimits: Minimum joint positions.
+       * @param [in] jointNominalVelocities: Nominal joint velocities.
        * @param [in] jointVelocityLimits: Maximum joint velocities.
        * @param [in] settings: Relaxed barrier penalty settings 
        * 
        */
       JointLimitsSoftConstraint(floating_base_model::FloatingBaseModelInfo info,
+        ocs2::vector_t jointNominalPositions,
         ocs2::vector_t jointPositionUpperLimits,
         ocs2::vector_t jointPositionLowerLimits,
+        ocs2::vector_t jointNominalVelocities,
         ocs2::vector_t jointVelocityLimits,
         Settings settings);
 
@@ -80,7 +84,8 @@ namespace legged_locomotion_mpc
       const ocs2::vector_t jointVelocityLimits_;
 
       std::unique_ptr<ocs2::RelaxedBarrierPenalty> jointRelaxedBarrierPenaltyPtr_;
-
+      
+      ocs2::scalar_t jointPositionVelocityOffset_;
     };
 
     /**

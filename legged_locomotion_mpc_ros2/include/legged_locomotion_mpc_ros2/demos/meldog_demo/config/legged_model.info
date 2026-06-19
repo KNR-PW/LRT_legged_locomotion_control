@@ -163,7 +163,7 @@ terrain_avoidance_soft_constraint_settings
   }
   collisionLinksSettings
   {
-    mu 0.1
+    mu 0.2
     delta 0.05
   }
 }
@@ -259,16 +259,16 @@ base_weights
 
   linearVelocity
   {
-    (0,0)  15.0
-    (1,0)  15.0
-    (2,0)  30.0
+    (0,0)  25.0
+    (1,0)  25.0
+    (2,0)  50.0
   }
 
   angularVelocity
   {
     (0,0)  10.0
     (1,0)  10.0
-    (2,0)  30.0
+    (2,0)  50.0
   }
 }
 
@@ -277,73 +277,73 @@ joint_weights
   LFT_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   LFH_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   LFK_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   LRT_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   LRH_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   LRK_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RFT_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RFH_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RFK_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RRT_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RRH_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 
   RRK_joint
   {
     position 2.0
-    velocity 0.05
+    velocity 0.5
   }
 }
 
@@ -355,14 +355,14 @@ end_effector_weights
     {
       (0,0)  30.0
       (1,0)  30.0
-      (2,0)  30.0
+      (2,0)  50.0
     }
 
     velocity
     {
       (0,0)  15.0
       (1,0)  15.0
-      (2,0)  15.0
+      (2,0)  25.0
     }
 
     force
@@ -379,14 +379,14 @@ end_effector_weights
     {
       (0,0)  30.0
       (1,0)  30.0
-      (2,0)  30.0
+      (2,0)  50.0
     }
 
     velocity
     {
       (0,0)  15.0
       (1,0)  15.0
-      (2,0)  15.0
+      (2,0)  25.0
     }
 
     force
@@ -403,14 +403,14 @@ end_effector_weights
     {
       (0,0)  30.0
       (1,0)  30.0
-      (2,0)  30.0
+      (2,0)  50.0
     }
 
     velocity
     {
       (0,0)  15.0
       (1,0)  15.0
-      (2,0)  15.0
+      (2,0)  25.0
     }
 
     force
@@ -427,14 +427,14 @@ end_effector_weights
     {
       (0,0)  30.0
       (1,0)  30.0
-      (2,0)  30.0
+      (2,0)  50.0
     }
 
     velocity
     {
       (0,0)  15.0
       (1,0)  15.0
-      (2,0)  15.0
+      (2,0)  25.0
     }
 
     force
@@ -535,7 +535,7 @@ swing_planner_static_settings
 
   sdfMidswingMargin               0.07
 
-  terrainMargin                   0.07
+  terrainMargin                   0.02
           
   previousFootholdFactor          0.0
 

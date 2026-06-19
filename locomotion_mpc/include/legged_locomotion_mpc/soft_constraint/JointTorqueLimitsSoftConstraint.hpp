@@ -45,7 +45,7 @@ namespace legged_locomotion_mpc
       };
     
       JointTorqueLimitsSoftConstraint(floating_base_model::FloatingBaseModelInfo info,
-        ocs2::vector_t nominalTorque, ocs2::vector_t torqueLimits, Settings settings);
+        ocs2::vector_t nominalTorques, ocs2::vector_t torqueLimits, Settings settings);
 
       ~JointTorqueLimitsSoftConstraint() override = default;
 

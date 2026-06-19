@@ -395,6 +395,8 @@ namespace legged_locomotion_mpc
     const bool recompileLibrariesCppAd = modelSettings_.recompileLibrariesCppAd;
     const std::string modelFolderCppAd = modelSettings_.modelFolderCppAd;
 
+
+
     // Get optimal, weight compensating input
     const size_t endEffectorNum = floatingBaseModelInfo_.numThreeDofContacts 
       + floatingBaseModelInfo_.numSixDofContacts;
@@ -553,6 +555,12 @@ namespace legged_locomotion_mpc
 
     if(interfaceSettings_.useJointLimitsSoftConstraint)
     {
+      const vector_t jointNomialPositions = access_helper_functions::getJointPositions(
+        currentState, floatingBaseModelInfo_);
+
+      const vector_t jointNominalVelocities = vector_t::Zero(
+        floatingBaseModelInfo_.actuatedDofNum);
+
       const auto& model = pinocchioInterfacePtr_->getModel();
       const vector_t jointMaxPositions = model.upperPositionLimit.segment(7, 
         floatingBaseModelInfo_.actuatedDofNum);
@@ -566,8 +574,8 @@ namespace legged_locomotion_mpc
           "joint_limits_soft_constraint_settings", verbose);
 
       auto jointLimitsSoftConstraint = std::make_unique<JointLimitsSoftConstraint>(
-        floatingBaseModelInfo_, jointMaxPositions, jointMinPositions, jointMaxVelocity, 
-        jointLimitsSettings);
+        floatingBaseModelInfo_, jointNomialPositions, jointMaxPositions, jointMinPositions, 
+        jointNominalVelocities, jointMaxVelocity, jointLimitsSettings);
 
       optimalProblem_.softConstraintPtr->add("JointLimitsSoftConstraint", 
         std::move(jointLimitsSoftConstraint));
