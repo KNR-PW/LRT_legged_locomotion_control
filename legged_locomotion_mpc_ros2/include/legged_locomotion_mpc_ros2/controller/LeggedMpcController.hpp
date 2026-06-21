@@ -145,8 +145,11 @@ namespace legged_locomotion_mpc_ros2
       std::thread mpcThread_;
       std::atomic_bool controllerRunning_;
 
+      // MPC loop duration (1 / mpcFreuency)
+      rclcpp::Duration mpcDuration_ = rclcpp::Duration(0, 0);
+
       // Timer for MRT
-      ocs2::scalar_t mrtDuration_;
+      ocs2::scalar_t mrtDurationSeconds_;
       rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
 
       // Observation subscribers

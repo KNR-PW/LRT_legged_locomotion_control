@@ -33,8 +33,8 @@ namespace legged_locomotion_mpc_ros2
     LifecycleNode("legged_mpc_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
     baseTransformEstimation_(vector6_t::Zero()),
     baseTwistEstimation_(vector6_t::Zero()),
-    jointPositionEstimation_(vector_t::Zero(10)),
-    jointVelocityEstimation_(vector_t::Zero(10))
+    jointPositionEstimation_(vector_t()),
+    jointVelocityEstimation_(vector_t())
   {
     // Config directory parameter
     this->declare_parameter("config_directory_path", "./");
@@ -184,11 +184,13 @@ namespace legged_locomotion_mpc_ros2
     // Get duration 
     const auto mpcSettings = mpc::loadSettings(
       configDirectoryPath + "/task.info", "mpc", false);
-    mrtDuration_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+
+    mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
 
     // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
     jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(mrtDuration_), 
+      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
       std::bind(&LeggedMpcController::sendJointTrajectory, this));
 
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller configured successfully!");
@@ -215,6 +217,10 @@ namespace legged_locomotion_mpc_ros2
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller activated successfully!");
     RCLCPP_INFO(this->get_logger(), "MPC/MRT loop activated!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+
+    jointStateSubscriber_.reset();
+    baseTransformSubscriber_.reset();
+    baseTwistSubscriber_.reset();
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
@@ -257,6 +263,14 @@ namespace legged_locomotion_mpc_ros2
       const vector6_t baseTwist = baseTwistEstimation_.get();
       const vector_t jointPositions = jointPositionEstimation_.get();
 
+      std::stringstream ss;
+      ss << "Init state: " << "\n";
+      ss << "Base position: " << baseTransform.transpose() << "\n";
+      ss << "Base velocity: " << baseTwist.transpose() << "\n";
+      ss << "Joint positions: " << jointPositions.transpose() << "\n";
+
+      RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+
       access_helper_functions::getBasePose(initialSystemState, 
         modelInfo_) = baseTransform;
       
@@ -288,7 +302,6 @@ namespace legged_locomotion_mpc_ros2
       const auto basePlannerSettings = planners::loadBasePlannerStaticSettings(
         modelFilePath, "base_planner_static_settings", false);
       
-      // TODO POPRAW TOOOO
       const TerrainPlane initalPlane(vector3_t::Zero(), matrix3_t::Identity());
 
       terrainModelPtr_ = 
@@ -348,12 +361,11 @@ namespace legged_locomotion_mpc_ros2
     // Wait for the first policy
     mpcMrtPtr_->setCurrentObservation(observation);
 
-    rclcpp::Duration maxInitialPolicyDuration = rclcpp::Duration::from_seconds(5);
+    rclcpp::Duration maxInitialPolicyDuration = rclcpp::Duration::from_seconds(10);
     rclcpp::Time startTime = this->get_clock()->now();
 
-    // while(!mpcMrtPtr_->initialPolicyReceived() &&  
-    //   (this->get_clock()->now() - startTime) < maxInitialPolicyDuration) 
-    while(!mpcMrtPtr_->initialPolicyReceived())
+    while(!mpcMrtPtr_->initialPolicyReceived() && rclcpp::ok() &&  
+      (this->get_clock()->now() - startTime) < maxInitialPolicyDuration) 
     {
       mpcMrtPtr_->advanceMpc();
     }
@@ -369,6 +381,25 @@ namespace legged_locomotion_mpc_ros2
     // Make one iteration to get current observation after initialization
     mpcMrtPtr_->updatePolicy();
     const auto currentObservation = getCurrentObservation();
+
+    {
+      const vector_t newState = currentObservation.state;
+
+      const vector6_t baseTransform = access_helper_functions::getBasePose(newState, 
+        modelInfo_);
+      const vector6_t baseTwist = access_helper_functions::getBaseVelocity(newState, 
+        modelInfo_);
+      const vector_t jointPositions = access_helper_functions::getJointPositions(newState, 
+        modelInfo_);
+
+      std::stringstream ss;
+      ss << "New init state: " << "\n";
+      ss << "Base position: " << baseTransform.transpose() << "\n";
+      ss << "Base velocity: " << baseTwist.transpose() << "\n";
+      ss << "Joint positions: " << jointPositions.transpose() << "\n";
+      RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+    }
+
     mpcMrtPtr_->setCurrentObservation(currentObservation);
     mpcMrtPtr_->advanceMpc();
   }
@@ -425,8 +456,19 @@ namespace legged_locomotion_mpc_ros2
     filterState = mpcMrtPtr_->getPolicy().stateTrajectory_[queryIndex].block(
       modelInfo_.stateDim, 0, modelInfo_.inputDim, 1);
 
-    currentObservation.input = mpcMrtPtr_->getPolicy().inputTrajectory_[queryIndex];
+    currentObservation.input = vector_t::Zero(modelInfo_.actuatedDofNum);
 
+    // currentObservation.input = mpcMrtPtr_->getPolicy().inputTrajectory_[queryIndex];
+
+    // const auto systemInput = loopshapingDefinitionPtr_->getSystemInput(currentObservation.state, currentObservation.input);
+
+    // std::stringstream ss;
+
+    // ss << "Current observation: " << "\n";
+    // ss << "State: " << currentObservation.state.head(modelInfo_.stateDim).transpose() << "\n";
+    // ss << "Filter state: " << currentObservation.state.tail(modelInfo_.stateDim).transpose() << std::endl;
+    // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+    // rclcpp::shutdown();
     return currentObservation;
   }
 
@@ -438,12 +480,15 @@ namespace legged_locomotion_mpc_ros2
       {
         try 
         {
-          executeAndSleep([&]() 
-          {
-            mpcTimer_.startTimer();
-            mpcMrtPtr_->advanceMpc();
-            mpcTimer_.endTimer();
-          }, leggedInterfacePtr_->mpcSettings().mpcDesiredFrequency_);
+          const auto startTime = this->get_clock()->now();
+          mpcTimer_.startTimer();
+          mpcMrtPtr_->advanceMpc();
+          mpcTimer_.endTimer();
+          const auto endTime = this->get_clock()->now();
+          const auto durationLeft = mpcDuration_ - (endTime - startTime);
+          this->get_clock()->sleep_for(durationLeft);
+          RCLCPP_INFO(this->get_logger(), "MPC iteration took : %f", (endTime - startTime).seconds());
+          RCLCPP_INFO(this->get_logger(), "MPC duration left : %f", durationLeft.seconds());
         } 
         catch(const std::exception& e) 
         {
@@ -483,6 +528,7 @@ namespace legged_locomotion_mpc_ros2
   void LeggedMpcController::updateJointStates(
     const sensor_msgs::msg::JointState::ConstSharedPtr jointStates)
   {
+    // RCLCPP_INFO(this->get_logger(), "AAAAAAAA!");
     // Check if message has same amount of data
     if(jointStates->name.size() != jointStates->position.size() || 
        jointStates->name.size() != jointStates->velocity.size() ||
@@ -732,8 +778,10 @@ namespace legged_locomotion_mpc_ros2
 
   void LeggedMpcController::sendJointTrajectory()
   {
+    
     if(mpcMrtPtr_ && controllerRunning_)
     {
+      RCLCPP_INFO(this->get_logger(), "MRT iteration starting at : %f", this->get_clock()->now().seconds());
       mrtTimer_.startTimer();
 
       mpcMrtPtr_->updatePolicy();
@@ -743,43 +791,74 @@ namespace legged_locomotion_mpc_ros2
       mpcMrtPtr_->setCurrentObservation(currentObservation);
 
       const auto& currentState = currentObservation.state;
+
+      const auto trajectory = referenceManagerPtr_->getTargetTrajectories();
+
+      const vector3_t basePosition = trajectory.stateTrajectory.front().block<3, 1>(6, 0);
+      const vector3_t currentBase = currentObservation.state.block<3, 1>(6, 0);
+
+      std::stringstream ss;
+      ss << "Base optimal position: " << basePosition.transpose() << "\n";
+      ss << "Base current position: " << currentBase.transpose() << "\n";
+
+      RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
       
       const scalar_t currentTime = this->get_clock()->now().seconds();
-
-      std::array<scalar_t, 2> times;
-      std::array<vector_t, 2> optimizedStates;
-      std::array<vector_t, 2> optimizedInputs;
 
       size_t plannedMode = 0;  
       vector_t loopshapingState;
       vector_t loopshapingInput;
 
-      // Get current optimized system state and input
-      times[0] = currentTime;
-      mpcMrtPtr_->evaluatePolicy(times[0],
+      mpcMrtPtr_->evaluatePolicy(currentTime,
         currentState, loopshapingState, loopshapingInput, plannedMode);
 
-      optimizedStates[0] = loopshapingState.head(modelInfo_.stateDim);
-      optimizedInputs[0] = access_helper_functions::getJointVelocities(loopshapingDefinitionPtr_->getSystemInput(loopshapingState, 
-        loopshapingInput), modelInfo_);
+      RCLCPP_INFO(this->get_logger(), "Planned mode: %d", plannedMode);
 
-      // perform a rollout
-      scalar_array_t timeTrajectory;
-      size_array_t postEventIndicesStock;
-      vector_array_t loopshapingStateTrajectory, loopshapingInputTrajectory;
+      const auto optimizedState = loopshapingState.head(modelInfo_.stateDim);
+      const auto optimizedInput = loopshapingDefinitionPtr_->getSystemInput(
+        loopshapingState, loopshapingInput);
 
-      times[1] = times[0] + mrtDuration_;
-      auto modeschedule = mpcMrtPtr_->getPolicy().modeSchedule_;
-      rolloutPtr_->run(currentObservation.time, currentObservation.state, times[1],
-        mpcMrtPtr_->getPolicy().controllerPtr_.get(), modeschedule,
-        timeTrajectory, postEventIndicesStock, loopshapingStateTrajectory,
-        loopshapingInputTrajectory);
+      std::stringstream ss2;
+      ss2 << "Optimized state: " << optimizedState.transpose() << "\n";
+      ss2 << "Optimized input: " << optimizedInput.transpose() << "\n";
       
-      // Get second optimized data
-      times[1] = timeTrajectory.back();
-      optimizedStates[1] = loopshapingStateTrajectory.back().head(modelInfo_.stateDim);
-      optimizedInputs[1] = access_helper_functions::getJointVelocities(loopshapingDefinitionPtr_->getSystemInput(
-        loopshapingStateTrajectory.back(), loopshapingInputTrajectory.back()), modelInfo_);
+      RCLCPP_INFO(this->get_logger(), "%s", ss2.str().c_str());
+
+
+      // std::array<scalar_t, 2> times;
+      // std::array<vector_t, 2> optimizedStates;
+      // std::array<vector_t, 2> optimizedInputs;
+
+      // size_t plannedMode = 0;  
+      // vector_t loopshapingState;
+      // vector_t loopshapingInput;
+
+      // // Get current optimized system state and input
+      // times[0] = currentTime;
+      // mpcMrtPtr_->evaluatePolicy(times[0],
+      //   currentState, loopshapingState, loopshapingInput, plannedMode);
+
+      // optimizedStates[0] = loopshapingState.head(modelInfo_.stateDim);
+      // optimizedInputs[0] = access_helper_functions::getJointVelocities(loopshapingDefinitionPtr_->getSystemInput(loopshapingState, 
+      //   loopshapingInput), modelInfo_);
+
+      // // perform a rollout
+      // scalar_array_t timeTrajectory;
+      // size_array_t postEventIndicesStock;
+      // vector_array_t loopshapingStateTrajectory, loopshapingInputTrajectory;
+
+      // times[1] = times[0] + mrtDurationSeconds_;
+      // auto modeschedule = mpcMrtPtr_->getPolicy().modeSchedule_;
+      // rolloutPtr_->run(currentObservation.time, currentObservation.state, times[1],
+      //   mpcMrtPtr_->getPolicy().controllerPtr_.get(), modeschedule,
+      //   timeTrajectory, postEventIndicesStock, loopshapingStateTrajectory,
+      //   loopshapingInputTrajectory);
+      
+      // // Get second optimized data
+      // times[1] = timeTrajectory.back();
+      // optimizedStates[1] = loopshapingStateTrajectory.back().head(modelInfo_.stateDim);
+      // optimizedInputs[1] = access_helper_functions::getJointVelocities(loopshapingDefinitionPtr_->getSystemInput(
+      //   loopshapingStateTrajectory.back(), loopshapingInputTrajectory.back()), modelInfo_);
 
       trajectory_msgs::msg::JointTrajectory jointTrajectory;
       
@@ -795,38 +874,67 @@ namespace legged_locomotion_mpc_ros2
         jointTrajectory.joint_names[i] = "joint_controller/" + jointTrajectory.joint_names[i];
       }
 
-      jointTrajectory.points.resize(2);
+      // jointTrajectory.points.resize(2);
       
-      for(size_t i = 0; i < times.size(); ++i)
-      {
-        jointTrajectory.points[i].time_from_start = rclcpp::Duration::from_seconds(
-          times[i] - currentTime);
+      // for(size_t i = 0; i < times.size(); ++i)
+      // {
+      //   jointTrajectory.points[i].time_from_start = rclcpp::Duration::from_seconds(
+      //     times[i] - currentTime);
 
 
-        auto positionVector = access_helper_functions::getJointPositions(optimizedStates[i], 
-          modelInfo_);
+      //   auto positionVector = access_helper_functions::getJointPositions(optimizedStates[i], 
+      //     modelInfo_);
 
-        const std::vector<scalar_t> positions(positionVector.data(), 
-          positionVector.data() + positionVector.size());
+      //   const std::vector<scalar_t> positions(positionVector.data(), 
+      //     positionVector.data() + positionVector.size());
         
-        jointTrajectory.points[i].positions = std::move(positions);
+      //   jointTrajectory.points[i].positions = std::move(positions);
 
-        const auto velocityVector = loopshapingDefinitionPtr_->getSystemInput(
-          optimizedStates[i], optimizedInputs[i]);
+      //   const auto velocityVector = loopshapingDefinitionPtr_->getSystemInput(
+      //     optimizedStates[i], optimizedInputs[i]);
 
-        const std::vector<scalar_t> velocities(velocityVector.data(), 
-          velocityVector.data() + velocityVector.size());
+      //   const std::vector<scalar_t> velocities(velocityVector.data(), 
+      //     velocityVector.data() + velocityVector.size());
         
-        jointTrajectory.points[i].velocities = std::move(velocities);
+      //   // jointTrajectory.points[i].velocities = std::move(velocities);
+      //   jointTrajectory.points[i].velocities = std::vector(modelInfo_.actuatedDofNum, 0.0);
 
-        const auto effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
-          optimizedStates[i], optimizedInputs[i]);
+      //   const auto effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
+      //     optimizedStates[i], optimizedInputs[i]);
 
-        const std::vector<scalar_t> efforts(effortVector.data(), 
+      //   const std::vector<scalar_t> efforts(effortVector.data(), 
+      //     effortVector.data() + effortVector.size());
+
+      //   // jointTrajectory.points[i].effort = std::move(efforts);
+      //   jointTrajectory.points[i].effort = std::vector(modelInfo_.actuatedDofNum, 0.0);
+      // }
+
+      jointTrajectory.points.resize(1);
+
+      const auto positionVector = access_helper_functions::getJointPositions(
+        optimizedState, modelInfo_);
+
+      const auto velocityVector = access_helper_functions::getJointVelocities(
+        optimizedInput, modelInfo_);
+
+      const auto effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
+          optimizedState, optimizedInput);
+
+      const std::vector<scalar_t> positions(positionVector.data(), 
+        positionVector.data() + positionVector.size());
+
+      const std::vector<scalar_t> velocities(velocityVector.data(), 
+        velocityVector.data() + velocityVector.size());
+
+      const std::vector<scalar_t> efforts(effortVector.data(), 
           effortVector.data() + effortVector.size());
+        
+      jointTrajectory.points[0].positions = std::move(positions);
+      // jointTrajectory.points[0].velocities = std::move(velocities);
+      // jointTrajectory.points[0].effort = std::move(efforts);
+      jointTrajectory.points[0].velocities = std::vector(modelInfo_.actuatedDofNum, 0.0);
+      jointTrajectory.points[0].effort = std::vector(modelInfo_.actuatedDofNum, 0.0);
 
-        jointTrajectory.points[i].effort = std::move(efforts);
-      }
       mrtTimer_.endTimer();
 
       // Publish 
