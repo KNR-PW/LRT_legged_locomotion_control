@@ -128,11 +128,9 @@ namespace legged_locomotion_mpc_ros2
       ocs2::BufferedValue<ocs2::vector_t> jointVelocityEstimation_;
       std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
       
-      // Loopshaping interface and other helper objects
-      std::unique_ptr<LeggedLoopshapingInterface> loopshapingInterfacePtr_;
-      LeggedInterface* leggedInterfacePtr_;
+      // Interface and other helper objects
+      std::unique_ptr<LeggedInterface> leggedInterfacePtr_;
       LeggedReferenceManager* referenceManagerPtr_;
-      ocs2::LoopshapingDefinition* loopshapingDefinitionPtr_;
       
       // MPC and MRT
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
@@ -173,6 +171,8 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Time lastBaseTransformTime_;
       rclcpp::Time lastBaseTwistTime_;
       rclcpp::Time lastContactFlagsTime_;
+
+      ocs2::SystemObservation currentObservation_;
       
       // Maximum duration between robot state messages
       rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);

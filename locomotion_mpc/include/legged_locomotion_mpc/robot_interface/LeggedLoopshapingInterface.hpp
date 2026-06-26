@@ -59,7 +59,7 @@ namespace legged_locomotion_mpc
        * Gets the loopshaping disturbance synchronized module
        * @return shared pointer to the loopshaping disturbance synchronized module
        */
-      std::shared_ptr<ocs2::LoopshapingSynchronizedModule>  getSynchronizedModules();
+      std::shared_ptr<ocs2::LoopshapingSynchronizedModule> getSynchronizedModules();
 
     private:
       
