@@ -44,9 +44,9 @@ namespace legged_locomotion_mpc
       MultiEndEffectorKinematics&& kinematicsSolver): 
         modelInfo_(std::move(modelInfo)),
         kinematicsSolver_(std::move(kinematicsSolver)),
-        jointPositionUpperLimits_(std::move(kinematicsSolver_.getPinocchioModel().lowerPositionLimit)),
-        jointPositionLowerLimits_(std::move(kinematicsSolver_.getPinocchioModel().upperPositionLimit)),
-        jointVelocityLimits_(std::move(kinematicsSolver_.getPinocchioModel().velocityLimit))
+        jointPositionUpperLimits_(kinematicsSolver_.getPinocchioModel().lowerPositionLimit),
+        jointPositionLowerLimits_(kinematicsSolver_.getPinocchioModel().upperPositionLimit),
+        jointVelocityLimits_(kinematicsSolver_.getPinocchioModel().velocityLimit)
       {
         if(jointPositionUpperLimits_.size() != modelInfo_.actuatedDofNum)
         {
