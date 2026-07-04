@@ -114,7 +114,7 @@ class PinocchioFloatingBaseDynamics final
     PinocchioInterface* pinocchioInterfacePtr_;
     FloatingBaseModelPinocchioMapping mapping_;
     
-    pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>> fext_;
+    std::vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>> fext_;
  
  };
 

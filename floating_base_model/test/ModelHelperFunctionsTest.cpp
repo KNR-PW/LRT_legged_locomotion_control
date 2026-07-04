@@ -116,7 +116,7 @@ TEST(ModelHelperFunctions, GeneralizedTorques)
     pinocchio::forwardKinematics(modelTrue, dataTrue, q);
 
     pinocchio::Force zero_force(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
-    pinocchio::container::aligned_vector<pinocchio::Force> fext(model.njoints, zero_force);
+    std::vector<pinocchio::Force> fext(model.njoints, zero_force);
 
     const vector_t input = vector_t::Random(info.inputDim);
 

@@ -108,8 +108,8 @@ namespace floating_base_model
   : pinocchioInterfacePtr_(nullptr), floatingBaseModelInfo_(rhs.floatingBaseModelInfo_) {}
 
 
-// explicit template instantiation
-template class FloatingBaseModelPinocchioMappingTpl<ocs2::scalar_t>;
-template class FloatingBaseModelPinocchioMappingTpl<ocs2::ad_scalar_t>;
+  // explicit template instantiation
+  template class FloatingBaseModelPinocchioMappingTpl<ocs2::scalar_t>;
+  template class FloatingBaseModelPinocchioMappingTpl<ocs2::ad_scalar_t>;
 
 } // namespace floating_base_model

@@ -22,7 +22,7 @@
  */
 #include <pinocchio/fwd.hpp>
 #include <pinocchio/codegen/cppadcg.hpp>
-#include <pinocchio/spatial/log.hpp>
+#include <pinocchio/spatial.hpp>
 
 #include <legged_locomotion_mpc/cost/TrajectoryTrackingCost.hpp>
 

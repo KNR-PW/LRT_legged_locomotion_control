@@ -59,7 +59,7 @@ TEST(PinocchioFloatingBaseDynamicsTest, getValue)
     Force force;
     force.linear() = Eigen::Vector<ocs2::scalar_t, 3>::Zero();
     force.angular() = Eigen::Vector<ocs2::scalar_t, 3>::Zero();
-    pinocchio::container::aligned_vector<Force> fext(model.njoints, force);
+    std::vector<Force> fext(model.njoints, force);
 
     model_helper_functions::computeSpatialForces(interface, info, input, fext);
 

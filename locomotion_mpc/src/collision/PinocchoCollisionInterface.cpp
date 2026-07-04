@@ -187,8 +187,9 @@ namespace legged_locomotion_mpc
             const auto& frameToCenterPosition = frameToCenterPlacement.translation();
             const auto& centerToFrameRotation = frameToCenterPlacement.rotation();
             
-            const SphereApproximation sphereApproximation = SphereApproximation(*object.geometry, j, 
-              collisionSettings.maxExcesses[i], collisionSettings.shrinkRatio);
+            const SphereApproximation sphereApproximation = SphereApproximation(
+              *object.geometry, j, collisionSettings.maxExcesses[i], 
+              collisionSettings.shrinkRatio);
 
             const size_t objectSphereNumber = sphereApproximation.getNumSpheres();
             sphereNumber += objectSphereNumber;

@@ -35,7 +35,7 @@ namespace floating_base_model
     Force force;
     force.linear() = Eigen::Vector<ocs2::scalar_t, 3>::Zero();
     force.angular() = Eigen::Vector<ocs2::scalar_t, 3>::Zero();
-    pinocchio::container::aligned_vector<Force> fext(model.njoints, force);
+    std::vector<Force> fext(model.njoints, force);
     fext_ = fext;
   }
 

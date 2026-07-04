@@ -13,7 +13,7 @@ namespace floating_base_model
       const ocs2::PinocchioInterfaceTpl<SCALAR_T>& interface,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info,
       const Eigen::Matrix<SCALAR_T, Eigen::Dynamic, 1>& input,
-      pinocchio::container::aligned_vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
+      std::vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
     {
       const auto& model = interface.getModel();
       auto& data = interface.getData();
@@ -60,7 +60,7 @@ namespace floating_base_model
       ocs2::PinocchioInterfaceTpl<SCALAR_T>& interface,
       const Eigen::Matrix<SCALAR_T, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<SCALAR_T, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
+      const std::vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
     {
       const auto& model = interface.getModel();
       auto& data = interface.getData();
@@ -77,7 +77,7 @@ namespace floating_base_model
       const FloatingBaseModelInfoTpl<SCALAR_T>& info,
       const Eigen::Matrix<SCALAR_T, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<SCALAR_T, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
+      const std::vector<pinocchio::ForceTpl<SCALAR_T, 0>>& fext)
     {
       const auto& model = interface.getModel();
       auto& data = interface.getData();
@@ -157,39 +157,39 @@ namespace floating_base_model
       const ocs2::PinocchioInterfaceTpl<ocs2::scalar_t>& interface,
       const FloatingBaseModelInfoTpl<ocs2::scalar_t>& info,
       const Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>& input,
-      pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
+      std::vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
     
     template void computeSpatialForces(
       const ocs2::PinocchioInterfaceTpl<ocs2::ad_scalar_t>& interface,
       const FloatingBaseModelInfoTpl<ocs2::ad_scalar_t>& info,
       const Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1>& input,
-      pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
+      std::vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
 
     template Eigen::Matrix<ocs2::scalar_t, 6, 1> computeFloatingBaseGeneralizedTorques(
       ocs2::PinocchioInterfaceTpl<ocs2::scalar_t>& interface,
       const Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
+      const std::vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
 
     template Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> computeFloatingBaseGeneralizedTorques(
       ocs2::PinocchioInterfaceTpl<ocs2::ad_scalar_t>& interface,
       const Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
+      const std::vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
     
     template Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1> computeActuatedJointGeneralizedTorques(
       ocs2::PinocchioInterfaceTpl<ocs2::scalar_t>& interface,
       const FloatingBaseModelInfoTpl<ocs2::scalar_t>& info,
       const Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
+      const std::vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>>& fext);
     
     template Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1> computeActuatedJointGeneralizedTorques(
       ocs2::PinocchioInterfaceTpl<ocs2::ad_scalar_t>& interface,
       const FloatingBaseModelInfoTpl<ocs2::ad_scalar_t>& info,
       const Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1>& q,
       const Eigen::Matrix<ocs2::ad_scalar_t, Eigen::Dynamic, 1>& v,
-      const pinocchio::container::aligned_vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
+      const std::vector<pinocchio::ForceTpl<ocs2::ad_scalar_t, 0>>& fext);
     
     template Eigen::Matrix<ocs2::scalar_t, 6, 6> computeFloatingBaseLockedInertia(
       ocs2::PinocchioInterfaceTpl<ocs2::scalar_t>& interface);

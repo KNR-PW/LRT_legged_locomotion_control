@@ -21,8 +21,7 @@
 #define __FLOATING_BASE_MODEL_INFO_HPP__
 
 #include <pinocchio/fwd.hpp>
-#include <pinocchio/multibody/data.hpp>
-#include <pinocchio/multibody/model.hpp>
+#include <pinocchio/multibody.hpp>
 #include <pinocchio/algorithm/center-of-mass.hpp>
 
 #include <ostream>
