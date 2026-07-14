@@ -68,10 +68,10 @@ namespace floating_base_model
     const auto Mb = model_helper_functions::computeFloatingBaseLockedInertia(interface);
     model_helper_functions::computeSpatialForces(interface, info, input, fext_);
 
-    const Eigen::Matrix<ocs2::scalar_t, 6, 1> tau = model_helper_functions::computeFloatingBaseGeneralizedTorques(interface, q, v, fext_) + disturbance;
+    const Eigen::Matrix<ocs2::scalar_t, 6, 1> tau = -model_helper_functions::computeFloatingBaseGeneralizedTorques(interface, q, v, fext_) + disturbance;
     
     auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
-
+    
     bodyVelocityDerivative.block<3, 1>(0, 0) += baseAngularVelocity.cross(baseLinearVelocity);
     
     ocs2::vector_t dynamics(info.stateDim);

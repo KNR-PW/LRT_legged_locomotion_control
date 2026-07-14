@@ -49,7 +49,6 @@ namespace floating_base_model
         force.angular() = worldToJointRotation * wrenchWorldFrame.template block<3,1>(3, 0) + jointFramePlacement.cross(force.linear());
         fext[parentJointIndex] = force;
       }  
-
     }
 
     /******************************************************************************************************/

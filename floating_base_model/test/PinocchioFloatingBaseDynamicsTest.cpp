@@ -18,6 +18,7 @@ using namespace access_helper_functions;
 
 static constexpr ocs2::scalar_t tolerance = 1e-6;
 static constexpr size_t numTests = 20;
+static constexpr ocs2::scalar_t gravityValue = -9.81;
 
 
 ocs2::PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(meldogWithBaseLinkUrdfFile, baseLink);
@@ -67,7 +68,7 @@ TEST(PinocchioFloatingBaseDynamicsTest, getValue)
     baseInertiaMatrix.triangularView<Eigen::StrictlyLower>() = baseInertiaMatrix.transpose().triangularView<Eigen::StrictlyLower>();
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseCoriollisVector = pinocchio::computeCoriolisMatrix(modelTrue, dataTrue, q, v).block(0, 0, 6, model.nv) * v;
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseGravityExternalForcesVector = pinocchio::computeStaticTorque(modelTrue, dataTrue, q, fext).block<6, 1>(0, 0);
-    const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseTorque = baseCoriollisVector + baseGravityExternalForcesVector + disturbance;
+    const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseTorque = -1.0 * (baseCoriollisVector + baseGravityExternalForcesVector) + disturbance;
     
     Eigen::Matrix<ocs2::scalar_t, 6, 1> baseAccelerationTrue = baseInertiaMatrix.ldlt().solve(baseTorque);
     const Eigen::Matrix<ocs2::scalar_t, 3, 1> baseLinearVelocity = v.block<3, 1>(0, 0);
@@ -146,4 +147,24 @@ TEST(PinocchioFloatingBaseDynamicsTest, getLinearApproximation)
 
   EXPECT_TRUE(valueAD != valueAD2);
 
+};
+
+TEST(PinocchioFloatingBaseDynamicsTest, falling)
+{
+  ocs2::vector_t state = ocs2::vector_t::Zero(Meldog::STATE_DIM);
+  ocs2::vector_t input = ocs2::vector_t::Zero(Meldog::INPUT_DIM);
+  Eigen::Matrix<ocs2::scalar_t, 6, 1> disturbance = Eigen::Matrix<ocs2::scalar_t, 6, 1>::Zero();
+
+  const auto valueAD = dynamicsAD.getValue(0, state, input, disturbance);
+  const auto linearApproxAD = dynamicsAD.getLinearApproximation(0, state, input, disturbance);
+  
+  EXPECT_TRUE(linearApproxAD.f.rows() == Meldog::STATE_DIM);
+  EXPECT_TRUE(linearApproxAD.dfdx.rows() == Meldog::STATE_DIM);
+  EXPECT_TRUE(linearApproxAD.dfdx.cols() == Meldog::STATE_DIM);
+  EXPECT_TRUE(linearApproxAD.dfdu.rows() == Meldog::STATE_DIM);
+  EXPECT_TRUE(linearApproxAD.dfdu.cols() == Meldog::INPUT_DIM);
+
+  // Model is falling with acceleration -9.81 in z direction
+  EXPECT_TRUE(std::abs(valueAD.norm() - std::abs(gravityValue)) < tolerance);
+  EXPECT_TRUE(std::abs(valueAD(2) - gravityValue) < tolerance);
 };

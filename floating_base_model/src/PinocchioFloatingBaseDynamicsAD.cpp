@@ -23,11 +23,11 @@ namespace floating_base_model
     FloatingBaseModelPinocchioMappingCppAd mappingCppAd(info.toCppAd());
     mappingCppAd.setPinocchioInterface(pinocchioInterfaceCppAd);
     
-    auto systemFlowMapFunc = [&](const ocs2::ad_vector_t& x, Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> params, ocs2::ad_vector_t& y) 
+    auto systemFlowMapFunc = [&](const ocs2::ad_vector_t& x, const ocs2::ad_vector_t& params, ocs2::ad_vector_t& y) 
     {
       ocs2::ad_vector_t state = x.head(info.stateDim);
       ocs2::ad_vector_t input = x.tail(info.inputDim);
-      Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> disturbance = params;
+      Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> disturbance = params.head(6);
       y = getValueCppAd(pinocchioInterfaceCppAd, mappingCppAd, state, input, disturbance);
     };
   
@@ -86,7 +86,7 @@ namespace floating_base_model
     std::vector<Force> fext(model.njoints, force);
 
     model_helper_functions::computeSpatialForces(pinocchioInterfaceCppAd, info, input, fext);
-    const Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> tau = model_helper_functions::computeFloatingBaseGeneralizedTorques(pinocchioInterfaceCppAd, q, v, fext) + disturbance;
+    const Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> tau = -model_helper_functions::computeFloatingBaseGeneralizedTorques(pinocchioInterfaceCppAd, q, v, fext) + disturbance;
     
     auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
 
