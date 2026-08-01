@@ -19,6 +19,8 @@
 
 #include <tf2_eigen/tf2_eigen.hpp>
 
+#include <floating_base_model/PinocchioFloatingBaseDynamics.hpp>
+
 namespace legged_locomotion_mpc_ros2
 {
   using namespace ocs2;
@@ -48,6 +50,7 @@ namespace legged_locomotion_mpc_ros2
     lastContactFlagsTime_ = this->get_clock()->now();
 
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller started in unconfigured state!");
+    i_ = 0;
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
@@ -78,7 +81,7 @@ namespace legged_locomotion_mpc_ros2
     for(size_t i = modelSettings_.endEffectorThreeDofNames.size();
       i < modelSettings_.endEffectorThreeDofNames.size() + modelSettings_.endEffectorSixDofNames.size(); ++i)
     {
-      contactFrameNameIndexMap_[modelSettings_.endEffectorThreeDofNames[
+      contactFrameNameIndexMap_[modelSettings_.endEffectorSixDofNames[
         i - modelSettings_.endEffectorThreeDofNames.size()]] = i;
     }
 
@@ -87,6 +90,10 @@ namespace legged_locomotion_mpc_ros2
       modelSettings_.baseLinkName);
     modelInfo_ = createFloatingBaseModelInfo(interface, 
       modelSettings_.endEffectorThreeDofNames, modelSettings_.endEffectorSixDofNames);
+
+    // Resize current observation
+    currentObservation_.state = vector_t::Zero(modelInfo_.stateDim);
+    currentObservation_.input = vector_t::Zero(modelInfo_.inputDim);
 
     const auto model = interface.getModel();
 
@@ -123,24 +130,31 @@ namespace legged_locomotion_mpc_ros2
     commandTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       twistTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedMpcController::updateCommand, this, std::placeholders::_1));
+
+    rclcpp::CallbackGroup::SharedPtr cb_group_not_executed = this->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive, false);
+    auto subscription_options = rclcpp::SubscriptionOptions();
+    subscription_options.callback_group = cb_group_not_executed;
+    rclcpp::QoS qos(rclcpp::KeepLast(1));
+    qos = qos.best_effort();
     
     // Joint states subscriber
     const std::string jointSatesTopic = "/joint_states";
     jointStateSubscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
-      jointSatesTopic, QoS(1).best_effort().keep_last(1), 
-      std::bind(&LeggedMpcController::updateJointStates, this, std::placeholders::_1));
+      jointSatesTopic, qos, 
+      std::bind(&LeggedMpcController::updateJointStates, this, std::placeholders::_1), subscription_options);
     
     // Base pose subscriber
     const std::string baseTransformTopic = "/base_transform";
     baseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
-      baseTransformTopic, QoS(1).best_effort().keep_last(1), 
-      std::bind(&LeggedMpcController::updateBaseTransform, this, std::placeholders::_1));
+      baseTransformTopic, qos, 
+      std::bind(&LeggedMpcController::updateBaseTransform, this, std::placeholders::_1), subscription_options);
 
-    // Base twist (actual) subscriber
+    // Base twist subscriber
     const std::string baseTwistTopic = "/base_twist";
     baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
-      baseTwistTopic, QoS(1).best_effort().keep_last(1), 
-      std::bind(&LeggedMpcController::updateBaseTwist, this, std::placeholders::_1)); 
+      baseTwistTopic, qos, 
+      std::bind(&LeggedMpcController::updateBaseTwist, this, std::placeholders::_1), subscription_options); 
     
     // Contact flags subscriber
     const std::string contactFlagsTopic = "/contact_flags";
@@ -177,21 +191,11 @@ namespace legged_locomotion_mpc_ros2
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       jointTrajectoryTopic, SystemDefaultsQoS());
 
-    /**
-     * Create timer for joint trajectory commands
-     */
+    referenceJointPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
+      "reference_joint_states", SystemDefaultsQoS());
 
-    // Get duration 
-    const auto mpcSettings = mpc::loadSettings(
-      configDirectoryPath + "/task.info", "mpc", false);
-    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
-
-    mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
-
-    // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
-    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
-      std::bind(&LeggedMpcController::sendJointTrajectory, this));
+    optimizedJointPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
+      "optimized_joint_states", SystemDefaultsQoS());
 
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
@@ -214,6 +218,23 @@ namespace legged_locomotion_mpc_ros2
     mpcTimer_.reset();
     mrtTimer_.reset();
     controllerRunning_ = true;
+
+    /**
+     * Create timer for joint trajectory commands
+     */
+
+    // Get duration 
+    const auto mpcSettings = leggedInterfacePtr_->mpcSettings();
+    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+
+    mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
+
+    // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
+    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
+      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
+      std::bind(&LeggedMpcController::sendJointTrajectory, this));
+
+    
     RCLCPP_INFO(this->get_logger(), "Legged MPC Controller activated successfully!");
     RCLCPP_INFO(this->get_logger(), "MPC/MRT loop activated!");
 
@@ -252,57 +273,45 @@ namespace legged_locomotion_mpc_ros2
     // const std::string loopshapingFilePath = configDirectoryPath + "/loopshaping.info";
     const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
 
-    vector_t initialSystemState = vector_t(modelInfo_.stateDim);
-
     // Get initial system state
-    if(baseTransformEstimation_.updateFromBuffer() && 
-       baseTwistEstimation_.updateFromBuffer() && 
-       jointPositionEstimation_.updateFromBuffer())
-    {
-      const vector6_t baseTransform = baseTransformEstimation_.get();
-      const vector6_t baseTwist = baseTwistEstimation_.get();
-      const vector_t jointPositions = jointPositionEstimation_.get();
+    // if(baseTransformEstimation_.updateFromBuffer() && 
+    //    baseTwistEstimation_.updateFromBuffer() && 
+    //    jointPositionEstimation_.updateFromBuffer())
+    // {
+    //   const vector6_t baseTransform = baseTransformEstimation_.get();
+    //   const vector6_t baseTwist = baseTwistEstimation_.get();
+    //   const vector_t jointPositions = jointPositionEstimation_.get();
 
-      // std::stringstream ss;
-      // ss << "Init state: " << "\n";
-      // ss << "Base position: " << baseTransform.transpose() << "\n";
-      // ss << "Base velocity: " << baseTwist.transpose() << "\n";
-      // ss << "Joint positions: " << jointPositions.transpose() << "\n";
-
-      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
-
-      access_helper_functions::getBasePose(initialSystemState, 
-        modelInfo_) = baseTransform;
+    //   access_helper_functions::getBasePose(initialSystemState, 
+    //     modelInfo_) = baseTransform;
       
-      access_helper_functions::getBaseVelocity(initialSystemState, 
-        modelInfo_) = baseTwist;
+    //   access_helper_functions::getBaseVelocity(initialSystemState, 
+    //     modelInfo_) = baseTwist;
 
-      access_helper_functions::getJointPositions(initialSystemState, 
-        modelInfo_) = jointPositions;
-    }
-    else
-    {
-      const std::string jointStatesTopic = std::string(jointStateSubscriber_->get_topic_name());
-      const std::string baseTransformTopic = std::string(baseTransformSubscriber_->get_topic_name());
-      const std::string baseTwistTopic = std::string(baseTwistSubscriber_->get_topic_name());
+    //   access_helper_functions::getJointPositions(initialSystemState, 
+    //     modelInfo_) = jointPositions;
+    // }
+    // else
+    // {
+    //   const std::string jointStatesTopic = std::string(jointStateSubscriber_->get_topic_name());
+    //   const std::string baseTransformTopic = std::string(baseTransformSubscriber_->get_topic_name());
+    //   const std::string baseTwistTopic = std::string(baseTwistSubscriber_->get_topic_name());
       
-      std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + baseTransformTopic + " or " + baseTwistTopic + " is not active!";
-      throw std::runtime_error(errorMessage);
-    }
+    //   std::string errorMessage = "One of topics: " + jointStatesTopic + ", " + baseTransformTopic + " or " + baseTwistTopic + " is not active!";
+    //   throw std::runtime_error(errorMessage);
+    // }
+
+    updateCurrentObservation();
+
+    vector_t initialSystemState = currentObservation_.state;
 
     // Make plane terrain if terrain from subscriber is not available
     if(!terrainModelPtr_)
-    {
-      const vector3_t basePosition = access_helper_functions::getBasePosition(
-        initialSystemState, modelInfo_);
-
-      const vector3_t baseEulerAngles = access_helper_functions::getBaseOrientationZyx(
-        initialSystemState, modelInfo_);
-
-      const auto basePlannerSettings = planners::loadBasePlannerStaticSettings(
-        modelFilePath, "base_planner_static_settings", false);
+    {      
+      RCLCPP_WARN(this->get_logger(), 
+        "Did not get any segmented plane terrain, using plane terrain with position [0,0,0] and rotation [0,0,0]!");
       
-      const TerrainPlane initalPlane(vector3_t::Zero(), matrix3_t::Identity());
+        const TerrainPlane initalPlane(vector3_t::Zero(), matrix3_t::Identity());
 
       terrainModelPtr_ = 
         std::make_unique<PlanarTerrainModel>(initalPlane, modelSettings_.worldLinkName);
@@ -312,6 +321,7 @@ namespace legged_locomotion_mpc_ros2
 
     // Initialize loopshaping legged interface, 
     // legged interface and reference manager pointers
+    RCLCPP_WARN(this->get_logger(), "0");
     leggedInterfacePtr_ = std::make_unique<LeggedInterface>(
       initialTime, initialSystemState, std::move(terrainModelPtr_), taskFilePath, 
       modelFilePath, urdfFilePath);
@@ -322,7 +332,8 @@ namespace legged_locomotion_mpc_ros2
 
     const auto& optimalProblem = leggedInterfacePtr_->getOptimalControlProblem();
     const auto& initializer = leggedInterfacePtr_->getInitializer();
-    
+
+    RCLCPP_WARN(this->get_logger(), "1");
     // Make MPC 
     if(modelSettings_.algorithm == "DDP")
     {
@@ -338,20 +349,25 @@ namespace legged_locomotion_mpc_ros2
         optimalProblem, initializer);
     }
 
+    RCLCPP_WARN(this->get_logger(), "2");
+
+
     mpcPtr_->getSolverPtr()->setReferenceManager(
       leggedInterfacePtr_->getReferenceManagerPtr());
     mpcPtr_->getSolverPtr()->setSynchronizedModules(
       leggedInterfacePtr_->getSynchronizedModulePtrs());
 
     // Make rollout
-    const auto& rollout = leggedInterfacePtr_->getRollout();
+    auto& rollout = leggedInterfacePtr_->getRollout();
     rolloutPtr_.reset(rollout.clone());
+
+    RCLCPP_WARN(this->get_logger(), "3");
     
     // Make MPC MRT interface
     mpcMrtPtr_ = std::make_unique<MPC_MRT_Interface>(*mpcPtr_);
 
     const auto& modelInfo = leggedInterfacePtr_->floatingBaseModelInfo();
-
+    
     const size_t endEffectorNum = modelInfo.numThreeDofContacts 
       + modelInfo.numSixDofContacts;
     const size_t standingMode = ((0x01 << (endEffectorNum)) - 1);
@@ -364,10 +380,80 @@ namespace legged_locomotion_mpc_ros2
     const vector_t initialInput = weightCompensator.getInput(initalSystemState, 
       standingFlags);
 
+    RCLCPP_WARN(this->get_logger(), "4");
+
     // Get observation of loopshaping model
     currentObservation_.time = this->get_clock()->now().seconds();
     currentObservation_.state = leggedInterfacePtr_->getInitialState();
     currentObservation_.input = initialInput;
+
+    const auto& dynamics = optimalProblem.dynamicsPtr;
+
+    PinocchioFloatingBaseDynamics classicDynamics(modelInfo);
+
+    auto pinocchioInterfaceCopy = leggedInterfacePtr_->pinocchioInterface();
+
+    const auto& model = pinocchioInterfaceCopy.getModel();
+    auto& data = pinocchioInterfaceCopy.getData();
+
+    FloatingBaseModelPinocchioMapping mapping(modelInfo_);
+    mapping.setPinocchioInterface(pinocchioInterfaceCopy);
+
+    const auto q = mapping.getPinocchioJointPosition(currentObservation_.state);
+
+    pinocchio::centerOfMass(model, data, q);
+
+    const auto& kinematics = leggedInterfacePtr_->forwardKinematics();
+
+    const auto positions = kinematics.getPosition(currentObservation_.state);
+
+    classicDynamics.setPinocchioInterface(pinocchioInterfaceCopy);
+
+    vector3_t momentOfCenterMass = vector3_t::Zero();
+
+    // for(size_t i = 0; i < 1; i++)
+    // {
+    //   std::stringstream ss;
+    //   ss << "**********ACTUAL STATE**********\n";
+    //   ss << "Robot COM position: " << data.com[0].transpose() << "\n";
+    //   ss << "Base linear velocity: " << currentObservation_.state.block<3, 1>(0, 0).transpose() << "\n";
+    //   ss << "Base angular velocity: " << currentObservation_.state.block<3, 1>(3, 0).transpose() << "\n";
+    //   ss << "Base position: " << currentObservation_.state.block<3, 1>(6, 0).transpose() << "\n";
+    //   ss << "Base euler: " << currentObservation_.state.block<3, 1>(9, 0).transpose() << "\n";
+    //   ss << "Joint positions: " << currentObservation_.state.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+    //   for(size_t i = 0; i < 4; ++i)
+    //   {
+    //     ss << "Position " << i << ": " << positions[i].transpose() << "\n";
+    //     ss << "Force " << i << ": " << currentObservation_.input.block<3, 1>(3 * i, 0).transpose() << "\n";
+
+    //     momentOfCenterMass += (positions[i] - data.com[0]).cross(currentObservation_.input.block<3, 1>(3 * i, 0));
+    //   }
+    //   ss << "Joint velocity: " << currentObservation_.input.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+    //   ss << "Moment of COM: " << momentOfCenterMass.transpose() << "\n";
+    //   const auto acceleration = classicDynamics.getValue(currentObservation_.time, 
+    //     currentObservation_.state, currentObservation_.input, vector6_t::Zero());
+
+    //   ss << "Dynamics: " << acceleration.norm() << "\n";
+    //   ss << "Dynamics: " << acceleration.transpose() << "\n";
+
+    //   RCLCPP_INFO(get_logger(), "%s", ss.str().c_str());
+    // }
+
+    const auto trajectory = referenceManagerPtr_->getTargetTrajectories();
+
+    const vector_t referenceState = trajectory.getDesiredState(currentObservation_.time);
+    const vector_t referenceInput = trajectory.getDesiredInput(currentObservation_.time);
+
+    // {
+    //   std::stringstream ss;
+    //   ss << "reference vs actual state norm: " << (currentObservation_.state - referenceState).norm() << "\n";
+    //   ss << "reference vs actual input norm: " << (currentObservation_.input - referenceInput).norm() << "\n";
+    //   RCLCPP_INFO(get_logger(), "%s", ss.str().c_str());
+    // }
+
+
+
+    // rclcpp::shutdown();
 
     // Wait for the first policy
     mpcMrtPtr_->setCurrentObservation(currentObservation_);
@@ -388,81 +474,176 @@ namespace legged_locomotion_mpc_ros2
     }
     
     mpcMrtPtr_->initRollout(&leggedInterfacePtr_->getRollout());
-
-    // Make one iteration to get current observation after initialization
-    mpcMrtPtr_->updatePolicy();
-    currentObservation_ = getCurrentObservation();
-
-    {
-      const vector_t newState = currentObservation_.state;
-
-      const vector6_t baseTransform = access_helper_functions::getBasePose(newState, 
-        modelInfo_);
-      const vector6_t baseTwist = access_helper_functions::getBaseVelocity(newState, 
-        modelInfo_);
-      const vector_t jointPositions = access_helper_functions::getJointPositions(newState, 
-        modelInfo_);
-
-      // std::stringstream ss;
-      // ss << "New init state: " << "\n";
-      // ss << "Base position: " << baseTransform.transpose() << "\n";
-      // ss << "Base velocity: " << baseTwist.transpose() << "\n";
-      // ss << "Joint positions: " << jointPositions.transpose() << "\n";
-      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
-    }
-
-    mpcMrtPtr_->setCurrentObservation(currentObservation_);
-    mpcMrtPtr_->advanceMpc();
   }
 
-  SystemObservation LeggedMpcController::getCurrentObservation()
+  void LeggedMpcController::updateCurrentObservation()
   {
-    // Current loopshaping observation
-    SystemObservation currentObservation;
-    currentObservation.time = this->get_clock()->now().seconds();
-    currentObservation.state = vector_t(modelInfo_.stateDim);
-
-    if(!baseTransformEstimation_.updateFromBuffer())
+    geometry_msgs::msg::TransformStamped baseTransform;
+    rclcpp::MessageInfo msgInfo;
+    if(baseTransformSubscriber_->take(baseTransform, msgInfo)) 
     {
-      RCLCPP_WARN(this->get_logger(), 
-        "Base pose not updated in current MPC iteration!");
+      // Check if message has good base link in header
+      if(baseTransform.header.frame_id != modelSettings_.worldLinkName ||
+         baseTransform.child_frame_id != modelSettings_.baseLinkName)
+      {
+        RCLCPP_ERROR(this->get_logger(), 
+          "Base transform has wrong base or world frame ID!");
+        return;
+      }
+
+      if(this->get_clock()->now() - lastBaseTransformTime_ > maxDurationBetweenMessages_)
+      {
+        RCLCPP_WARN(this->get_logger(), 
+          "Time between two TransformStamped messages was longer than maximum duration!");
+      }
+
+      lastBaseTransformTime_ = baseTransform.header.stamp;
+
+      vector6_t currentBaseTransform;
+
+      currentBaseTransform(0) = baseTransform.transform.translation.x;
+      currentBaseTransform(1) = baseTransform.transform.translation.y;
+      currentBaseTransform(2) = baseTransform.transform.translation.z;
+
+      Eigen::Quaterniond quaterion;
+
+      tf2::fromMsg(baseTransform.transform.rotation, quaterion);
+
+      const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
+
+      const vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
+        rotationMatrix);
+
+      currentBaseTransform(3) = eulerAngles(0);
+      currentBaseTransform(4) = eulerAngles(1);
+      currentBaseTransform(5) = eulerAngles(2);
+
+      // std::stringstream ss;
+      // ss << "Base pose: " << currentBaseTransform.transpose() << "\n";
+      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+
+      access_helper_functions::getBasePose(
+        currentObservation_.state, modelInfo_) = currentBaseTransform;
     }
 
-    if(!baseTwistEstimation_.updateFromBuffer())
+    geometry_msgs::msg::TwistStamped baseTwist;
+    if(baseTwistSubscriber_->take(baseTwist, msgInfo)) 
     {
-      RCLCPP_WARN(this->get_logger(), 
-        "Base twist not updated in current MPC iteration!");
+      // Check if message has good base link in header
+      if(baseTwist.header.frame_id != modelSettings_.baseLinkName)
+      {
+        RCLCPP_ERROR(this->get_logger(), 
+          "Base twist has wrong base frame ID!");
+        return;
+      }
+
+      if(this->get_clock()->now() - lastBaseTwistTime_ > maxDurationBetweenMessages_)
+      {
+        RCLCPP_WARN(this->get_logger(), 
+          "Time between two TwistStamped messages was longer than maximum duration!");
+      }
+
+      lastBaseTwistTime_ = baseTwist.header.stamp;
+
+      vector6_t currentBaseTwist;
+
+      currentBaseTwist(0) = baseTwist.twist.linear.x;
+      currentBaseTwist(1) = baseTwist.twist.linear.y;
+      currentBaseTwist(2) = baseTwist.twist.linear.z;
+      currentBaseTwist(3) = baseTwist.twist.angular.x;
+      currentBaseTwist(4) = baseTwist.twist.angular.y;
+      currentBaseTwist(5) = baseTwist.twist.angular.z;
+
+      // std::stringstream ss;
+      // ss << "Base tiwst: " << currentBaseTwist.transpose() << "\n";
+      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+
+      access_helper_functions::getBaseVelocity(
+        currentObservation_.state, modelInfo_) = currentBaseTwist;
     }
 
-    if(!jointPositionEstimation_.updateFromBuffer())
+    sensor_msgs::msg::JointState jointStates;
+    if(jointStateSubscriber_->take(jointStates, msgInfo)) 
     {
-      RCLCPP_WARN(this->get_logger(), 
-        "Joint states not updated in current MPC iteration!");
+      // Check if message has same amount of data
+      if(jointStates.name.size() != jointStates.position.size() || 
+         jointStates.name.size() != jointStates.velocity.size() ||
+         jointStates.name.size() != modelInfo_.actuatedDofNum)
+      {
+        RCLCPP_ERROR(this->get_logger(), 
+          "Ignored an invalid JointState message");
+        return;
+      }
+
+      if(this->get_clock()->now() - lastJointStateTime_ > maxDurationBetweenMessages_)
+      {
+        RCLCPP_WARN(this->get_logger(), 
+          "Time between two JointState messages was longer than maximum duration!");
+      }
+
+      lastJointStateTime_ = jointStates.header.stamp;
+
+      vector_t jointPositions = vector_t(modelInfo_.actuatedDofNum);
+      vector_t jointVelocities = vector_t(modelInfo_.actuatedDofNum);
+
+      for(size_t i = 0; i < jointStates.name.size(); ++i)
+      {
+        const size_t currentIndex = jointNameIndexMap_.at(jointStates.name[i]);
+        jointPositions[currentIndex] = jointStates.position[i];
+        jointVelocities[currentIndex] = jointStates.velocity[i];
+      }
+
+      // std::stringstream ss;
+      // ss << "Joint positions: " << jointPositions.transpose() << "\n";
+      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+
+      access_helper_functions::getJointPositions(currentObservation_.state, 
+        modelInfo_) = jointPositions;
     }
 
-    access_helper_functions::getBasePose(
-      currentObservation.state, modelInfo_) = baseTransformEstimation_.get();
+    currentObservation_.time = std::max(std::max(lastJointStateTime_.seconds(), 
+      lastBaseTwistTime_.seconds()), lastBaseTransformTime_.seconds());
 
-    access_helper_functions::getBaseVelocity(
-      currentObservation.state, modelInfo_) = baseTwistEstimation_.get();
+    // if(baseTransformEstimation_.updateFromBuffer())
+    // {
+    //   access_helper_functions::getBasePose(
+    //     currentObservation_.state, modelInfo_) = baseTransformEstimation_.get();
+    // }
+    // else
+    // {
+    //   RCLCPP_WARN(this->get_logger(), 
+    //     "Base pose not updated in current MPC iteration!");
+    // }
 
-    access_helper_functions::getJointPositions(currentObservation.state, 
-      modelInfo_) = jointPositionEstimation_.get();
+    // if(baseTwistEstimation_.updateFromBuffer())
+    // {
+    //   access_helper_functions::getBaseVelocity(
+    //     currentObservation_.state, modelInfo_) = baseTwistEstimation_.get();
+    // }
+    // else
+    // {
+    //   RCLCPP_WARN(this->get_logger(), 
+    //     "Base twist not updated in current MPC iteration!");
+    // }
+    
+    // if(jointPositionEstimation_.updateFromBuffer())
+    // {
+    //   access_helper_functions::getJointPositions(currentObservation_.state, 
+    //     modelInfo_) = jointPositionEstimation_.get();
+    // }
+    // else
+    // {
+    //   RCLCPP_WARN(this->get_logger(), 
+    //     "Joint states not updated in current MPC iteration!");
+    // }
 
-    currentObservation.input = vector_t::Zero(modelInfo_.inputDim);
-
-    // currentObservation.input = mpcMrtPtr_->getPolicy().inputTrajectory_[queryIndex];
-
-    // const auto systemInput = loopshapingDefinitionPtr_->getSystemInput(currentObservation.state, currentObservation.input);
-
-    // std::stringstream ss;
-
-    // ss << "Current observation: " << "\n";
-    // ss << "State: " << currentObservation.state.head(modelInfo_.stateDim).transpose() << "\n";
-    // // ss << "Filter state: " << currentObservation.state.tail(modelInfo_.stateDim).transpose() << std::endl;
-    // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
-    // rclcpp::shutdown();
-    return currentObservation;
+    // {
+    //   std::stringstream ss;
+    //   ss << "Base position: " << baseTransformEstimation_.get().transpose() << "\n";
+    //   ss << "Base velocity: " << baseTwistEstimation_.get().transpose() << "\n";
+    //   ss << "Joint positions: " << jointPositionEstimation_.get().transpose() << "\n";
+    //   RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+    // }
   }
 
   void LeggedMpcController::runMpc()
@@ -521,7 +702,6 @@ namespace legged_locomotion_mpc_ros2
   void LeggedMpcController::updateJointStates(
     const sensor_msgs::msg::JointState::ConstSharedPtr jointStates)
   {
-    // RCLCPP_INFO(this->get_logger(), "AAAAAAAA!");
     // Check if message has same amount of data
     if(jointStates->name.size() != jointStates->position.size() || 
        jointStates->name.size() != jointStates->velocity.size() ||
@@ -545,7 +725,7 @@ namespace legged_locomotion_mpc_ros2
     
     for(size_t i = 0; i < jointStates->name.size(); ++i)
     {
-      const size_t currentIndex = jointNameIndexMap_[jointStates->name[i]];
+      const size_t currentIndex = jointNameIndexMap_.at(jointStates->name[i]);
       jointPositions[currentIndex] = jointStates->position[i];
       jointVelocities[currentIndex] = jointStates->velocity[i];
     }
@@ -775,27 +955,11 @@ namespace legged_locomotion_mpc_ros2
     if(mpcMrtPtr_ && controllerRunning_)
     {
       RCLCPP_INFO(this->get_logger(), "MRT iteration starting at : %f", this->get_clock()->now().seconds());
+      RCLCPP_INFO(this->get_logger(), "Observation at time : %f", currentObservation_.time);
+      
       mrtTimer_.startTimer();
 
-      currentObservation_ = getCurrentObservation();
-
-      {
-      const vector_t newState = currentObservation_.state;
-
-      const vector6_t baseTransform = access_helper_functions::getBasePose(newState, 
-        modelInfo_);
-      const vector6_t baseTwist = access_helper_functions::getBaseVelocity(newState, 
-        modelInfo_);
-      const vector_t jointPositions = access_helper_functions::getJointPositions(newState, 
-        modelInfo_);
-
-      // std::stringstream ss;
-      // ss << "New state: " << "\n";
-      // ss << "Base position: " << baseTransform.transpose() << "\n";
-      // ss << "Base velocity: " << baseTwist.transpose() << "\n";
-      // ss << "Joint positions: " << jointPositions.transpose() << "\n";
-      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
-    } 
+      updateCurrentObservation();
 
       mpcMrtPtr_->setCurrentObservation(currentObservation_);
 
@@ -805,17 +969,6 @@ namespace legged_locomotion_mpc_ros2
 
       const auto trajectory = referenceManagerPtr_->getTargetTrajectories();
 
-      const vector3_t basePosition = trajectory.stateTrajectory.front().block<3, 1>(6, 0);
-      const vector3_t currentBase = currentObservation_.state.block<3, 1>(6, 0);
-
-      // std::stringstream ss;
-      // ss << "Base optimal position: " << basePosition.transpose() << "\n";
-      // ss << "Base current position: " << currentBase.transpose() << "\n";
-
-      // RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
-      
-      // const scalar_t currentTime = this->get_clock()->now().seconds();
-
       size_t plannedMode = 0;  
       vector_t optimizedState;
       vector_t optimizedInput;
@@ -824,6 +977,88 @@ namespace legged_locomotion_mpc_ros2
         currentState, optimizedState, optimizedInput, plannedMode);
 
       currentObservation_.input = optimizedInput;
+
+      // {
+      //   const vector6_t basePose = access_helper_functions::getBasePose(currentObservation_.state, 
+      //     modelInfo_);
+      
+      //   const vector6_t baseTwist = access_helper_functions::getBaseVelocity(currentObservation_.state, 
+      //     modelInfo_);
+
+      //   const vector_t jointPos = access_helper_functions::getJointPositions(currentObservation_.state, 
+      //     modelInfo_);
+
+      //   const vector_t jointVel = access_helper_functions::getJointVelocities(currentObservation_.input, 
+      //     modelInfo_);
+
+      //   std::stringstream ss;
+      //   ss << "Optimized Base position: " << basePose.transpose() << "\n";
+      //   ss << "Optimized Base velocity: " << baseTwist.transpose() << "\n";
+      //   ss << "Optimized Joint positions: " << jointPos.transpose() << "\n";
+      //   ss << "Optimized Joint velocities: " << jointVel.transpose() << "\n";
+      //   RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+      // }
+
+      const auto& modelInfo = leggedInterfacePtr_->floatingBaseModelInfo();
+
+    PinocchioFloatingBaseDynamics classicDynamics(modelInfo);
+
+    auto pinocchioInterfaceCopy = leggedInterfacePtr_->pinocchioInterface();
+
+    classicDynamics.setPinocchioInterface(pinocchioInterfaceCopy);
+
+    // for(size_t i = 0; i < 1; i++)
+    // {
+    //   std::stringstream ss;
+    //   ss << "**********ACTUAL STATE**********\n";
+    //   ss << "Base linear velocity: " << currentObservation_.state.block<3, 1>(0, 0).transpose() << "\n";
+    //   ss << "Base angular velocity: " << currentObservation_.state.block<3, 1>(3, 0).transpose() << "\n";
+    //   ss << "Base position: " << currentObservation_.state.block<3, 1>(6, 0).transpose() << "\n";
+    //   ss << "Base euler: " << currentObservation_.state.block<3, 1>(9, 0).transpose() << "\n";
+    //   ss << "Joint positions: " << currentObservation_.state.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+    //   for(size_t i = 0; i < 4; ++i)
+    //   {
+    //     ss << "Force " << i << ": " << currentObservation_.input.block<3, 1>(3 * i, 0).transpose() << "\n";
+    //   }
+    //   ss << "Joint velocity: " << currentObservation_.input.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+    //   const auto acceleration = classicDynamics.getValue(currentObservation_.time, 
+    //     currentObservation_.state, currentObservation_.input, vector6_t::Zero());
+
+    //   ss << "Dynamics: " << acceleration.norm() << "\n";
+    //   ss << "Dynamics: " << acceleration.transpose() << "\n";
+
+    //   RCLCPP_INFO(get_logger(), "%s", ss.str().c_str());
+    // }
+
+    // for(size_t i = 0; i < 1; i++)
+    // {
+    //   std::stringstream ss;
+    //   ss << "**********NEW STATE**********\n";
+    //   ss << "Base linear velocity: " << optimizedState.block<3, 1>(0, 0).transpose() << "\n";
+    //   ss << "Base angular velocity: " << optimizedState.block<3, 1>(3, 0).transpose() << "\n";
+    //   ss << "Base position: " << optimizedState.block<3, 1>(6, 0).transpose() << "\n";
+    //   ss << "Base euler: " << optimizedState.block<3, 1>(9, 0).transpose() << "\n";
+    //   ss << "Joint positions: " << optimizedState.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+    //   for(size_t i = 0; i < 4; ++i)
+    //   {
+    //     ss << "Force " << i << ": " << optimizedInput.block<3, 1>(3 * i, 0).transpose() << "\n";
+    //   }
+    //   ss << "Joint velocity: " << optimizedInput.block(12, 0, modelInfo_.actuatedDofNum, 1).transpose() << "\n";
+
+    //   const auto acceleration = classicDynamics.getValue(currentObservation_.time, 
+    //     optimizedState, optimizedInput, vector6_t::Zero());
+
+    //   ss << "Dynamics: " << acceleration.norm() << "\n";
+    //   ss << "Dynamics: " << acceleration.transpose() << "\n";
+
+    //   RCLCPP_INFO(get_logger(), "%s", ss.str().c_str());
+    // }
+
+    // if(i_ > 5)
+    // {
+    //   rclcpp::shutdown();
+    // }
+    // i_++;
 
       // RCLCPP_INFO(this->get_logger(), "Planned mode: %d", plannedMode);
 
@@ -920,13 +1155,13 @@ namespace legged_locomotion_mpc_ros2
 
       jointTrajectory.points.resize(1);
 
-      const auto positionVector = access_helper_functions::getJointPositions(
-        trajectory.stateTrajectory.front(), modelInfo_);
+      const vector_t positionVector = access_helper_functions::getJointPositions(
+        optimizedState, modelInfo_);
 
-      const auto velocityVector = access_helper_functions::getJointVelocities(
+      const vector_t velocityVector = access_helper_functions::getJointVelocities(
         optimizedInput, modelInfo_);
 
-      const auto effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
+      const vector_t effortVector = leggedInterfacePtr_->torqueApproximator().getValue(
           optimizedState, optimizedInput);
 
       const std::vector<scalar_t> positions(positionVector.data(), 
@@ -938,17 +1173,45 @@ namespace legged_locomotion_mpc_ros2
       const std::vector<scalar_t> efforts(effortVector.data(), 
           effortVector.data() + effortVector.size());
         
-      jointTrajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.1);
-      jointTrajectory.points[0].positions = std::move(positions);
+      jointTrajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(mrtDurationSeconds_);
+      // jointTrajectory.points[0].positions = std::move(positions);
       // jointTrajectory.points[0].velocities = std::move(velocities);
       // jointTrajectory.points[0].effort = std::move(efforts);
+      jointTrajectory.points[0].positions = positions;
+      // jointTrajectory.points[0].velocities = velocities;
+      jointTrajectory.points[0].effort = efforts;
       jointTrajectory.points[0].velocities = std::vector(modelInfo_.actuatedDofNum, 0.0);
-      jointTrajectory.points[0].effort = std::vector(modelInfo_.actuatedDofNum, 0.0);
+      // jointTrajectory.points[0].effort = std::vector(modelInfo_.actuatedDofNum, 0.0);
 
       mrtTimer_.endTimer();
 
+      const auto referencePositionVector = access_helper_functions::getJointPositions(
+        trajectory.stateTrajectory.front(), modelInfo_);
+
+      const auto referenceVelocityVector = access_helper_functions::getJointVelocities(
+        trajectory.inputTrajectory.front(), modelInfo_);
+
+       const std::vector<scalar_t> referencePositions(referencePositionVector.data(), 
+        referencePositionVector.data() + referencePositionVector.size());
+
+      const std::vector<scalar_t> refefrenceVelocities(referenceVelocityVector.data(), 
+        referenceVelocityVector.data() + referenceVelocityVector.size());
+
+      sensor_msgs::msg::JointState referenceJointStates;
+      referenceJointStates.name = jointNames_;
+      referenceJointStates.position = std::move(referencePositions);
+      referenceJointStates.velocity = std::move(refefrenceVelocities);
+
+      sensor_msgs::msg::JointState optimizedJointStates;
+      optimizedJointStates.name = jointNames_;
+      optimizedJointStates.position = positions;
+      optimizedJointStates.velocity = velocities;
+      optimizedJointStates.effort = efforts;
+
       // Publish 
-      jointTrajectoryPublisher_->publish(std::move(jointTrajectory));
+      jointTrajectoryPublisher_->publish(jointTrajectory);
+      referenceJointPublisher_->publish(std::move(referenceJointStates));
+      optimizedJointPublisher_->publish(std::move(optimizedJointStates));
     }
   }
 } // namespace legged_locomotion_mpc_ros2

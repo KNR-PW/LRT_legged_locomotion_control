@@ -43,7 +43,7 @@ int main(int argc, char* argv[])
 
   const scalar_t initTime = 0.0;
 
-  const vector3_t terrainEulerZyx{0.0, 0.0, 0.0};
+  vector3_t terrainEulerZyx{0.0, 0.0, 0.0};
   const matrix3_t terrainRotation = getRotationMatrixFromZyxEulerAngles(terrainEulerZyx); 
 
   TerrainPlane terrainPlane(vector3_t::Zero(), terrainRotation.transpose());
@@ -64,11 +64,17 @@ int main(int argc, char* argv[])
   initialBasePosition.z() += initialBaseHeight / terrainPlane.getSurfaceNormalInWorld().z();
 
   vector_t initialState = vector_t::Zero(STATE_DIM);
+
+  initialBasePosition << -0.03873, -7.06745e-06,     0.381081;
+  terrainEulerZyx << -2.43615e-05,  -0.00692686, -3.71088e-06;
   initialState.block<3,1>(6, 0) = initialBasePosition;
   initialState.block<3,1>(9, 0) = terrainEulerZyx;
-  // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512;
-  access_helper_functions::getJointPositions(initialState, modelInfo) << 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326;
 
+  initialState.block<3, 1>(0, 0) << 1.25506e-06, -1.00304e-09, -1.21623e-06;
+  initialState.block<3, 1>(3, 0) << 2.40969e-09,   3.5196e-06, -3.56193e-09;
+  // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512;
+  // access_helper_functions::getJointPositions(initialState, modelInfo) << 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326;
+  access_helper_functions::getJointPositions(initialState, modelInfo) << -0.00524164,   -0.806134,     1.60278, -0.00769328,   -0.864448,     1.62701, -0.00523977,   -0.806203,     1.60276, -0.00769448,    -0.86441,       1.627;
   LeggedLoopshapingInterface loopShapingInterface = makeLeggedLoopshapingInterface(initTime, 
     initialState, std::move(terrainModel), taskFilePath, modelFilePath, urdfFilePath, 
     loopshapingFilePath);
@@ -154,6 +160,8 @@ int main(int argc, char* argv[])
 
   MPC_MRT_Interface mpcInterface(*mpcPtr);
 
+  const auto& dynamics = optimalProblem.dynamicsPtr;
+
   const size_t standingMode = ((0x01 << (NUM_THREE_DOF_CONTACTS)) - 1);
   const contact_flags_t standingFlags(standingMode);
 
@@ -205,6 +213,32 @@ int main(int argc, char* argv[])
       systemObservation.input = loopshapeDefinition.getSystemInput(observation.state, observation.input);
 
       observations.push_back(systemObservation);
+
+    //   for(size_t i = 0; i < 100; i++)
+    // {
+    //   std::stringstream ss;
+    //   ss << "\n";
+    //   ss << "Base linear velocity: " << systemObservation.state.block<3, 1>(0, 0).transpose() << "\n";
+    //   ss << "Base angular velocity: " << systemObservation.state.block<3, 1>(3, 0).transpose() << "\n";
+    //   ss << "Base position: " << systemObservation.state.block<3, 1>(6, 0).transpose() << "\n";
+    //   ss << "Base euler: " << systemObservation.state.block<3, 1>(9, 0).transpose() << "\n";
+    //   ss << "Joint positions: " << systemObservation.state.block(12, 0, modelInfo.actuatedDofNum, 1).transpose() << "\n";
+    //   for(size_t i = 0; i < 4; ++i)
+    //   {
+    //     ss << "Force " << i << ": " << systemObservation.input.block<3, 1>(3 * i, 0).transpose() << "\n";
+    //   }
+    //   ss << "Joint velocity: " << systemObservation.input.block(12, 0, modelInfo.actuatedDofNum, 1).transpose() << "\n";
+
+    //   const auto approx = dynamics->linearApproximation(systemObservation.time, 
+    //     systemObservation.state, systemObservation.input, *optimalProblem.preComputationPtr);
+
+    //   ss << "Dynamics: f: " << approx.f.block<24,1>(0, 0).norm() << " dfdx: " << approx.dfdx.norm() << " dfdu: " << approx.dfdu.norm() << "\n";
+    //   ss << "Dynamics: f: " << approx.f.block<24,1>(0, 0).transpose() << "\n";
+
+    //   std::cerr << ss.str() << std::endl;
+    // }
+
+    //   break;
 
       vector3_t currentTerrainPosition = observation.state.block<3, 1>(6, 0);
       currentTerrainPosition.z() = 0.0;

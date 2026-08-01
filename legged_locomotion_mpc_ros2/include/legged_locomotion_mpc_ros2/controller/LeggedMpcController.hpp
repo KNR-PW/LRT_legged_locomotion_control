@@ -109,8 +109,8 @@ namespace legged_locomotion_mpc_ros2
       void setupMpc();
 
       void runMpc();
-
-      ocs2::SystemObservation getCurrentObservation();
+      
+      void updateCurrentObservation();
 
       // Helper data
       ModelSettings modelSettings_;
@@ -131,6 +131,7 @@ namespace legged_locomotion_mpc_ros2
       // Interface and other helper objects
       std::unique_ptr<LeggedInterface> leggedInterfacePtr_;
       LeggedReferenceManager* referenceManagerPtr_;
+      int i_;
       
       // MPC and MRT
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
@@ -165,6 +166,8 @@ namespace legged_locomotion_mpc_ros2
       
       // Joint trajectory publisher from MRT
       rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr jointTrajectoryPublisher_;
+      rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr referenceJointPublisher_;
+      rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr optimizedJointPublisher_;
 
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;
