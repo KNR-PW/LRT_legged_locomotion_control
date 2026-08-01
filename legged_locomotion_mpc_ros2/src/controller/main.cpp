@@ -14,7 +14,6 @@ int main(int argc, char** argv)
   auto leggedMpcController = std::make_shared<LeggedMpcController>();
 
   rclcpp::executors::MultiThreadedExecutor executor;
-  // rclcpp::executors::SingleThreadedExecutor executor;
 
   executor.add_node(leggedMpcController->get_node_base_interface());
   executor.spin();
