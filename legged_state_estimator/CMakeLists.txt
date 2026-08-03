@@ -15,6 +15,7 @@ find_package (Eigen3 3.3 REQUIRED)
 set(THIS_PACKAGE_DEPENDS
   pinocchio
   Eigen3
+  ocs2_core
 )
 
 ###########
@@ -60,7 +61,7 @@ target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 ###   CLANG TOOLING   ###
 #########################
 find_package(cmake_clang_tools QUIET)
-if (cmake_clang_tools_FOUND)
+if(cmake_clang_tools_FOUND)
     message(STATUS "Run clang tooling for target " ${PROJECT_NAME})
     add_clang_tooling(
             TARGETS ${PROJECT_NAME}
@@ -68,7 +69,7 @@ if (cmake_clang_tools_FOUND)
             CT_HEADER_DIRS include
             CF_WERROR
     )
-endif (cmake_clang_tools_FOUND)
+endif(cmake_clang_tools_FOUND)
 
 #############
 ## Install ##
@@ -103,8 +104,8 @@ ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 # find_package(ament_lint_auto REQUIRED)
 # ament_lint_auto_find_test_dependencies()
 
-if (BUILD_TESTING)
+if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
-endif ()
+endif()
 
 ament_package(CONFIG_EXTRAS "cmake/pinocchio_config.cmake")

@@ -11,8 +11,8 @@
  *  @date   September 25, 2018
  **/
 
-#ifndef LEGGED_STATE_ESTIMATOR_INEKF_HPP_
-#define LEGGED_STATE_ESTIMATOR_INEKF_HPP_
+#ifndef __LEGGED_STATE_ESTIMATOR_INEKF___
+#define __LEGGED_STATE_ESTIMATOR_INEKF___
 
 #include <iostream>
 #include <vector>
@@ -104,7 +104,7 @@ the default.
 
   /**
    * Gets the filter's prior landmarks.
-   * @return  map of prior landmark ID and position (as a Eigen::Vector3d)
+   * @return  map of prior landmark ID and position (as a ocs2::vector3_t)
    */
   const mapIntVector3d& getPriorLandmarks() const;
   /**
@@ -116,7 +116,7 @@ the default.
    * Gets the filter's set magnetic field.
    * @return  magnetic field in world frame
    */
-  const Eigen::Vector3d& getMagneticField() const;
+  const ocs2::vector3_t& getMagneticField() const;
 /// @}
 
 
@@ -143,7 +143,7 @@ the default.
    */
   void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
   /** TODO: Sets magnetic field for untested magnetometer measurement */
-  void setMagneticField(const Eigen::Vector3d& true_magnetic_field);
+  void setMagneticField(const ocs2::vector3_t& true_magnetic_field);
 /// @}
 
 
@@ -191,18 +191,18 @@ the default.
    * The propagation model currently assumes that the covariance is for the right invariant error.
    * @param imu_w: IMU angular velocity measurement
    * @param imu_a: IMU linear acceleration measurement
-   * @param dt: double indicating how long to integrate the inertial measurements for
+   * @param dt: ocs2::scalar_t indicating how long to integrate the inertial measurements for
    */
-  void Propagate(const Eigen::Vector3d& imu_w, const Eigen::Vector3d& imu_a, const double dt);
+  void Propagate(const ocs2::vector3_t& imu_w, const ocs2::vector3_t& imu_a, const ocs2::scalar_t dt);
   /**
    * Propagates the estimated state mean and covariance forward using inertial measurements. 
    * All landmarks positions are assumed to be static.
    * All contacts velocities are assumed to be zero + Gaussian noise.
    * The propagation model currently assumes that the covariance is for the right invariant error.
    * @param imu: 6x1 vector containing stacked angular velocity and linear acceleration measurements
-   * @param dt: double indicating how long to integrate the inertial measurements for
+   * @param dt: ocs2::scalar_t indicating how long to integrate the inertial measurements for
    */
-  void Propagate(const Eigen::Matrix<double,6,1>& imu, const double dt);
+  void Propagate(const Eigen::Matrix<ocs2::scalar_t,6,1>& imu, const ocs2::scalar_t dt);
   /** 
    * Corrects the state estimate using the measured forward kinematics between the IMU and a set of contact frames.
    * If contact is indicated but not included in the state, the state is augmented to include the estimated contact position.
@@ -220,11 +220,11 @@ the default.
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
 
   /** TODO: Untested magnetometer measurement*/
-  void CorrectMagnetometer(const Eigen::Vector3d& measured_magnetic_field, const Eigen::Matrix3d& covariance);
+  void CorrectMagnetometer(const ocs2::vector3_t& measured_magnetic_field, const ocs2::matrix3_t& covariance);
   /** TODO: Untested GPS measurement*/
-  void CorrectPosition(const Eigen::Vector3d& measured_position, const Eigen::Matrix3d& covariance, const Eigen::Vector3d& indices);
+  void CorrectPosition(const ocs2::vector3_t& measured_position, const ocs2::matrix3_t& covariance, const ocs2::vector3_t& indices);
   /** TODO: Untested contact position measurement*/
-  void CorrectContactPosition(const int id, const Eigen::Vector3d& measured_contact_position, const Eigen::Matrix3d& covariance, const Eigen::Vector3d& indices);
+  void CorrectContactPosition(const int id, const ocs2::vector3_t& measured_contact_position, const ocs2::matrix3_t& covariance, const ocs2::vector3_t& indices);
 /// @} 
 
 /** @example kinematics.cpp
@@ -238,25 +238,25 @@ private:
   bool estimate_bias_ = true;  
   InEKFState state_;
   NoiseParams noise_params_;
-  Eigen::Vector3d g_; // Gravity vector in world frame (z-up)
+  ocs2::vector3_t g_; // Gravity vector in world frame (z-up)
   std::map<int,bool> contacts_;
   std::map<int,int> estimated_contact_positions_;
   mapIntVector3d prior_landmarks_;
   std::map<int,int> estimated_landmarks_;
-  Eigen::Vector3d magnetic_field_;
-  Eigen::LDLT<Eigen::MatrixXd> ldlt_;
+  ocs2::vector3_t magnetic_field_;
+  Eigen::LDLT<ocs2::matrix_t> ldlt_;
 
-  Eigen::MatrixXd StateTransitionMatrix(const Eigen::Vector3d& w, const Eigen::Vector3d& a, double dt);
-  Eigen::MatrixXd DiscreteNoiseMatrix(const Eigen::MatrixXd& Phi, double dt);
+  ocs2::matrix_t StateTransitionMatrix(const ocs2::vector3_t& w, const ocs2::vector3_t& a, ocs2::scalar_t dt);
+  ocs2::matrix_t DiscreteNoiseMatrix(const ocs2::matrix_t& Phi, ocs2::scalar_t dt);
 
   // Corrects state using invariant observation models
   void CorrectRightInvariant(const Observation& obs);
   void CorrectLeftInvariant(const Observation& obs);
-  void CorrectRightInvariant(const Eigen::MatrixXd& Z, const Eigen::MatrixXd& H, const Eigen::MatrixXd& N);
-  void CorrectLeftInvariant(const Eigen::MatrixXd& Z, const Eigen::MatrixXd& H, const Eigen::MatrixXd& N);
+  void CorrectRightInvariant(const ocs2::matrix_t& Z, const ocs2::matrix_t& H, const ocs2::matrix_t& N);
+  void CorrectLeftInvariant(const ocs2::matrix_t& Z, const ocs2::matrix_t& H, const ocs2::matrix_t& N);
   // void CorrectFullState(const Observation& obs); // TODO
 };
 
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_INEKF_HPP_
+#endif // LEGGED_STATE_ESTIMATOR_INEKF___

@@ -1,5 +1,5 @@
-#ifndef LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS_HPP_
-#define LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS_HPP_
+#ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___
+#define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___
 
 #include <string>
 #include <vector>
@@ -51,49 +51,49 @@ public:
   /// @brief Noise (covariance) on contact position. (Possibly is not used in 
   /// InEKF. Contact covariance in noise_params are more important).
   ///
-  double contact_position_noise;
+  ocs2::scalar_t contact_position_noise;
 
   /// 
   /// @brief Noise (covariance) on contact rotation. Only used with surface 
   /// contacts.
   ///
-  double contact_rotation_noise;
+  ocs2::scalar_t contact_rotation_noise;
 
   /// 
   /// @brief Time step of estimation. 
   ///
-  double sampling_time;
+  ocs2::scalar_t sampling_time;
 
   /// 
   /// @brief Cutoff frequency of LPF for gyro sensor. 
   ///
-  double lpf_gyro_cutoff_frequency;
+  ocs2::scalar_t lpf_gyro_cutoff_frequency;
 
   /// 
   /// @brief Cutoff frequency of LPF for gyro acceleration that is computed by
   /// finite difference approximation. 
   ///
-  double lpf_gyro_accel_cutoff_frequency;
+  ocs2::scalar_t lpf_gyro_accel_cutoff_frequency;
 
   /// 
   /// @brief Cutoff frequency of LPF for linear acceleration measurement from IMU. 
   ///
-  double lpf_lin_accel_cutoff_frequency;
+  ocs2::scalar_t lpf_lin_accel_cutoff_frequency;
 
   /// 
   /// @brief Cutoff frequency of LPF for joint velocities. 
   ///
-  double lpf_dqJ_cutoff_frequency;
+  ocs2::scalar_t lpf_dqJ_cutoff_frequency;
 
   /// 
   /// @brief Cutoff frequency of LPF for joint accelerations. 
   ///
-  double lpf_ddqJ_cutoff_frequency;
+  ocs2::scalar_t lpf_ddqJ_cutoff_frequency;
 
   /// 
   /// @brief Cutoff frequency of LPF for joint torques. 
   ///
-  double lpf_tauJ_cutoff_frequency;
+  ocs2::scalar_t lpf_tauJ_cutoff_frequency;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -103,10 +103,10 @@ public:
   /// @param[in] sampling_time Sampling time.
   ///
   static LeggedStateEstimatorSettings UnitreeA1(const std::string& urdf_path, 
-                                                const double sampling_time);
+                                                const ocs2::scalar_t sampling_time);
 
 };
 
 } // namespace legged_state_estimator
 
-#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS_HPP_
+#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___

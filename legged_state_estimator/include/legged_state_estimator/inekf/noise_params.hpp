@@ -10,8 +10,8 @@
  *  @brief  Header file for Invariant EKF noise parameter class
  *  @date   September 25, 2018
  **/
-#ifndef LEGGED_STATE_ESTIMATOR_NOISEPARAMS_HPP_
-#define LEGGED_STATE_ESTIMATOR_NOISEPARAMS_HPP_
+#ifndef __LEGGED_STATE_ESTIMATOR_NOISEPARAMS___
+#define __LEGGED_STATE_ESTIMATOR_NOISEPARAMS___
 
 #include <iostream>
 
@@ -31,45 +31,45 @@ public:
   NoiseParams(NoiseParams&&) noexcept = default;
   NoiseParams& operator=(NoiseParams&&) noexcept = default;
 
-  void setGyroscopeNoise(const double stddev);
-  void setGyroscopeNoise(const Eigen::Vector3d& stddev);
-  void setGyroscopeNoise(const Eigen::Matrix3d& cov);
+  void setGyroscopeNoise(const ocs2::scalar_t stddev);
+  void setGyroscopeNoise(const ocs2::vector3_t& stddev);
+  void setGyroscopeNoise(const ocs2::matrix3_t& cov);
 
-  void setAccelerometerNoise(const double stddev);
-  void setAccelerometerNoise(const Eigen::Vector3d& stddev);
-  void setAccelerometerNoise(const Eigen::Matrix3d& cov);  
+  void setAccelerometerNoise(const ocs2::scalar_t stddev);
+  void setAccelerometerNoise(const ocs2::vector3_t& stddev);
+  void setAccelerometerNoise(const ocs2::matrix3_t& cov);  
 
-  void setGyroscopeBiasNoise(const double stddev);
-  void setGyroscopeBiasNoise(const Eigen::Vector3d& stddev);
-  void setGyroscopeBiasNoise(const Eigen::Matrix3d& cov);
+  void setGyroscopeBiasNoise(const ocs2::scalar_t stddev);
+  void setGyroscopeBiasNoise(const ocs2::vector3_t& stddev);
+  void setGyroscopeBiasNoise(const ocs2::matrix3_t& cov);
 
-  void setAccelerometerBiasNoise(const double stddev);
-  void setAccelerometerBiasNoise(const Eigen::Vector3d& stddev);
-  void setAccelerometerBiasNoise(const Eigen::Matrix3d& cov);  
+  void setAccelerometerBiasNoise(const ocs2::scalar_t stddev);
+  void setAccelerometerBiasNoise(const ocs2::vector3_t& stddev);
+  void setAccelerometerBiasNoise(const ocs2::matrix3_t& cov);  
 
-  void setContactNoise(const double stddev);
-  void setContactNoise(const Eigen::Vector3d& stddev);
-  void setContactNoise(const Eigen::Matrix3d& cov);
+  void setContactNoise(const ocs2::scalar_t stddev);
+  void setContactNoise(const ocs2::vector3_t& stddev);
+  void setContactNoise(const ocs2::matrix3_t& cov);
 
-  const Eigen::Matrix3d& getGyroscopeCov() const;
-  const Eigen::Matrix3d& getAccelerometerCov() const;
-  const Eigen::Matrix3d& getGyroscopeBiasCov() const;
-  const Eigen::Matrix3d& getAccelerometerBiasCov() const;
-  const Eigen::Matrix3d& getContactCov() const;
+  const ocs2::matrix3_t& getGyroscopeCov() const;
+  const ocs2::matrix3_t& getAccelerometerCov() const;
+  const ocs2::matrix3_t& getGyroscopeBiasCov() const;
+  const ocs2::matrix3_t& getAccelerometerBiasCov() const;
+  const ocs2::matrix3_t& getContactCov() const;
 
   friend std::ostream& operator<<(std::ostream& os, const NoiseParams& p);  
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 private:
-  Eigen::Matrix3d Qg_;
-  Eigen::Matrix3d Qa_;
-  Eigen::Matrix3d Qbg_;
-  Eigen::Matrix3d Qba_;
-  Eigen::Matrix3d Ql_;
-  Eigen::Matrix3d Qc_;
+  ocs2::matrix3_t Qg_;
+  ocs2::matrix3_t Qa_;
+  ocs2::matrix3_t Qbg_;
+  ocs2::matrix3_t Qba_;
+  ocs2::matrix3_t Ql_;
+  ocs2::matrix3_t Qc_;
 };
 
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_NOISEPARAMS_HPP_
+#endif // LEGGED_STATE_ESTIMATOR_NOISEPARAMS___

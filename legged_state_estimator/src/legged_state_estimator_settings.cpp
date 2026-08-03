@@ -4,7 +4,7 @@
 namespace legged_state_estimator {
 
 LeggedStateEstimatorSettings LeggedStateEstimatorSettings::UnitreeA1(
-    const std::string& urdf_path, const double sampling_time) {
+    const std::string& urdf_path, const ocs2::scalar_t sampling_time) {
   LeggedStateEstimatorSettings settings;
   settings.urdf_path = urdf_path;
   settings.imu_frame = "imu_link";

@@ -11,8 +11,8 @@
  *  @date   September 25, 2018
  **/
 
-#ifndef LEGGED_STATE_ESTIMATOR_LIEGROUP_HPP_
-#define LEGGED_STATE_ESTIMATOR_LIEGROUP_HPP_
+#ifndef __LEGGED_STATE_ESTIMATOR_LIEGROUP___
+#define __LEGGED_STATE_ESTIMATOR_LIEGROUP___
 #include <iostream>
 #include <cmath>
 
@@ -21,16 +21,16 @@
 namespace legged_state_estimator {
 
 long int factorial(const int n);
-Eigen::Matrix3d skew(const Eigen::Vector3d& v);
-Eigen::Matrix3d Gamma_SO3(const Eigen::Vector3d& w, const int n,
-                          const double exp_map_tol=1.0e-10);
-Eigen::Matrix3d Exp_SO3(const Eigen::Vector3d& w);
-Eigen::Matrix3d LeftJacobian_SO3(const Eigen::Vector3d& w);
-Eigen::Matrix3d RightJacobian_SO3(const Eigen::Vector3d& w);
-Eigen::MatrixXd Exp_SEK3(const Eigen::VectorXd& v, 
-                         const double exp_map_tol=1.0e-10);
-Eigen::MatrixXd Adjoint_SEK3(const Eigen::MatrixXd& X);
+ocs2::matrix3_t skew(const ocs2::vector3_t& v);
+ocs2::matrix3_t Gamma_SO3(const ocs2::vector3_t& w, const int n,
+                          const ocs2::scalar_t exp_map_tol=1.0e-10);
+ocs2::matrix3_t Exp_SO3(const ocs2::vector3_t& w);
+ocs2::matrix3_t LeftJacobian_SO3(const ocs2::vector3_t& w);
+ocs2::matrix3_t RightJacobian_SO3(const ocs2::vector3_t& w);
+ocs2::matrix_t Exp_SEK3(const ocs2::vector_t& v, 
+                         const ocs2::scalar_t exp_map_tol=1.0e-10);
+ocs2::matrix_t Adjoint_SEK3(const ocs2::matrix_t& X);
 
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_LIEGROUP_HPP_
+#endif // LEGGED_STATE_ESTIMATOR_LIEGROUP___

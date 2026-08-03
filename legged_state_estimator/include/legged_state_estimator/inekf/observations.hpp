@@ -11,8 +11,8 @@
  *  @date   December 03, 2018
  **/
 
-#ifndef LEGGED_STATE_ESTIMATOR_OBSERVATIONS_HPP_
-#define LEGGED_STATE_ESTIMATOR_OBSERVATIONS_HPP_
+#ifndef __LEGGED_STATE_ESTIMATOR_OBSERVATIONS___
+#define __LEGGED_STATE_ESTIMATOR_OBSERVATIONS___
 
 #include <iostream>
 #include <vector>
@@ -26,8 +26,8 @@ namespace legged_state_estimator {
 // Simple class to hold general observations 
 struct Observation {
 public:
-  Observation(Eigen::VectorXd& Y, Eigen::VectorXd& b, Eigen::MatrixXd& H, 
-              Eigen::MatrixXd& N, Eigen::MatrixXd& PI);
+  Observation(ocs2::vector_t& Y, ocs2::vector_t& b, ocs2::matrix_t& H, 
+              ocs2::matrix_t& N, ocs2::matrix_t& PI);
   Observation() = default;
 
   ~Observation() = default;
@@ -39,11 +39,11 @@ public:
 
   bool empty();
 
-  Eigen::VectorXd Y;
-  Eigen::VectorXd b;
-  Eigen::MatrixXd H;
-  Eigen::MatrixXd N;
-  Eigen::MatrixXd PI;
+  ocs2::vector_t Y;
+  ocs2::vector_t b;
+  ocs2::matrix_t H;
+  ocs2::matrix_t N;
+  ocs2::matrix_t PI;
 
   friend std::ostream& operator<<(std::ostream& os, const Observation& o);  
 
@@ -54,11 +54,11 @@ public:
 struct Kinematics {
 public:
   Kinematics(const int id_in, const Eigen::Matrix4d& pose_in, 
-             const Eigen::Matrix<double,6,6>& covariance_in) 
+             const Eigen::Matrix<ocs2::scalar_t,6,6>& covariance_in) 
     : id(id_in), pose(pose_in), covariance(covariance_in) { }
-  Kinematics(const int id_in, const Eigen::Matrix3d& rotation_in, 
-             const Eigen::Vector3d& position_in, 
-             const Eigen::Matrix<double,6,6>& covariance_in) 
+  Kinematics(const int id_in, const ocs2::matrix3_t& rotation_in, 
+             const ocs2::vector3_t& position_in, 
+             const Eigen::Matrix<ocs2::scalar_t,6,6>& covariance_in) 
     : id(id_in), pose(Eigen::Matrix4d::Identity()), covariance(covariance_in) {
         setContactRotation(rotation_in);
         setContactPosition(position_in);
@@ -72,21 +72,21 @@ public:
   Kinematics(Kinematics&&) noexcept = default;
   Kinematics& operator=(Kinematics&&) noexcept = default;
 
-  void setContactPosition(const Eigen::Vector3d& position_in) {
+  void setContactPosition(const ocs2::vector3_t& position_in) {
       pose.template block<3,1>(0,3) = position_in;
   }
 
-  void setContactRotation(const Eigen::Matrix3d& rotation_in) {
+  void setContactRotation(const ocs2::matrix3_t& rotation_in) {
       pose.template block<3,3>(0,0) = rotation_in;
   }
 
-  void setContactPositionCovariance(const Eigen::Matrix3d& covariance_in) {
+  void setContactPositionCovariance(const ocs2::matrix3_t& covariance_in) {
       covariance.template bottomRightCorner<3,3>() = covariance_in;
   }
 
   int id;
   Eigen::Matrix4d pose;
-  Eigen::Matrix<double,6,6> covariance;
+  Eigen::Matrix<ocs2::scalar_t,6,6> covariance;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
@@ -94,8 +94,8 @@ public:
 
 struct Landmark {
 public:
-  Landmark(const int id_in, const Eigen::Vector3d& position_in, 
-            const Eigen::Matrix3d& covariance_in) 
+  Landmark(const int id_in, const ocs2::vector3_t& position_in, 
+            const ocs2::matrix3_t& covariance_in) 
     : id(id_in), position(position_in), covariance(covariance_in) { }
   Landmark() = default;
 
@@ -107,15 +107,15 @@ public:
   Landmark& operator=(Landmark&&) noexcept = default;
 
   int id;
-  Eigen::Vector3d position;
-  Eigen::Matrix3d covariance;
+  ocs2::vector3_t position;
+  ocs2::matrix3_t covariance;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-/** A map with an integer as key and a Eigen::Vector3d as value. */
-using mapIntVector3d = std::map<int,Eigen::Vector3d, std::less<int>, Eigen::aligned_allocator<std::pair<const int,Eigen::Vector3d>>>;
-using mapIntVector3dIterator = std::map<int,Eigen::Vector3d, std::less<int>, Eigen::aligned_allocator<std::pair<const int,Eigen::Vector3d>>>::const_iterator;
+/** A map with an integer as key and a ocs2::vector3_t as value. */
+using mapIntVector3d = std::map<int,ocs2::vector3_t, std::less<int>, Eigen::aligned_allocator<std::pair<const int,ocs2::vector3_t>>>;
+using mapIntVector3dIterator = std::map<int,ocs2::vector3_t, std::less<int>, Eigen::aligned_allocator<std::pair<const int,ocs2::vector3_t>>>::const_iterator;
 
 /** A vector of Kinematics. */
 using vectorKinematics = std::vector<Kinematics, Eigen::aligned_allocator<Kinematics>>;
@@ -127,4 +127,4 @@ using vectorLandmarksIterator = std::vector<Landmark, Eigen::aligned_allocator<L
 
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_OBSERVATIONS_HPP_
+#endif // LEGGED_STATE_ESTIMATOR_OBSERVATIONS___
