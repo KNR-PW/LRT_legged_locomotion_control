@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdexcept>
 #include <string>
 
-#include <legged_state_estimator/Types.hpp>
+#include <legged_state_estimator/types.hpp>
 
 namespace legged_state_estimator 
 {
@@ -62,7 +62,8 @@ namespace legged_state_estimator
       /// is set to Eigen::Dynamic.
       ///
       LowPassFilter(const SCALAR_T sampling_time, const SCALAR_T cutoff_frequency,
-          const int dynamic_size = 0): estimate_(), alpha_(SCALAR_T(0.0)) {
+          const int dynamic_size = 0): estimate_(), alpha_(SCALAR_T(0.0)) 
+      {
         if(sampling_time <= 0) 
         {
           throw std::invalid_argument(

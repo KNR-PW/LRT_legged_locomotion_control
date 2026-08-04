@@ -40,7 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <pinocchio/multibody.hpp>
 
-#include <legged_state_estimator/Types.hpp>
+#include <legged_state_estimator/types.hpp>
 
 namespace legged_state_estimator 
 {

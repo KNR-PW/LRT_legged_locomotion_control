@@ -42,7 +42,6 @@ add_library(${PROJECT_NAME}
   src/inekf/observations.cpp
   src/contact_estimator.cpp  
   src/legged_state_estimator.cpp  
-  src/legged_state_estimator_settings.cpp  
   src/robot_model.cpp
 )
 
