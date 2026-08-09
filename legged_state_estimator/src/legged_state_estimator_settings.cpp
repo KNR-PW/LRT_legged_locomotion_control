@@ -78,15 +78,15 @@ namespace legged_state_estimator
     scalar_t contact_noise;
 
     loadData::loadPtreeValue(pt, gyroscope_noise, 
-      fieldName + ".inekf.gyroscopeNoise", verbose);
+      fieldName + ".noiseSettings.gyroscopeNoise", verbose);
     loadData::loadPtreeValue(pt, gyroscope_bias_noise, 
-      fieldName + ".inekf.gyroscopeBiasNoise", verbose);
+      fieldName + ".noiseSettings.gyroscopeBiasNoise", verbose);
     loadData::loadPtreeValue(pt, acceleration_noise, 
-      fieldName + ".inekf.accelerometerNois", verbose);
+      fieldName + ".noiseSettings.accelerometerNoise", verbose);
     loadData::loadPtreeValue(pt, acceleration_bias_noise, 
-      fieldName + ".inekf.accelerometerBiasNoise", verbose);
+      fieldName + ".noiseSettings.accelerometerBiasNoise", verbose);
     loadData::loadPtreeValue(pt, contact_noise, 
-      fieldName + ".inekf.contactNoise", verbose);
+      fieldName + ".noiseSettings.contactNoise", verbose);
 
     settings.inekf_noise_params.setGyroscopeNoise(gyroscope_noise);
     settings.inekf_noise_params.setGyroscopeBiasNoise(gyroscope_bias_noise);
