@@ -10,9 +10,10 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  LeggedStateEstimator::LeggedStateEstimator(const LeggedStateEstimatorSettings& settings)
-    : settings_(settings), inekf_(settings.inekf_noise_params),
-      leg_kinematics_(), robot_model_(settings.urdf_path, 
+  LeggedStateEstimator::LeggedStateEstimator(const std::string& urdf_path,
+    const LeggedStateEstimatorSettings& settings):
+      settings_(settings), inekf_(settings.inekf_noise_params),
+      leg_kinematics_(), robot_model_(urdf_path, 
         settings.imu_frame, settings.contact_frames),
       contact_estimator_(robot_model_, settings.contact_estimator_settings),
       lpf_gyro_accel_world_(settings.sampling_time, settings.lpf_gyro_accel_cutoff_frequency),
@@ -55,28 +56,6 @@ namespace legged_state_estimator
     }
     imu_raw_.setZero();
   }
-
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  LeggedStateEstimator::LeggedStateEstimator(): settings_(), inekf_(), leg_kinematics_(), 
-    robot_model_(), contact_estimator_(), lpf_gyro_accel_world_(), lpf_lin_accel_world_(), 
-    lpf_dqJ_(), lpf_ddqJ_(), lpf_tauJ_(), imu_gyro_raw_world_(vector3_t::Zero()),  
-    imu_gyro_raw_world_prev_(vector3_t::Zero()),  
-    imu_gyro_accel_world_(vector3_t::Zero()),  
-    imu_gyro_accel_local_(vector3_t::Zero()), 
-    imu_lin_accel_raw_world_(vector3_t::Zero()), 
-    imu_lin_accel_local_(vector3_t::Zero()), 
-    base_pos_estimate_(vector3_t::Zero()), 
-    base_lin_vel_world_estimate_(vector3_t::Zero()), 
-    base_lin_vel_local_estimate_(vector3_t::Zero()), 
-    base_ang_vel_world_estimate_(vector3_t::Zero()), 
-    base_ang_vel_local_estimate_(vector3_t::Zero()), 
-    imu_gyro_bias_estimate_(vector3_t::Zero()), 
-    imu_lin_acc_bias_estimate_(vector3_t::Zero()), 
-    base_rot_estimate_(matrix3_t::Identity()), 
-    imu_raw_(vector6_t::Zero()), 
-    base_quat_estimate_(Eigen::Quaterniond::Identity().coeffs()) { }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
@@ -149,6 +128,12 @@ namespace legged_state_estimator
     const vector3_t& imu_lin_accel_raw, const vector_t& qJ, 
     const vector_t& dqJ, const vector_t& tauJ) 
   {
+    if(!settings_.use_contact_estimator)
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] wrong version of update() method used, use_contact_estimator is set to false");
+    }
+
     if(qJ.size() != robot_model_.nJ()) 
     {
       throw std::invalid_argument(
@@ -190,8 +175,7 @@ namespace legged_state_estimator
     // Process joint measurements in LPFs 
     if(settings_.dynamic_contact_estimation) 
     {
-
-      lpf_ddqJ_.update((dqJ-lpf_dqJ_.getEstimate())/settings_.sampling_time);
+      lpf_ddqJ_.update((dqJ - lpf_dqJ_.getEstimate()) / settings_.sampling_time);
     }
     lpf_dqJ_.update(dqJ);
     lpf_tauJ_.update(tauJ);
@@ -211,6 +195,100 @@ namespace legged_state_estimator
 
     contact_estimator_.update(robot_model_, lpf_tauJ_.getEstimate());
     inekf_.setContacts(contact_estimator_.getContactState());
+
+    for(int  i = 0;  i < robot_model_.numContacts(); ++i) 
+    {
+      leg_kinematics_[i].setContactPosition(
+        robot_model_.getContactPosition(i)-robot_model_.getBasePosition());
+      
+      const scalar_t contact_force_cov = contact_estimator_.getContactForceCovariance()[i];
+      
+      leg_kinematics_[i].setContactPositionCovariance(
+        contact_force_cov*matrix3_t::Identity());
+    }
+
+    // Process kinematics measurements in InEKF
+    inekf_.CorrectKinematics(leg_kinematics_);
+
+    // Restore estimates
+    base_pos_estimate_ = inekf_.getState().getPosition();
+    base_rot_estimate_ = inekf_.getState().getRotation();
+    base_quat_estimate_ = Eigen::Quaterniond(inekf_.getState().getRotation()).coeffs();
+    base_lin_vel_world_estimate_ = inekf_.getState().getVelocity();
+    base_lin_vel_local_estimate_ = inekf_.getState().getRotation().transpose() * base_lin_vel_world_estimate_;
+    base_ang_vel_world_estimate_ = imu_gyro_raw_world_;
+    base_ang_vel_local_estimate_ = imu_gyro_raw - getIMUGyroBiasEstimate();
+    imu_gyro_bias_estimate_ = inekf_.getState().getGyroscopeBias();
+    imu_lin_acc_bias_estimate_ = inekf_.getState().getAccelerometerBias();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::update(const vector3_t& imu_gyro_raw, 
+    const vector3_t& imu_lin_accel_raw, 
+    const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, 
+    const std::vector<std::pair<int,bool>>& contacts)
+  {
+    if(settings_.use_contact_estimator)
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] wrong version of update() method used, use_contact_estimator is set to true");
+    }
+
+    if(qJ.size() != robot_model_.nJ()) 
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: qJ.size() must be " + std::to_string(robot_model_.nJ()));
+    }
+
+    if(dqJ.size() != robot_model_.nJ()) 
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: dqJ.size() must be " + std::to_string(robot_model_.nJ()));
+    }
+
+    // Process IMU measurements in InEKF
+    imu_raw_.template head<3>() = imu_gyro_raw;
+    imu_raw_.template tail<3>() = imu_lin_accel_raw;
+    inekf_.Propagate(imu_raw_, settings_.sampling_time);
+
+    // Process IMU measurements in LPFs (linear acceleration)
+    imu_lin_accel_raw_world_.noalias() = getBaseRotationEstimate() * (imu_lin_accel_raw - getIMULinearAccelerationBiasEstimate());
+    lpf_lin_accel_world_.update(imu_lin_accel_raw_world_);
+    imu_lin_accel_local_.noalias() = getBaseRotationEstimate().transpose() * lpf_lin_accel_world_.getEstimate();
+    
+    // Process IMU measurements in LPFs (angular acceleration via a finite difference)
+    if(settings_.dynamic_contact_estimation) 
+    {
+      imu_gyro_raw_world_.noalias() = getBaseRotationEstimate() * (imu_gyro_raw - getIMUGyroBiasEstimate());
+      imu_gyro_accel_world_.noalias() = (imu_gyro_raw_world_ - imu_gyro_raw_world_prev_) / settings_.sampling_time;
+      lpf_gyro_accel_world_.update(imu_gyro_accel_world_);
+      imu_gyro_accel_local_.noalias() = getBaseRotationEstimate().transpose() * lpf_gyro_accel_world_.getEstimate();
+      imu_gyro_raw_world_prev_ = imu_gyro_raw_world_;
+    }
+
+    // Process joint measurements in LPFs 
+    if(settings_.dynamic_contact_estimation) 
+    {
+      lpf_ddqJ_.update((dqJ - lpf_dqJ_.getEstimate()) / settings_.sampling_time);
+    }
+    lpf_dqJ_.update(dqJ);
+
+    // Update contact info
+    robot_model_.updateLegKinematics(qJ);
+    if(settings_.dynamic_contact_estimation) 
+    {
+      robot_model_.updateDynamics(getBasePositionEstimate(), getBaseQuaternionEstimate(),
+        getBaseLinearVelocityEstimateLocal(), imu_gyro_raw, imu_lin_accel_local_, 
+        imu_gyro_accel_local_, qJ, dqJ, lpf_ddqJ_.getEstimate());
+    }
+    else 
+    {
+      robot_model_.updateLegDynamics(qJ, dqJ);
+    }
+
+    inekf_.setContacts(contacts);
 
     for(int  i = 0;  i < robot_model_.numContacts(); ++i) 
     {

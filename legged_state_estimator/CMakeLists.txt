@@ -11,12 +11,15 @@ set(CMAKE_CXX_STANDARD 17)
 ## Dependencies ##
 ##################
 find_package(ament_cmake REQUIRED)
-find_package (Eigen3 3.3 REQUIRED)
+find_package(Eigen3 3.3 REQUIRED)
+find_package(pinocchio)
 set(THIS_PACKAGE_DEPENDS
-  pinocchio
   Eigen3
   ocs2_core
 )
+
+# Add pinocchio configurations
+include(cmake/pinocchio_config.cmake)
 
 ###########
 ## Build ##
@@ -43,6 +46,7 @@ add_library(${PROJECT_NAME}
   src/contact_estimator.cpp  
   src/legged_state_estimator.cpp  
   src/robot_model.cpp
+  src/legged_state_estimator_settings.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -53,6 +57,7 @@ target_include_directories(${PROJECT_NAME}
 )
 
 ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_DEPENDS})
+target_link_libraries(${PROJECT_NAME} pinocchio::pinocchio)
 target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 
 

@@ -32,11 +32,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___
-#define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___
-
-#include <string>
-#include <vector>
+#ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS__
+#define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS__
 
 #include <legged_state_estimator/types.hpp>
 #include <legged_state_estimator/inekf/noise_params.hpp>
@@ -52,11 +49,6 @@ namespace legged_state_estimator
   struct LeggedStateEstimatorSettings 
   {
     public:
-      /// 
-      /// @brief Path to the URDF file.
-      ///
-      std::string urdf_path;
-
       /// 
       /// @brief Name of the IMU frame specified in the URDF file.
       ///
@@ -136,6 +128,17 @@ namespace legged_state_estimator
       ///
       ocs2::scalar_t lpf_tauJ_cutoff_frequency;
   };
+
+  /**
+   * Creates Legged State Estimator Settings 
+   * @param [in] filename: file path with estimator settings.
+   * @param [in] fieldName: field where settings are defined
+   * @param [in] verbose: verbose flag
+   * @return LeggedStateEstimatorSettings struct
+   */
+  LeggedStateEstimatorSettings loadLeggedStateEstimatorSettings(const std::string& filename,
+    const std::string& fieldName = "legged_state_estimator",
+    bool verbose = "true");
 } // namespace legged_state_estimator
 
-#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS___
+#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS__

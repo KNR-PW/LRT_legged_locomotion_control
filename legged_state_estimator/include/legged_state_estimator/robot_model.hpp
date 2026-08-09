@@ -32,15 +32,14 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_ROBOT_MODEL___
-#define __LEGGED_STATE_ESTIMATOR_ROBOT_MODEL___
+#ifndef __LEGGED_STATE_ESTIMATOR_ROBOT_MODEL__
+#define __LEGGED_STATE_ESTIMATOR_ROBOT_MODEL__
 
-#include <string>
-#include <vector>
-
-#include <pinocchio/multibody.hpp>
+#include <pinocchio/fwd.hpp>
 
 #include <legged_state_estimator/types.hpp>
+
+#include <pinocchio/multibody.hpp>
 
 namespace legged_state_estimator 
 {
@@ -136,8 +135,8 @@ namespace legged_state_estimator
       /// @param[in] rf Reference frame of the kinematics. Default is 
       /// pinocchio::LOCAL_WORLD_ALIGNED.
       ///
-      void updateKinematics(const ocs2::vector3_t& base_pos, 
-        const ocs2::vector4_t& base_quat, const ocs2::vector_t& qJ, 
+      void updateKinematics(const vector3_t& base_pos, 
+        const vector4_t& base_quat, const ocs2::vector_t& qJ, 
         const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED);
 
       ///
@@ -153,9 +152,9 @@ namespace legged_state_estimator
       /// @param[in] rf Reference frame of the kinematics. Default is 
       /// pinocchio::LOCAL_WORLD_ALIGNED.
       ///
-      void updateKinematics(const ocs2::vector3_t& base_pos, 
-        const ocs2::vector4_t& base_quat, const ocs2::vector3_t& base_linear_vel, 
-        const ocs2::vector3_t& base_angular_vel, const ocs2::vector_t& qJ, 
+      void updateKinematics(const vector3_t& base_pos, 
+        const vector4_t& base_quat, const vector3_t& base_linear_vel, 
+        const vector3_t& base_angular_vel, const ocs2::vector_t& qJ, 
         const ocs2::vector_t& dqJ,
         const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED);
 
@@ -182,33 +181,33 @@ namespace legged_state_estimator
       /// @param[in] dqJ Joint velocities. Size must be RobotModel::nJ().
       /// @param[in] ddqJ Joint accelerations. Size must be RobotModel::nJ().
       ///
-      void updateDynamics(const ocs2::vector3_t& base_pos, 
-        const ocs2::vector4_t& base_quat, const ocs2::vector3_t& base_linear_vel, 
-        const ocs2::vector3_t& base_angular_vel, const ocs2::vector3_t& base_linear_acc, 
-        const ocs2::vector3_t& base_angular_acc, const ocs2::vector_t& qJ, 
+      void updateDynamics(const vector3_t& base_pos, 
+        const vector4_t& base_quat, const vector3_t& base_linear_vel, 
+        const vector3_t& base_angular_vel, const vector3_t& base_linear_acc, 
+        const vector3_t& base_angular_acc, const ocs2::vector_t& qJ, 
         const ocs2::vector_t& dqJ, const ocs2::vector_t& ddqJ);
 
       ///
       /// @return const reference to the base position.
       ///
-      const ocs2::vector3_t& getBasePosition() const;
+      const vector3_t& getBasePosition() const;
 
       ///
       /// @return const reference to the base orientation expressed by a rotation 
       /// matrix.
       ///
-      const ocs2::matrix3_t& getBaseRotation() const;
+      const matrix3_t& getBaseRotation() const;
 
       ///
       /// @return const reference to the contact position. 
       ///
-      const ocs2::vector3_t& getContactPosition(const int contact_id) const;
+      const vector3_t& getContactPosition(const int contact_id) const;
 
       ///
       /// @return const reference to the contact orientation expressed by a rotation
       /// matrix. 
       ///
-      const ocs2::matrix3_t& getContactRotation(const int contact_id) const;
+      const matrix3_t& getContactRotation(const int contact_id) const;
 
       ///
       /// @return const reference to the contact Jacobian with respect to the 
@@ -275,4 +274,4 @@ namespace legged_state_estimator
   };
 } // namespace legged_state_estimator
 
-#endif // LEGGED_STATE_ESTIMATOR_ROBOT_MODEL___
+#endif // LEGGED_STATE_ESTIMATOR_ROBOT_MODEL__

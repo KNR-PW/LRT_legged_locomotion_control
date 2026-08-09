@@ -90,7 +90,7 @@ const std::map<int,int>& InEKF::getEstimatedLandmarks() const { return estimated
 const std::map<int,int>& InEKF::getEstimatedContactPositions() const { return estimated_contact_positions_; }
 
 // Set the filter's contact state
-void InEKF::setContacts(const vector<std::pair<int,bool>>& contacts) {
+void InEKF::setContacts(const std::vector<std::pair<int,bool>>& contacts) {
   // Insert new measured contact states
   for(const auto& e : contacts) {
     std::pair<map<int,bool>::iterator,bool> ret = contacts_.insert(e);
@@ -106,28 +106,28 @@ void InEKF::setContacts(const vector<std::pair<int,bool>>& contacts) {
 const std::map<int,bool>& InEKF::getContacts() const { return contacts_; }
 
 // Set the true magnetic field
-void InEKF::setMagneticField(const ocs2::vector3_t& true_magnetic_field) { magnetic_field_ = true_magnetic_field; }
+void InEKF::setMagneticField(const vector3_t& true_magnetic_field) { magnetic_field_ = true_magnetic_field; }
 
 // Get the true magnetic field
-const ocs2::vector3_t& InEKF::getMagneticField() const { return magnetic_field_; }
+const vector3_t& InEKF::getMagneticField() const { return magnetic_field_; }
 
 // Compute Analytical state transition matrix
-ocs2::matrix_t InEKF::StateTransitionMatrix(const ocs2::vector3_t& w, 
-                                             const ocs2::vector3_t& a, 
+ocs2::matrix_t InEKF::StateTransitionMatrix(const vector3_t& w, 
+                                             const vector3_t& a, 
                                              const ocs2::scalar_t dt) {
-  const ocs2::vector3_t phi = w*dt;
-  const ocs2::matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
-  const ocs2::matrix3_t G1 = Gamma_SO3(phi,1); // TODO: These are also needed for the mean propagation, we should not compute twice
-  const ocs2::matrix3_t G2 = Gamma_SO3(phi,2);
-  const ocs2::matrix3_t G0t = G0.transpose();
-  const ocs2::matrix3_t G1t = G1.transpose();
-  const ocs2::matrix3_t G2t = G2.transpose();
-  const ocs2::matrix3_t G3t = Gamma_SO3(-phi,3);
+  const vector3_t phi = w*dt;
+  const matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
+  const matrix3_t G1 = Gamma_SO3(phi,1); // TODO: These are also needed for the mean propagation, we should not compute twice
+  const matrix3_t G2 = Gamma_SO3(phi,2);
+  const matrix3_t G0t = G0.transpose();
+  const matrix3_t G1t = G1.transpose();
+  const matrix3_t G2t = G2.transpose();
+  const matrix3_t G3t = Gamma_SO3(-phi,3);
 
   // Compute the complicated bias terms (derived for the left invariant case)
-  const ocs2::matrix3_t ax = skew(a);
-  const ocs2::matrix3_t wx = skew(w);
-  const ocs2::matrix3_t wx2 = wx*wx;
+  const matrix3_t ax = skew(a);
+  const matrix3_t wx = skew(w);
+  const matrix3_t wx2 = wx*wx;
   const ocs2::scalar_t dt2 = dt*dt;
   const ocs2::scalar_t dt3 = dt2*dt;
   const ocs2::scalar_t theta = w.norm();
@@ -147,7 +147,7 @@ ocs2::matrix_t InEKF::StateTransitionMatrix(const ocs2::vector3_t& w,
   const ocs2::scalar_t thetadtcosthetadt = thetadt*costhetadt;
   const ocs2::scalar_t thetadtsinthetadt = thetadt*sinthetadt;
 
-  ocs2::matrix3_t Phi25L = G0t*(ax*G2t*dt2 
+  matrix3_t Phi25L = G0t*(ax*G2t*dt2 
       + ((sinthetadt-thetadtcosthetadt)/(theta3))*(wx*ax)
       - ((cos2thetadt-4*costhetadt+3)/(4*theta4))*(wx*ax*wx)
       + ((4*sinthetadt+sin2thetadt-4*thetadtcosthetadt-2*thetadt)/(4*theta5))*(wx*ax*wx2)
@@ -155,7 +155,7 @@ ocs2::matrix_t InEKF::StateTransitionMatrix(const ocs2::vector3_t& w,
       - ((6*thetadt-8*sinthetadt+sin2thetadt)/(4*theta5))*(wx2*ax*wx)
       + ((2*thetadt2-4*thetadtsinthetadt-cos2thetadt+1)/(4*theta6))*(wx2*ax*wx2) );
 
-  ocs2::matrix3_t Phi35L = G0t*(ax*G3t*dt3
+  matrix3_t Phi35L = G0t*(ax*G3t*dt3
       - ((thetadtsinthetadt+2*costhetadt-2)/(theta4))*(wx*ax)
       - ((6*thetadt-8*sinthetadt+sin2thetadt)/(8*theta5))*(wx*ax*wx)
       - ((2*thetadt2+8*thetadtsinthetadt+16*costhetadt+cos2thetadt-17)/(8*theta6))*(wx*ax*wx2)
@@ -195,16 +195,16 @@ ocs2::matrix_t InEKF::StateTransitionMatrix(const ocs2::vector3_t& w,
   } 
   else {
     // Compute right-invariant state transition matrix (Assumes unpropagated state)
-    const ocs2::matrix3_t gx = skew(g_);
+    const matrix3_t gx = skew(g_);
     const auto& R = state_.getRotation();
     const auto& v = state_.getVelocity();
     const auto& p = state_.getPosition();
-    const ocs2::matrix3_t RG0 = R*G0;
-    const ocs2::matrix3_t RG1dt = R*G1*dt;
-    const ocs2::matrix3_t RG2dt2 = R*G2*dt2;
+    const matrix3_t RG0 = R*G0;
+    const matrix3_t RG1dt = R*G1*dt;
+    const matrix3_t RG2dt2 = R*G2*dt2;
     Phi.template block<3,3>(3,0) = gx*dt; // Phi_21
     Phi.template block<3,3>(6,0) = 0.5*gx*dt2; // Phi_31
-    Phi.template block<3,3>(6,3) = ocs2::matrix3_t::Identity()*dt; // Phi_32
+    Phi.template block<3,3>(6,3) = matrix3_t::Identity()*dt; // Phi_32
     Phi.template block<3,3>(0,dimP-dimTheta) = -RG1dt; // Phi_15
     Phi.template block<3,3>(3,dimP-dimTheta).noalias() = -skew(v+RG1dt*a+g_*dt)*RG1dt + RG0*Phi25L; // Phi_25
     Phi.template block<3,3>(6,dimP-dimTheta).noalias() = -skew(p+v*dt+RG2dt2*a+0.5*g_*dt2)*RG1dt + RG0*Phi35L; // Phi_35
@@ -250,10 +250,10 @@ ocs2::matrix_t InEKF::DiscreteNoiseMatrix(const ocs2::matrix_t& Phi,
 
 
 // InEKF Propagation - Inertial Data
-void InEKF::Propagate(const ocs2::vector3_t& imu_w, const ocs2::vector3_t& imu_a, ocs2::scalar_t dt) {
+void InEKF::Propagate(const vector3_t& imu_w, const vector3_t& imu_a, ocs2::scalar_t dt) {
   // Bias corrected IMU measurements
-  const ocs2::vector3_t w = imu_w - state_.getGyroscopeBias();    // Angular Velocity
-  const ocs2::vector3_t a = imu_a - state_.getAccelerometerBias(); // Linear Acceleration
+  const vector3_t w = imu_w - state_.getGyroscopeBias();    // Angular Velocity
+  const vector3_t a = imu_a - state_.getAccelerometerBias(); // Linear Acceleration
 
   // Get current state estimate and dimensions
   const auto& X = state_.getX();
@@ -279,10 +279,10 @@ void InEKF::Propagate(const ocs2::vector3_t& imu_w, const ocs2::vector3_t& imu_a
   const auto& R = state_.getRotation();
   const auto& v = state_.getVelocity();
   const auto& p = state_.getPosition();
-  const ocs2::vector3_t phi = w*dt;
-  const ocs2::matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
-  const ocs2::matrix3_t G1 = Gamma_SO3(phi,1);
-  const ocs2::matrix3_t G2 = Gamma_SO3(phi,2);
+  const vector3_t phi = w*dt;
+  const matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
+  const matrix3_t G1 = Gamma_SO3(phi,1);
+  const matrix3_t G2 = Gamma_SO3(phi,2);
 
   ocs2::matrix_t X_pred = X;
   if(state_.getStateType() == StateType::WorldCentric) {
@@ -489,12 +489,12 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
       H.conservativeResize(startIndex+3, dimP);
       H.block(startIndex,0,3,dimP).setZero();
       if(state_.getStateType() == StateType::WorldCentric) {
-        H.template block<3,3>(startIndex,6) = -ocs2::matrix3_t::Identity(); // -I
-        H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = ocs2::matrix3_t::Identity(); // I
+        H.template block<3,3>(startIndex,6) = -matrix3_t::Identity(); // -I
+        H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = matrix3_t::Identity(); // I
       } 
       else {
-        H.template block<3,3>(startIndex,6) = ocs2::matrix3_t::Identity(); // I
-        H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = -ocs2::matrix3_t::Identity(); // -I
+        H.template block<3,3>(startIndex,6) = matrix3_t::Identity(); // I
+        H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = -matrix3_t::Identity(); // -I
       }
       // Fill out N
       startIndex = N.rows();
@@ -592,13 +592,13 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
       // Blocks for new contact
       if((state_.getStateType() == StateType::WorldCentric && error_type_ == ErrorType::RightInvariant) || 
           (state_.getStateType() == StateType::BodyCentric && error_type_ == ErrorType::LeftInvariant)) {
-        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = ocs2::matrix3_t::Identity(); 
+        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = matrix3_t::Identity(); 
         G.block(G.rows()-state_.dimTheta()-3,0,3,3) = state_.getWorldRotation();
       } 
       else {
-        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = ocs2::matrix3_t::Identity(); 
+        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = matrix3_t::Identity(); 
         F.block(state_.dimP()-state_.dimTheta(),0,3,3) = skew(-it->pose.block<3,1>(0,3)); 
-        G.block(G.rows()-state_.dimTheta()-3,0,3,3) = ocs2::matrix3_t::Identity();
+        G.block(G.rows()-state_.dimTheta()-3,0,3,3) = matrix3_t::Identity();
       }
       P_aug = (F*P_aug*F.transpose() + G*it->covariance.block<3,3>(3,3)*G.transpose()).eval(); 
 
@@ -645,11 +645,11 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
       H.block(startIndex,0,3,dimP).setZero();
       if(state_.getStateType() == StateType::WorldCentric) {
           H.block(startIndex,0,3,3) = skew(it_prior->second); // skew(p_wl)
-          H.block(startIndex,6,3,3) = -ocs2::matrix3_t::Identity(); // -I    
+          H.block(startIndex,6,3,3) = -matrix3_t::Identity(); // -I    
       } 
       else {
           H.block(startIndex,0,3,3) = skew(-it_prior->second); // -skew(p_wl)
-          H.block(startIndex,6,3,3) = ocs2::matrix3_t::Identity(); // I    
+          H.block(startIndex,6,3,3) = matrix3_t::Identity(); // I    
       }
 
       // Fill out N
@@ -684,12 +684,12 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
       H.conservativeResize(startIndex+3, dimP);
       H.block(startIndex,0,3,dimP).setZero();
       if(state_.getStateType() == StateType::WorldCentric) {
-          H.block(startIndex,6,3,3) = -ocs2::matrix3_t::Identity(); // -I
-          H.block(startIndex,3*it_estimated->second-dimTheta,3,3) = ocs2::matrix3_t::Identity(); // I
+          H.block(startIndex,6,3,3) = -matrix3_t::Identity(); // -I
+          H.block(startIndex,3*it_estimated->second-dimTheta,3,3) = matrix3_t::Identity(); // I
       } 
       else {
-          H.block(startIndex,6,3,3) = ocs2::matrix3_t::Identity(); // I
-          H.block(startIndex,3*it_estimated->second-dimTheta,3,3) = -ocs2::matrix3_t::Identity(); // -I
+          H.block(startIndex,6,3,3) = matrix3_t::Identity(); // I
+          H.block(startIndex,3*it_estimated->second-dimTheta,3,3) = -matrix3_t::Identity(); // -I
       }
 
       // Fill out N
@@ -748,12 +748,12 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
       ocs2::matrix_t G = ocs2::matrix_t::Zero(F.rows(),3);
       // Blocks for new landmark
       if(error_type_==ErrorType::RightInvariant) {
-        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = ocs2::matrix3_t::Identity(); 
+        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = matrix3_t::Identity(); 
         G.block(G.rows()-state_.dimTheta()-3,0,3,3) = state_.getRotation();
       } else {
-        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = ocs2::matrix3_t::Identity(); 
+        F.block(state_.dimP()-state_.dimTheta(),6,3,3) = matrix3_t::Identity(); 
         F.block(state_.dimP()-state_.dimTheta(),0,3,3) = skew(-it->position); 
-        G.block(G.rows()-state_.dimTheta()-3,0,3,3) = ocs2::matrix3_t::Identity();
+        G.block(G.rows()-state_.dimTheta()-3,0,3,3) = matrix3_t::Identity();
       }
       P_aug = (F*P_aug*F.transpose() + G*it->covariance*G.transpose()).eval();
 
@@ -868,12 +868,12 @@ void InEKF::RemovePriorLandmarks(const std::vector<int>& landmark_ids) {
 
 
 // Corrects state using magnetometer measurements (Right Invariant)
-void InEKF::CorrectMagnetometer(const ocs2::vector3_t& measured_magnetic_field, const ocs2::matrix3_t& covariance) {
+void InEKF::CorrectMagnetometer(const vector3_t& measured_magnetic_field, const matrix3_t& covariance) {
     // ocs2::vector_t Y, b;
     // ocs2::matrix_t H, N, PI;
 
     // // Get Rotation Estimate
-    // ocs2::matrix3_t R = state_.getRotation();
+    // matrix3_t R = state_.getRotation();
 
     // // Fill out observation data
     // int dimX = state_.dimX();
@@ -902,7 +902,7 @@ void InEKF::CorrectMagnetometer(const ocs2::vector3_t& measured_magnetic_field, 
     // // Fill out PI      
     // PI.conservativeResize(3, dimX);
     // PI.block(0,0,3,dimX) = ocs2::matrix_t::Zero(3,dimX);
-    // PI.block(0,0,3,3) = ocs2::matrix3_t::Identity();
+    // PI.block(0,0,3,3) = matrix3_t::Identity();
     
 
     // // Correct state using stacked observation
@@ -915,9 +915,9 @@ void InEKF::CorrectMagnetometer(const ocs2::vector3_t& measured_magnetic_field, 
 
 
 // Observation of absolute position - GPS (Left-Invariant Measurement)
-void InEKF::CorrectPosition(const ocs2::vector3_t& measured_position, 
-                            const ocs2::matrix3_t& covariance, 
-                            const ocs2::vector3_t& indices) {
+void InEKF::CorrectPosition(const vector3_t& measured_position, 
+                            const matrix3_t& covariance, 
+                            const vector3_t& indices) {
   // ocs2::vector_t Y, b;
   // ocs2::matrix_t H, N, PI;
 
@@ -940,7 +940,7 @@ void InEKF::CorrectPosition(const ocs2::vector3_t& measured_position,
   // // Fill out H
   // H.conservativeResize(3, dimP);
   // H.block(0,0,3,dimP) = ocs2::matrix_t::Zero(3,dimP);
-  // H.block<3,3>(0,6) = ocs2::matrix3_t::Identity(); 
+  // H.block<3,3>(0,6) = matrix3_t::Identity(); 
 
   // // Fill out N
   // N.conservativeResize(3, 3);
@@ -949,11 +949,11 @@ void InEKF::CorrectPosition(const ocs2::vector3_t& measured_position,
   // // Fill out PI      
   // PI.conservativeResize(3, dimX);
   // PI.block(0,0,3,dimX) = ocs2::matrix_t::Zero(3,dimX);
-  // PI.block(0,0,3,3) = ocs2::matrix3_t::Identity();
+  // PI.block(0,0,3,3) = matrix3_t::Identity();
 
   // // Modify measurement based on chosen indices
   // const ocs2::scalar_t HIGH_UNCERTAINTY = 1e6;
-  // ocs2::vector3_t p = state_.getPosition();
+  // vector3_t p = state_.getPosition();
   // if(!indices(0)) { 
   //   Y(0) = p(0);
   //   N(0,0) = HIGH_UNCERTAINTY;
@@ -990,9 +990,9 @@ void InEKF::CorrectPosition(const ocs2::vector3_t& measured_position,
 
 // Observation of absolute z-position of contact points (Left-Invariant Measurement)
 void InEKF::CorrectContactPosition(const int id, 
-                                   const ocs2::vector3_t& measured_contact_position, 
-                                   const ocs2::matrix3_t& covariance, 
-                                   const ocs2::vector3_t& indices) {
+                                   const vector3_t& measured_contact_position, 
+                                   const matrix3_t& covariance, 
+                                   const vector3_t& indices) {
   ocs2::vector_t Z_full, Z;
   ocs2::matrix_t PI, H_full, N_full, H, N;
 
@@ -1025,7 +1025,7 @@ void InEKF::CorrectContactPosition(const int id,
     // Fill out H
     H_full = ocs2::matrix_t::Zero(3,dimP);
     H_full.block<3,3>(0,0) = -skew(d);
-    H_full.block<3,3>(0,3*it_estimated->second-6) = ocs2::matrix3_t::Identity();
+    H_full.block<3,3>(0,3*it_estimated->second-6) = matrix3_t::Identity();
     H.noalias() = PI*H_full;
 
     // Fill out N

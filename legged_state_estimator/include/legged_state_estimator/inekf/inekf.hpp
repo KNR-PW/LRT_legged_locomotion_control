@@ -11,17 +11,17 @@
  *  @date   September 25, 2018
  **/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_INEKF___
-#define __LEGGED_STATE_ESTIMATOR_INEKF___
+#ifndef __LEGGED_STATE_ESTIMATOR_INEKF__
+#define __LEGGED_STATE_ESTIMATOR_INEKF__
 
 #include <iostream>
-#include <vector>
 #include <map>
 #include <algorithm>
 
-#include <Eigen/Core>
 #include "Eigen/LU"
 #include "unsupported/Eigen/MatrixFunctions"
+
+#include "legged_state_estimator/types.hpp"
 
 #include "legged_state_estimator/inekf/inekf_state.hpp"
 #include "legged_state_estimator/inekf/noise_params.hpp"
@@ -104,7 +104,7 @@ the default.
 
   /**
    * Gets the filter's prior landmarks.
-   * @return  map of prior landmark ID and position (as a ocs2::vector3_t)
+   * @return  map of prior landmark ID and position (as a vector3_t)
    */
   const mapIntVector3d& getPriorLandmarks() const;
   /**
@@ -116,7 +116,7 @@ the default.
    * Gets the filter's set magnetic field.
    * @return  magnetic field in world frame
    */
-  const ocs2::vector3_t& getMagneticField() const;
+  const vector3_t& getMagneticField() const;
 /// @}
 
 
@@ -143,7 +143,7 @@ the default.
    */
   void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
   /** TODO: Sets magnetic field for untested magnetometer measurement */
-  void setMagneticField(const ocs2::vector3_t& true_magnetic_field);
+  void setMagneticField(const vector3_t& true_magnetic_field);
 /// @}
 
 
@@ -193,7 +193,7 @@ the default.
    * @param imu_a: IMU linear acceleration measurement
    * @param dt: ocs2::scalar_t indicating how long to integrate the inertial measurements for
    */
-  void Propagate(const ocs2::vector3_t& imu_w, const ocs2::vector3_t& imu_a, const ocs2::scalar_t dt);
+  void Propagate(const vector3_t& imu_w, const vector3_t& imu_a, const ocs2::scalar_t dt);
   /**
    * Propagates the estimated state mean and covariance forward using inertial measurements. 
    * All landmarks positions are assumed to be static.
@@ -220,11 +220,11 @@ the default.
   void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
 
   /** TODO: Untested magnetometer measurement*/
-  void CorrectMagnetometer(const ocs2::vector3_t& measured_magnetic_field, const ocs2::matrix3_t& covariance);
+  void CorrectMagnetometer(const vector3_t& measured_magnetic_field, const matrix3_t& covariance);
   /** TODO: Untested GPS measurement*/
-  void CorrectPosition(const ocs2::vector3_t& measured_position, const ocs2::matrix3_t& covariance, const ocs2::vector3_t& indices);
+  void CorrectPosition(const vector3_t& measured_position, const matrix3_t& covariance, const vector3_t& indices);
   /** TODO: Untested contact position measurement*/
-  void CorrectContactPosition(const int id, const ocs2::vector3_t& measured_contact_position, const ocs2::matrix3_t& covariance, const ocs2::vector3_t& indices);
+  void CorrectContactPosition(const int id, const vector3_t& measured_contact_position, const matrix3_t& covariance, const vector3_t& indices);
 /// @} 
 
 /** @example kinematics.cpp
@@ -238,15 +238,15 @@ private:
   bool estimate_bias_ = true;  
   InEKFState state_;
   NoiseParams noise_params_;
-  ocs2::vector3_t g_; // Gravity vector in world frame (z-up)
+  vector3_t g_; // Gravity vector in world frame (z-up)
   std::map<int,bool> contacts_;
   std::map<int,int> estimated_contact_positions_;
   mapIntVector3d prior_landmarks_;
   std::map<int,int> estimated_landmarks_;
-  ocs2::vector3_t magnetic_field_;
+  vector3_t magnetic_field_;
   Eigen::LDLT<ocs2::matrix_t> ldlt_;
 
-  ocs2::matrix_t StateTransitionMatrix(const ocs2::vector3_t& w, const ocs2::vector3_t& a, ocs2::scalar_t dt);
+  ocs2::matrix_t StateTransitionMatrix(const vector3_t& w, const vector3_t& a, ocs2::scalar_t dt);
   ocs2::matrix_t DiscreteNoiseMatrix(const ocs2::matrix_t& Phi, ocs2::scalar_t dt);
 
   // Corrects state using invariant observation models
@@ -259,4 +259,4 @@ private:
 
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_INEKF___
+#endif // LEGGED_STATE_ESTIMATOR_INEKF__

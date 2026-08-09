@@ -32,10 +32,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR___
-#define __LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR___
-
-#include <vector>
+#ifndef __LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR__
+#define __LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR__
 
 #include <legged_state_estimator/types.hpp>
 #include <legged_state_estimator/robot_model.hpp>
@@ -138,7 +136,7 @@ namespace legged_state_estimator
       /// @brief Get the contact force estimates.
       /// @return const reference to the contact force estimates.
       ///
-      const std::vector<ocs2::vector3_t>& getContactForceEstimate() const;
+      const std::vector<vector3_t>& getContactForceEstimate() const;
       
       ///
       /// @brief Get the normal contact force estimates.
@@ -150,14 +148,14 @@ namespace legged_state_estimator
       /// @brief Get the contact normal surface.
       /// @return const reference to the contact normal surface.
       ///
-      const std::vector<ocs2::vector3_t>& getContactSurfaceNormal() const;
+      const std::vector<vector3_t>& getContactSurfaceNormal() const;
       
       ///
       /// @brief Sets the contact normal surface.
       /// @param[in] Contact Contact normal vectors.
       ///
       void setContactSurfaceNormal(
-        const std::vector<ocs2::vector3_t>& contact_surface_normal);
+        const std::vector<vector3_t>& contact_surface_normal);
       
       void disp(std::ostream& os) const;
       
@@ -167,15 +165,16 @@ namespace legged_state_estimator
       
     private:
       ContactEstimatorSettings settings_;
-      std::vector<ocs2::vector3_t> contact_force_estimate_;
-      std::vector<ocs2::vector3_t> contact_force_estimate_prev_;
-      std::vector<ocs2::vector3_t> contact_surface_normal_;
-      std::vector<ocs2::scalar_t> normal_contact_force_estimate_, 
-      std::vector<ocs2::scalar_t> normal_contact_force_estimate_prev_, 
-      std::vector<ocs2::scalar_t> contact_probability_, contact_force_covariance_;
+      std::vector<vector3_t> contact_force_estimate_;
+      std::vector<vector3_t> contact_force_estimate_prev_;
+      std::vector<vector3_t> contact_surface_normal_;
+      std::vector<ocs2::scalar_t> normal_contact_force_estimate_;
+      std::vector<ocs2::scalar_t> normal_contact_force_estimate_prev_; 
+      std::vector<ocs2::scalar_t> contact_probability_; 
+      std::vector<ocs2::scalar_t> contact_force_covariance_;
       std::vector<std::pair<int, bool>> contact_state_;
       int num_contacts_;
   };
 } // namespace legged_state_estimator
 
-#endif // LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR___ 
+#endif // LEGGED_STATE_ESTIMATOR_CONTACT_ESTIMATOR__ 

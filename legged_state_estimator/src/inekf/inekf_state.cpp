@@ -79,7 +79,7 @@ const ocs2::matrix_t InEKFState::getWorldX() const {
 }
 
 
-const ocs2::matrix3_t InEKFState::getWorldRotation() const {
+const matrix3_t InEKFState::getWorldRotation() const {
   if(state_type_ == StateType::WorldCentric) {
     return this->getRotation();
   } 
@@ -89,7 +89,7 @@ const ocs2::matrix3_t InEKFState::getWorldRotation() const {
 }
 
 
-const ocs2::vector3_t InEKFState::getWorldVelocity() const {
+const vector3_t InEKFState::getWorldVelocity() const {
   if(state_type_ == StateType::WorldCentric) {
     return this->getVelocity();
   } 
@@ -99,7 +99,7 @@ const ocs2::vector3_t InEKFState::getWorldVelocity() const {
 }
 
 
-const ocs2::vector3_t InEKFState::getWorldPosition() const {
+const vector3_t InEKFState::getWorldPosition() const {
   if(state_type_ == StateType::WorldCentric) {
     return this->getPosition();
   } 
@@ -119,7 +119,7 @@ const ocs2::matrix_t InEKFState::getBodyX() const {
 }
 
 
-const ocs2::matrix3_t InEKFState::getBodyRotation() const {
+const matrix3_t InEKFState::getBodyRotation() const {
   if(state_type_ == StateType::BodyCentric) {
     return this->getRotation();
   } 
@@ -129,7 +129,7 @@ const ocs2::matrix3_t InEKFState::getBodyRotation() const {
 }
 
 
-const ocs2::vector3_t InEKFState::getBodyVelocity() const {
+const vector3_t InEKFState::getBodyVelocity() const {
   if(state_type_ == StateType::BodyCentric) {
     return this->getVelocity();
   } 
@@ -139,7 +139,7 @@ const ocs2::vector3_t InEKFState::getBodyVelocity() const {
 }
 
 
-const ocs2::vector3_t InEKFState::getBodyPosition() const {
+const vector3_t InEKFState::getBodyPosition() const {
   if(state_type_ == StateType::BodyCentric) {
     return this->getPosition();
   } 
@@ -152,18 +152,18 @@ const ocs2::vector3_t InEKFState::getBodyPosition() const {
 void InEKFState::setX(const ocs2::matrix_t& X) { X_ = X; }
 void InEKFState::setTheta(const ocs2::vector_t& Theta) { Theta_ = Theta; }
 void InEKFState::setP(const ocs2::matrix_t& P) { P_ = P; }
-void InEKFState::setRotation(const ocs2::matrix3_t& R) { X_.block<3,3>(0,0) = R; }
-void InEKFState::setVelocity(const ocs2::vector3_t& v) { X_.block<3,1>(0,3) = v; }
-void InEKFState::setPosition(const ocs2::vector3_t& p) { X_.block<3,1>(0,4) = p; }
+void InEKFState::setRotation(const matrix3_t& R) { X_.block<3,3>(0,0) = R; }
+void InEKFState::setVelocity(const vector3_t& v) { X_.block<3,1>(0,3) = v; }
+void InEKFState::setPosition(const vector3_t& p) { X_.block<3,1>(0,4) = p; }
 
-void InEKFState::setGyroscopeBias(const ocs2::vector3_t& bg) { Theta_.head(3) = bg; }
-void InEKFState::setAccelerometerBias(const ocs2::vector3_t& ba) { Theta_.tail(3) = ba; }
+void InEKFState::setGyroscopeBias(const vector3_t& bg) { Theta_.head(3) = bg; }
+void InEKFState::setAccelerometerBias(const vector3_t& ba) { Theta_.tail(3) = ba; }
 
-void InEKFState::setRotationCovariance(const ocs2::matrix3_t& cov) { P_.block<3,3>(0,0) = cov; }
-void InEKFState::setVelocityCovariance(const ocs2::matrix3_t& cov) { P_.block<3,3>(3,3) = cov; }
-void InEKFState::setPositionCovariance(const ocs2::matrix3_t& cov) { P_.block<3,3>(6,6) = cov; }
-void InEKFState::setGyroscopeBiasCovariance(const ocs2::matrix3_t& cov) { P_.block<3,3>(P_.rows()-6,P_.rows()-6) = cov; }
-void InEKFState::setAccelerometerBiasCovariance(const ocs2::matrix3_t& cov) { P_.block<3,3>(P_.rows()-3,P_.rows()-3) = cov; }
+void InEKFState::setRotationCovariance(const matrix3_t& cov) { P_.block<3,3>(0,0) = cov; }
+void InEKFState::setVelocityCovariance(const matrix3_t& cov) { P_.block<3,3>(3,3) = cov; }
+void InEKFState::setPositionCovariance(const matrix3_t& cov) { P_.block<3,3>(6,6) = cov; }
+void InEKFState::setGyroscopeBiasCovariance(const matrix3_t& cov) { P_.block<3,3>(P_.rows()-6,P_.rows()-6) = cov; }
+void InEKFState::setAccelerometerBiasCovariance(const matrix3_t& cov) { P_.block<3,3>(P_.rows()-3,P_.rows()-3) = cov; }
 
 
 void InEKFState::copyDiagX(const int n, ocs2::matrix_t& BigX) const {

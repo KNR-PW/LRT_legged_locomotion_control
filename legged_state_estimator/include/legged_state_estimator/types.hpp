@@ -29,12 +29,13 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef ____TYPES_LEGGED_STATE_ESTIMATOR__
-#define ____TYPES_LEGGED_STATE_ESTIMATOR__
+#ifndef ___TYPES_LEGGED_STATE_ESTIMATOR__
+#define ___TYPES_LEGGED_STATE_ESTIMATOR__
 
 #include <vector>
-#include <cstddef>
 #include <bitset>
+#include <cstddef>
+#include <string>
 
 #include <ocs2_core/Types.h>
 #include <ocs2_core/NumericTraits.h>
@@ -51,8 +52,8 @@ namespace legged_state_estimator
   using vector2_t = Eigen::Matrix<ocs2::scalar_t, 2, 1>;
   using vector3_t = Eigen::Matrix<ocs2::scalar_t, 3, 1>;
   using vector4_t = Eigen::Matrix<ocs2::scalar_t, 4, 1>;
-  using matrix3_t = Eigen::Matrix<ocs2::scalar_t, 3, 3>;
   using vector6_t = Eigen::Matrix<ocs2::scalar_t, 6, 1>;
+  using matrix3_t = Eigen::Matrix<ocs2::scalar_t, 3, 3>;
   using matrix6_t = Eigen::Matrix<ocs2::scalar_t, 6, 6>;
   using quaternion_t = Eigen::Quaternion<ocs2::scalar_t>;
 } // namespace legged_state_estimator

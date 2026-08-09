@@ -32,12 +32,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER___
-#define __LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER___
+#ifndef __LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER__
+#define __LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER__
 
 #include <cmath>
 #include <stdexcept>
-#include <string>
 
 #include <legged_state_estimator/types.hpp>
 
@@ -148,4 +147,4 @@ namespace legged_state_estimator
   };
 } // namespace legged_state_estimator 
 
-#endif // LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER___ 
+#endif // LEGGED_STATE_ESTIMATOR_LOW_PASS_FILTER__ 

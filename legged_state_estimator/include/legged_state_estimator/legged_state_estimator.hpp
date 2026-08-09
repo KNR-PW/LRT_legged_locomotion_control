@@ -32,11 +32,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-#ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR___
-#define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR___
-
-#include <string>
-#include <vector>
+#ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR__
+#define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR__
 
 #include <legged_state_estimator/types.hpp>
 #include <legged_state_estimator/inekf/inekf.hpp>
@@ -63,12 +60,8 @@ namespace legged_state_estimator
     /// @brief Constructor.
     /// @param[in] settings State estimator settings.
     ///
-    LeggedStateEstimator(const LeggedStateEstimatorSettings& settings);
-
-    ///
-    /// @brief Default constructor.
-    ///
-    LeggedStateEstimator();
+    LeggedStateEstimator(const std::string& urdf_path, 
+      const LeggedStateEstimatorSettings& settings);
 
     ///
     /// @brief Default destructor.
@@ -85,16 +78,16 @@ namespace legged_state_estimator
     /// @param[in] base_pos Base position. 
     /// @param[in] base_quat Base orientation expressed by quaternion (x, y, z, w). 
     /// @param[in] base_lin_vel_world Base linear velocity expressed in the world
-    /// coordinate. Default is ocs2::vector3_t::Zero().
+    /// coordinate. Default is vector3_t::Zero().
     /// @param[in] imu_gyro_bias Initial guess of the IMU gyro bias. Default is 
-    /// ocs2::vector3_t::Zero().
+    /// vector3_t::Zero().
     /// @param[in] imu_lin_accel_bias Initial guess of the IMU linear acceleration 
-    /// bias. Default is ocs2::vector3_t::Zero().
+    /// bias. Default is vector3_t::Zero().
     ///
-    void init(const ocs2::vector3_t& base_pos, const ocs2::vector4_t& base_quat,
-      const ocs2::vector3_t& base_lin_vel_world=ocs2::vector3_t::Zero(),
-      const ocs2::vector3_t& imu_gyro_bias=ocs2::vector3_t::Zero(),
-      const ocs2::vector3_t& imu_lin_accel_bias=ocs2::vector3_t::Zero());
+    void init(const vector3_t& base_pos, const vector4_t& base_quat,
+      const vector3_t& base_lin_vel_world=vector3_t::Zero(),
+      const vector3_t& imu_gyro_bias=vector3_t::Zero(),
+      const vector3_t& imu_lin_accel_bias=vector3_t::Zero());
 
     ///
     /// @brief Initializes the state estimator.
@@ -103,18 +96,18 @@ namespace legged_state_estimator
     /// @param[in] qJ Raw measurement of the joint positions. 
     /// @param[in] ground_height Ground height. 
     /// @param[in] base_lin_vel_world Base linear velocity expressed in the world
-    /// coordinate. Default is ocs2::vector3_t::Zero().
+    /// coordinate. Default is vector3_t::Zero().
     /// @param[in] imu_gyro_bias Initial guess of the IMU gyro bias. Default is 
-    /// ocs2::vector3_t::Zero().
+    /// vector3_t::Zero().
     /// @param[in] imu_lin_accel_bias Initial guess of the IMU linear acceleration 
-    /// bias. Default is ocs2::vector3_t::Zero().
+    /// bias. Default is vector3_t::Zero().
     ///
-    void init(const ocs2::vector3_t& base_pos, const ocs2::vector4_t& base_quat,
+    void init(const vector3_t& base_pos, const vector4_t& base_quat,
       const ocs2::vector_t& qJ, 
       const std::vector<ocs2::scalar_t>& ground_height,
-      const ocs2::vector3_t& base_lin_vel_world=ocs2::vector3_t::Zero(),
-      const ocs2::vector3_t& imu_gyro_bias=ocs2::vector3_t::Zero(),
-      const ocs2::vector3_t& imu_lin_accel_bias=ocs2::vector3_t::Zero());
+      const vector3_t& base_lin_vel_world=vector3_t::Zero(),
+      const vector3_t& imu_gyro_bias=vector3_t::Zero(),
+      const vector3_t& imu_lin_accel_bias=vector3_t::Zero());
 
     ///
     /// @brief Updates the state estimation.
@@ -126,61 +119,76 @@ namespace legged_state_estimator
     /// @param[in] dqJ Raw measurement of the joint velocities. 
     /// @param[in] tauJ Raw measurement of the joint torques. 
     ///
-    void update(const ocs2::vector3_t& imu_gyro_raw, 
-      const ocs2::vector3_t& imu_lin_accel_raw, 
+    void update(const vector3_t& imu_gyro_raw, 
+      const vector3_t& imu_lin_accel_raw, 
       const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, 
       const ocs2::vector_t& tauJ);
 
     ///
+    /// @brief Updates the state estimation.
+    /// @param[in] imu_gyro_raw Raw measurement of the base angular velocity 
+    /// expressed in the body local coordinate from IMU gyro sensor.
+    /// @param[in] imu_lin_accel_raw Raw measurement of the base linear 
+    /// acceleration expressed in the body local coordinate from IMU accelerometer. 
+    /// @param[in] qJ Raw measurement of the joint positions. 
+    /// @param[in] dqJ Raw measurement of the joint velocities. 
+    /// @param[in] contacts Contact states from external sensors
+    ///
+    void update(const vector3_t& imu_gyro_raw, 
+      const vector3_t& imu_lin_accel_raw, 
+      const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, 
+      const std::vector<std::pair<int,bool>>& contacts);
+
+    ///
     /// @return const reference to the base position estimate.
     ///
-    const ocs2::vector3_t& getBasePositionEstimate() const;
+    const vector3_t& getBasePositionEstimate() const;
 
     ///
     /// @return const reference to the base orientation estimate expressed by a 
     /// rotation matrix.
     ///
-    const ocs2::matrix3_t& getBaseRotationEstimate() const;
+    const matrix3_t& getBaseRotationEstimate() const;
 
     ///
     /// @return const reference to the base orientation estimate expressed by 
     /// quaternion.
     ///
-    const ocs2::vector4_t& getBaseQuaternionEstimate() const;
+    const vector4_t& getBaseQuaternionEstimate() const;
 
     ///
     /// @return const reference to the base linear velocity estimate expressed in 
     /// the world frame.
     ///
-    const ocs2::vector3_t& getBaseLinearVelocityEstimateWorld() const;
+    const vector3_t& getBaseLinearVelocityEstimateWorld() const;
 
     ///
     /// @return const reference to the base linear velocity estimate expressed in 
     /// the body local coordinate.
     ///
-    const ocs2::vector3_t getBaseLinearVelocityEstimateLocal() const;
+    const vector3_t getBaseLinearVelocityEstimateLocal() const;
 
     ///
     /// @return const reference to the base angular velocity estimate expressed in 
     /// the world frame.
     ///
-    const ocs2::vector3_t& getBaseAngularVelocityEstimateWorld() const;
+    const vector3_t& getBaseAngularVelocityEstimateWorld() const;
 
     ///
     /// @return const reference to the base angular velocity estimate expressed in 
     /// the local frame.
     ///
-    const ocs2::vector3_t& getBaseAngularVelocityEstimateLocal() const;
+    const vector3_t& getBaseAngularVelocityEstimateLocal() const;
 
     ///
     /// @return const reference to the IMU gyro bias estimate. 
     ///
-    const ocs2::vector3_t& getIMUGyroBiasEstimate() const;
+    const vector3_t& getIMUGyroBiasEstimate() const;
 
     ///
     /// @return const reference to the IMU linear acceleration bias estimate. 
     ///
-    const ocs2::vector3_t& getIMULinearAccelerationBiasEstimate() const;
+    const vector3_t& getIMULinearAccelerationBiasEstimate() const;
 
     ///
     /// @return const reference to the joint velocity estimates. 
@@ -228,30 +236,30 @@ namespace legged_state_estimator
     LowPassFilter<ocs2::scalar_t, Eigen::Dynamic> lpf_ddqJ_;
     LowPassFilter<ocs2::scalar_t, Eigen::Dynamic> lpf_tauJ_;
      
-    ocs2::matrix3_t base_rot_estimate_;
-    ocs2::vector6_t imu_raw_;
-    ocs2::vector4_t base_quat_estimate_;
+    matrix3_t base_rot_estimate_;
+    vector6_t imu_raw_;
+    vector4_t base_quat_estimate_;
 
-    ocs2::vector3_t imu_gyro_raw_world_;
-    ocs2::vector3_t imu_gyro_raw_world_prev_;
+    vector3_t imu_gyro_raw_world_;
+    vector3_t imu_gyro_raw_world_prev_;
 
-    ocs2::vector3_t imu_gyro_accel_world_;
-    ocs2::vector3_t imu_gyro_accel_local_;
+    vector3_t imu_gyro_accel_world_;
+    vector3_t imu_gyro_accel_local_;
 
-    ocs2::vector3_t imu_lin_accel_raw_world_;
-    ocs2::vector3_t imu_lin_accel_local_;
+    vector3_t imu_lin_accel_raw_world_;
+    vector3_t imu_lin_accel_local_;
 
-    ocs2::vector3_t base_pos_estimate_;
+    vector3_t base_pos_estimate_;
 
-    ocs2::vector3_t base_lin_vel_world_estimate_;
-    ocs2::vector3_t base_lin_vel_local_estimate_;
+    vector3_t base_lin_vel_world_estimate_;
+    vector3_t base_lin_vel_local_estimate_;
 
-    ocs2::vector3_t base_ang_vel_world_estimate_;
-    ocs2::vector3_t base_ang_vel_local_estimate_;
+    vector3_t base_ang_vel_world_estimate_;
+    vector3_t base_ang_vel_local_estimate_;
 
-    ocs2::vector3_t imu_gyro_bias_estimate_;
-    ocs2::vector3_t imu_lin_acc_bias_estimate_;
+    vector3_t imu_gyro_bias_estimate_;
+    vector3_t imu_lin_acc_bias_estimate_;
   };
 } // namespace legged_state_estimator
 
-#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR___
+#endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR__

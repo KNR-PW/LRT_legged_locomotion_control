@@ -222,7 +222,7 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  const ocs2::matrix3_t& RobotModel::getBaseRotation() const 
+  const matrix3_t& RobotModel::getBaseRotation() const 
   {
     return data_.oMf[imu_frame_].rotation();
   }
@@ -240,7 +240,7 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  const ocs2::matrix3_t& RobotModel::getContactRotation(const int contact_id) const 
+  const matrix3_t& RobotModel::getContactRotation(const int contact_id) const 
   {
     assert(contact_id >= 0);
     assert(contact_id < contact_frames_.size());
