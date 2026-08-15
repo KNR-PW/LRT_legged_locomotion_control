@@ -3,7 +3,7 @@
 #include <rclcpp/executors/single_threaded_executor.hpp>
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 
-#include <legged_locomotion_mpc_ros2/controller/LeggedMpcController.hpp>
+#include <legged_locomotion_mpc_ros2/controller/LeggedLocomotionMpcController.hpp>
 
 int main(int argc, char** argv)
 {
@@ -11,11 +11,11 @@ int main(int argc, char** argv)
 
   using namespace legged_locomotion_mpc_ros2;
 
-  auto leggedMpcController = std::make_shared<LeggedMpcController>();
+  auto leggedLocomotionMpcController = std::make_shared<LeggedLocomotionMpcController>();
 
   rclcpp::executors::MultiThreadedExecutor executor;
 
-  executor.add_node(leggedMpcController->get_node_base_interface());
+  executor.add_node(leggedLocomotionMpcController->get_node_base_interface());
   executor.spin();
 
   rclcpp::shutdown();

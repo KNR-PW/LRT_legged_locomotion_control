@@ -60,11 +60,11 @@ namespace legged_locomotion_mpc_ros2
 {
   using namespace legged_locomotion_mpc;
 
-  class LeggedMpcController: public rclcpp_lifecycle::LifecycleNode
+  class LeggedLocomotionMpcController: public rclcpp_lifecycle::LifecycleNode
   {
     public:
 
-      LeggedMpcController(bool intraProcessComms = false);
+      LeggedLocomotionMpcController(bool intraProcessComms = false);
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
         on_configure(const rclcpp_lifecycle::State& state) override;

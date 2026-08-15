@@ -1,4 +1,4 @@
-#include <legged_locomotion_mpc_ros2/controller/LeggedMpcController.hpp>
+#include <legged_locomotion_mpc_ros2/controller/LeggedLocomotionMpcController.hpp>
 
 #include <ocs2_core/thread_support/ExecuteAndSleep.h>
 
@@ -31,8 +31,8 @@ namespace legged_locomotion_mpc_ros2
   using namespace rclcpp_lifecycle;
   using namespace grid_map;
 
-  LeggedMpcController::LeggedMpcController(bool intraProcessComms):
-    LifecycleNode("legged_mpc_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
+  LeggedLocomotionMpcController::LeggedLocomotionMpcController(bool intraProcessComms):
+    LifecycleNode("legged_locomotion_mpc_controller", NodeOptions().use_intra_process_comms(intraProcessComms)),
     baseTransformEstimation_(vector6_t::Zero()),
     baseTwistEstimation_(vector6_t::Zero()),
     jointPositionEstimation_(vector_t()),
@@ -49,12 +49,12 @@ namespace legged_locomotion_mpc_ros2
     lastBaseTwistTime_ = this->get_clock()->now();
     lastContactFlagsTime_ = this->get_clock()->now();
 
-    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller started in unconfigured state!");
+    RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller started in unconfigured state!");
     i_ = 0;
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedMpcController::on_configure(const State& state)
+    LeggedLocomotionMpcController::on_configure(const State& state)
   {
     /** 
      * Setup helper data structures
@@ -129,7 +129,7 @@ namespace legged_locomotion_mpc_ros2
     const std::string twistTopic = "/command_twist";
     commandTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       twistTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateCommand, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateCommand, this, std::placeholders::_1));
 
     rclcpp::CallbackGroup::SharedPtr cb_group_not_executed = this->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive, false);
@@ -142,49 +142,49 @@ namespace legged_locomotion_mpc_ros2
     const std::string jointSatesTopic = "/joint_states";
     jointStateSubscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
       jointSatesTopic, qos, 
-      std::bind(&LeggedMpcController::updateJointStates, this, std::placeholders::_1), subscription_options);
+      std::bind(&LeggedLocomotionMpcController::updateJointStates, this, std::placeholders::_1), subscription_options);
     
     // Base pose subscriber
     const std::string baseTransformTopic = "/base_transform";
     baseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
       baseTransformTopic, qos, 
-      std::bind(&LeggedMpcController::updateBaseTransform, this, std::placeholders::_1), subscription_options);
+      std::bind(&LeggedLocomotionMpcController::updateBaseTransform, this, std::placeholders::_1), subscription_options);
 
     // Base twist subscriber
     const std::string baseTwistTopic = "/base_twist";
     baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       baseTwistTopic, qos, 
-      std::bind(&LeggedMpcController::updateBaseTwist, this, std::placeholders::_1), subscription_options); 
+      std::bind(&LeggedLocomotionMpcController::updateBaseTwist, this, std::placeholders::_1), subscription_options); 
     
     // Contact flags subscriber
     const std::string contactFlagsTopic = "/contact_flags";
     contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
       contactFlagsTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateContactFlags, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateContactFlags, this, std::placeholders::_1));
     
     // Terrain subscriber
     const std::string terrainTopic = "/elevation";
     terrainSubscriber_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
       terrainTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateSegmentedTerrain, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateSegmentedTerrain, this, std::placeholders::_1));
     
     // Gait parameters subscriber
     const std::string gaitParametersTopic = "/gait_parameters";
     gaitParametersSubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::GaitParameters>(
       gaitParametersTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateGaitParameters, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateGaitParameters, this, std::placeholders::_1));
 
     // Swing paremeters subsciber
     const std::string swingParametersTopic = "/swing_parameters";
     swingParametersSubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::SwingParameters>(
       swingParametersTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateSwingParameters, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateSwingParameters, this, std::placeholders::_1));
 
     // Base external wrench subsciber
     const std::string baseWrenchTopic = "/base_external_wrench";
     baseWrenchSubscriber_ = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedMpcController::updateExternalWrench, this, std::placeholders::_1));
+      std::bind(&LeggedLocomotionMpcController::updateExternalWrench, this, std::placeholders::_1));
 
     // Joint trajectory publisher
     const std::string jointTrajectoryTopic = "/joint_trajectory";
@@ -197,12 +197,12 @@ namespace legged_locomotion_mpc_ros2
     optimizedJointPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "optimized_joint_states", SystemDefaultsQoS());
 
-    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller configured successfully!");
+    RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedMpcController::on_activate(const State& state)
+    LeggedLocomotionMpcController::on_activate(const State& state)
   {
     try
     {
@@ -232,17 +232,17 @@ namespace legged_locomotion_mpc_ros2
     // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
     jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
       rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
-      std::bind(&LeggedMpcController::sendJointTrajectory, this));
+      std::bind(&LeggedLocomotionMpcController::sendJointTrajectory, this));
 
     
-    RCLCPP_INFO(this->get_logger(), "Legged MPC Controller activated successfully!");
+    RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller activated successfully!");
     RCLCPP_INFO(this->get_logger(), "MPC/MRT loop activated!");
 
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedMpcController::on_deactivate(const State& state)
+    LeggedLocomotionMpcController::on_deactivate(const State& state)
   {
     controllerRunning_ = false;
     if (mpcThread_.joinable()) mpcThread_.join();
@@ -262,7 +262,7 @@ namespace legged_locomotion_mpc_ros2
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
-  void LeggedMpcController::setupMpc()
+  void LeggedLocomotionMpcController::setupMpc()
   {
     const std::string configDirectoryPath = this->get_parameter("config_directory_path").as_string();
     const std::string taskFilePath = configDirectoryPath + "/task.info";
@@ -368,7 +368,7 @@ namespace legged_locomotion_mpc_ros2
     mpcMrtPtr_->initRollout(&leggedInterfacePtr_->getRollout());
   }
 
-  void LeggedMpcController::updateCurrentObservation()
+  void LeggedLocomotionMpcController::updateCurrentObservation()
   {
     rclcpp::MessageInfo msgInfo;
 
@@ -486,7 +486,7 @@ namespace legged_locomotion_mpc_ros2
       lastBaseTwistTime_.seconds()), lastBaseTransformTime_.seconds());
   }
 
-  void LeggedMpcController::runMpc()
+  void LeggedLocomotionMpcController::runMpc()
   {
     mpcThread_ = std::thread([&]() 
     {
@@ -516,7 +516,7 @@ namespace legged_locomotion_mpc_ros2
     });
   }
 
-  void LeggedMpcController::updateCommand(
+  void LeggedLocomotionMpcController::updateCommand(
     const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist)
   {
     // Check if message has good base link in header
@@ -539,7 +539,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::updateJointStates(
+  void LeggedLocomotionMpcController::updateJointStates(
     const sensor_msgs::msg::JointState::ConstSharedPtr jointStates)
   {
     // Check if message has same amount of data
@@ -574,7 +574,7 @@ namespace legged_locomotion_mpc_ros2
     jointVelocityEstimation_.setBuffer(std::move(jointVelocities));
   }
 
-  void LeggedMpcController::updateBaseTransform(
+  void LeggedLocomotionMpcController::updateBaseTransform(
     const geometry_msgs::msg::TransformStamped::ConstSharedPtr baseTransform)
   {
     // Check if message has good base link in header
@@ -616,7 +616,7 @@ namespace legged_locomotion_mpc_ros2
     baseTransformEstimation_.setBuffer(std::move(currentBaseTransform));
   }
 
-  void LeggedMpcController::updateBaseTwist(
+  void LeggedLocomotionMpcController::updateBaseTwist(
     const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist)
   {
     // Check if message has good base link in header
@@ -647,7 +647,7 @@ namespace legged_locomotion_mpc_ros2
     baseTwistEstimation_.setBuffer(std::move(currentBaseTwist));
   }
 
-  void LeggedMpcController::updateContactFlags(
+  void LeggedLocomotionMpcController::updateContactFlags(
     const contact_msgs::msg::Contacts::ConstSharedPtr contactFlags)
   {
     if(contactFlags->contacts.size() != endEffectorNum_)
@@ -682,7 +682,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::updateGaitParameters(
+  void LeggedLocomotionMpcController::updateGaitParameters(
     const legged_locomotion_msgs::msg::GaitParameters::ConstSharedPtr gaitParameters)
   {
     if(gaitParameters->phase_offsets.size() != endEffectorNum_ - 1 || 
@@ -705,7 +705,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::updateSwingParameters(
+  void LeggedLocomotionMpcController::updateSwingParameters(
     const legged_locomotion_msgs::msg::SwingParameters::ConstSharedPtr swingParameters)
   {
     if(swingParameters->phases.size() != endEffectorNum_ || 
@@ -731,7 +731,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::updateExternalWrench(
+  void LeggedLocomotionMpcController::updateExternalWrench(
     const geometry_msgs::msg::WrenchStamped::ConstSharedPtr externalWrench)
   {
     // Check if message has good base link in header
@@ -759,7 +759,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::updateSegmentedTerrain(
+  void LeggedLocomotionMpcController::updateSegmentedTerrain(
     grid_map_msgs::msg::GridMap::UniquePtr gridMap)
   {
     if(!decompositionPipelinePtr_) return;
@@ -789,7 +789,7 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedMpcController::sendJointTrajectory()
+  void LeggedLocomotionMpcController::sendJointTrajectory()
   {
     
     if(mpcMrtPtr_ && controllerRunning_)
