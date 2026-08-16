@@ -49,6 +49,17 @@ namespace legged_state_estimator
   struct LeggedStateEstimatorSettings 
   {
     public:
+      
+      /// 
+      /// @brief Name of the world frame, that robot positions etc. are relative to.
+      ///
+      std::string world_frame;
+
+      /// 
+      /// @brief Name of the base frame specified in the URDF file.
+      ///
+      std::string base_frame;
+
       /// 
       /// @brief Name of the IMU frame specified in the URDF file.
       ///
@@ -138,7 +149,7 @@ namespace legged_state_estimator
    */
   LeggedStateEstimatorSettings loadLeggedStateEstimatorSettings(const std::string& filename,
     const std::string& fieldName = "legged_state_estimator",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_state_estimator
 
 #endif // LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_SETTINGS__

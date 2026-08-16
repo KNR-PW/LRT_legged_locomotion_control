@@ -137,6 +137,7 @@ namespace legged_state_estimator
     void update(const vector3_t& imu_gyro_raw, 
       const vector3_t& imu_lin_accel_raw, 
       const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, 
+      const ocs2::vector_t& tauJ, 
       const std::vector<std::pair<int,bool>>& contacts);
 
     ///
@@ -214,6 +215,11 @@ namespace legged_state_estimator
     /// @return const reference to the state estimator settings. 
     ///
     const LeggedStateEstimatorSettings& getSettings() const;
+
+    ///
+    /// @return const reference to robot model 
+    ///
+    const RobotModel& getRobotModel() const;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 

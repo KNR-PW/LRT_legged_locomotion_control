@@ -1,5 +1,7 @@
 legged_state_estimator
 {
+  worldFrameName world_link
+  baseFrameName base_link
   imuFrameName imu_link
   contactFrames
   {

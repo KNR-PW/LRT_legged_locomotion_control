@@ -25,6 +25,12 @@ namespace legged_state_estimator
 
     LeggedStateEstimatorSettings settings;
 
+    loadData::loadPtreeValue(pt, settings.world_frame, 
+      fieldName + ".worldFrameName", verbose);
+
+    loadData::loadPtreeValue(pt, settings.base_frame, 
+      fieldName + ".baseFrameName", verbose);
+
     loadData::loadPtreeValue(pt, settings.imu_frame, 
       fieldName + ".imuFrameName", verbose);
 

@@ -227,7 +227,7 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   void LeggedStateEstimator::update(const vector3_t& imu_gyro_raw, 
     const vector3_t& imu_lin_accel_raw, 
-    const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, 
+    const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ, const ocs2::vector_t& tauJ, 
     const std::vector<std::pair<int,bool>>& contacts)
   {
     if(settings_.use_contact_estimator)
@@ -246,6 +246,12 @@ namespace legged_state_estimator
     {
       throw std::invalid_argument(
         "[LeggedStateEstimator] invalid argment: dqJ.size() must be " + std::to_string(robot_model_.nJ()));
+    }
+
+    if(tauJ.size() != robot_model_.nJ()) 
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: tauJ.size() must be " + std::to_string(robot_model_.nJ()));
     }
 
     // Process IMU measurements in InEKF
@@ -274,6 +280,7 @@ namespace legged_state_estimator
       lpf_ddqJ_.update((dqJ - lpf_dqJ_.getEstimate()) / settings_.sampling_time);
     }
     lpf_dqJ_.update(dqJ);
+    lpf_tauJ_.update(tauJ);
 
     // Update contact info
     robot_model_.updateLegKinematics(qJ);
@@ -426,5 +433,13 @@ namespace legged_state_estimator
   const LeggedStateEstimatorSettings& LeggedStateEstimator::getSettings() const 
   {
     return settings_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const RobotModel& LeggedStateEstimator::getRobotModel() const 
+  {
+    return robot_model_;
   }
 } // namespace legged_state_estimator

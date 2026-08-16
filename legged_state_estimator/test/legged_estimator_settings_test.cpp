@@ -24,6 +24,8 @@ TEST(ModelSettingsTest, loader)
   const matrix3_t true_accel_bias_noise = 0.0001 * 0.0001 * matrix3_t::Identity();
   const matrix3_t true_contact_noise = 0.1 * 0.1 * matrix3_t::Identity();
 
+  EXPECT_TRUE(settings.world_frame == "world_link");
+  EXPECT_TRUE(settings.base_frame == "base_link");
   EXPECT_TRUE(settings.imu_frame == "imu_link");
   EXPECT_TRUE(settings.contact_frames == true_contact_frames);
   EXPECT_TRUE(settings.contact_estimator_settings.beta0 == true_beta0);
