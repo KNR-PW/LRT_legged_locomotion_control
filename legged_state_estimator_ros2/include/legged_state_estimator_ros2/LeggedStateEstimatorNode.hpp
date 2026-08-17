@@ -20,12 +20,9 @@
 #ifndef __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_ROS2__
 #define __LEGGED_STATE_ESTIMATOR_LEGGED_STATE_ESTIMATOR_ROS2__
 
-#include <ocs2_core/Types.h>
-
 #include <legged_state_estimator/legged_state_estimator.hpp>
 
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/publisher.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <rclcpp_lifecycle/lifecycle_publisher.hpp>
 
@@ -35,15 +32,17 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 
+#include <contact_msgs/msg/contacts.hpp>
+
 namespace legged_state_estimator_ros2
 {
   using namespace legged_state_estimator;
 
-  class LeggedStateEstimator: public rclcpp_lifecycle::LifecycleNode
+  class LeggedStateEstimatorNode: public rclcpp_lifecycle::LifecycleNode
   {
     public:
 
-      LeggedStateEstimator();
+      LeggedStateEstimatorNode();
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
         on_configure(const rclcpp_lifecycle::State& state) override;
@@ -70,7 +69,7 @@ namespace legged_state_estimator_ros2
       ocs2::vector_t jointPositions_;
       ocs2::vector_t jointVelocities_;
       ocs2::vector_t jointTorques_;
-      quaterion_t quaterion_;
+      quaternion_t quaterion_;
       vector3_t angularVelocity_;
       vector3_t linearAcceleration_;
       std::vector<std::pair<int, bool>> contactFlags_;
@@ -83,18 +82,19 @@ namespace legged_state_estimator_ros2
       ocs2::scalar_t estimatorDuration_;
       rclcpp::TimerBase::SharedPtr estimatorLoopTimer_;
 
-      // Sensor / observation subscribers
+      // Sensor/observation subscribers
+      rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr startBaseTransformSubscriber_;
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
       rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imuSubscriber_;
       rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
 
       // Base and joint state estimation publishers
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
-        geometry_msgs::msg::TransformStamped> baseTransformEstimatePublisher_;
+        geometry_msgs::msg::TransformStamped>> baseTransformEstimatePublisher_;
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
-        geometry_msgs::msg::TwistStamped> baseTwistEstimatePublisher_;
+        geometry_msgs::msg::TwistStamped>> baseTwistEstimatePublisher_;
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
-        sensor_msgs::msg::JointState> jointStatesEstimatePublisher_;
+        sensor_msgs::msg::JointState>> jointStatesEstimatePublisher_;
 
       // Last time robot sensor messages were recived
       rclcpp::Time lastJointStateTime_;

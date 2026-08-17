@@ -1,4 +1,4 @@
-#include <legged_state_estimator_ros2/LeggedStateEstimator.hpp>
+#include <legged_state_estimator_ros2/LeggedStateEstimatorNode.hpp>
 
 #include <pinocchio/parsers/urdf.hpp>
 
@@ -8,14 +8,17 @@ namespace legged_state_estimator_ros2
 {
   using namespace ocs2;
   using namespace legged_state_estimator;
-
-  LeggedStateEstimator::LeggedStateEstimator():
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  LeggedStateEstimatorNode::LeggedStateEstimatorNode():
     LifecycleNode("legged_state_estimator", 
-      NodeOptions().use_intra_process_comms(false))
+      rclcpp::NodeOptions().use_intra_process_comms(false))
   {
     // Config directory parameter
     this->declare_parameter("config_directory_path", "./");
     this->declare_parameter("urdf_path", "./");
+    this->declare_parameter("publish_joint_estimates", false);
 
     lastJointStateTime_ = this->get_clock()->now();
     lastImuTime_ = this->get_clock()->now();
@@ -26,8 +29,11 @@ namespace legged_state_estimator_ros2
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator in unconfigured state!");
   }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedStateEstimator::on_configure(const State& state)
+    LeggedStateEstimatorNode::on_configure(const rclcpp_lifecycle::State& state)
   {
     const std::string configDirectoryPath = this->get_parameter("config_directory_path").as_string();
 
@@ -48,8 +54,7 @@ namespace legged_state_estimator_ros2
     // Construct legged state estimator
     try
     {
-      leggedStateEstimator_ = make_unique<legged_state_estimator::LeggedStateEstimator>(
-        urdfFilePath, estimatorSettings);
+      leggedStateEstimator_ = std::make_unique<LeggedStateEstimator>(urdfFilePath, estimatorSettings);
     }
     catch(const std::exception& e)
     {
@@ -73,7 +78,8 @@ namespace legged_state_estimator_ros2
       contactFrameNameIndexMap_[estimatorSettings.contact_frames[i]] = i;
     }
 
-    const auto model = pinocchio::urdf::buildModel(urdfFilePath);
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdfFilePath, model);
 
     jointNames_ = model.names;
 
@@ -98,79 +104,126 @@ namespace legged_state_estimator_ros2
     subscription_options.callback_group = cb_group_not_executed;
     rclcpp::QoS qos(rclcpp::KeepLast(1));
     qos = qos.best_effort();
+
+    // Start base transform subscriber
+    const std::string startBaseTransformTopic = "/initial_base_transform";
+    startBaseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
+      startBaseTransformTopic, rclcpp::QoS(1).reliable(), 
+      [](const geometry_msgs::msg::TransformStamped::ConstSharedPtr) {}, subscription_options);
     
     // Joint states subscriber
     const std::string jointSatesTopic = "/joint_states";
     jointStateSubscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
       jointSatesTopic, qos, 
-      std::bind(&LeggedStateEstimator::updateJointStates, this, std::placeholders::_1), subscription_options);
+      [](const sensor_msgs::msg::JointState::ConstSharedPtr) {}, subscription_options);
     
     // IMU subscriber
     const std::string imuTopic = "/imu";
     imuSubscriber_ = this->create_subscription<sensor_msgs::msg::Imu>(imuTopic, qos, 
-      std::bind(&LeggedStateEstimator::updateImu, this, std::placeholders::_1), subscription_options);
+      [](const sensor_msgs::msg::Imu::ConstSharedPtr) {}, subscription_options);
     
     // Contact flags subscriber
-    const std::string contactFlagsTopic = "/contact_flags";
-    contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
-      contactFlagsTopic, qos, 
-      std::bind(&LeggedStateEstimator::updateContactFlags, this, std::placeholders::_1));
+    if(!estimatorSettings.use_contact_estimator)
+    {
+      const std::string contactFlagsTopic = "/contact_flags";
+      contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
+        contactFlagsTopic, qos, 
+        [](const contact_msgs::msg::Contacts::ConstSharedPtr) {}, subscription_options);
+    }
 
     // Base transform estimate publisher
     const std::string baseTransformTopic = "/base_transform_estimated";
     baseTransformEstimatePublisher_ = this->create_publisher<geometry_msgs::msg::TransformStamped>(
-      baseTransformTopic, QoS(1).best_effort().keep_last(1));
+      baseTransformTopic, rclcpp::QoS(1).best_effort().keep_last(1));
 
     // Base twist estimate publisher
     const std::string baseTwistTopic = "/base_twist_estimated";
     baseTwistEstimatePublisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-      baseTwistTopic, QoS(1).best_effort().keep_last(1));
+      baseTwistTopic, rclcpp::QoS(1).best_effort().keep_last(1));
 
     // Joint state estimate publisher
-    const std::string jointStateTopic = "/joint_states_estimated";
-    jointStatesEstimatePublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
-      jointStateTopic, QoS(1).best_effort().keep_last(1));
+
+    if(this->get_parameter("publish_joint_estimates").as_bool())
+    {
+      const std::string jointStateTopic = "/joint_states_estimated";
+      jointStatesEstimatePublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
+        jointStateTopic, rclcpp::QoS(1).best_effort().keep_last(1));
+    }
 
     /**
      * Create timer for joint trajectory commands
      */
 
     // Get duration 
-    estimatorDuration_ = estimatorSettings.sample_time;
+    estimatorDuration_ = estimatorSettings.sampling_time;
 
     // Estimator loop timer
     estimatorLoopTimer_ = rclcpp::create_timer(this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(estimatorDuration), 
-      std::bind(&LeggedStateEstimator::sendStateEstimations, this));
+      rclcpp::Duration::from_seconds(estimatorDuration_), 
+      std::bind(&LeggedStateEstimatorNode::sendStateEstimations, this));
 
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedStateEstimator::on_activate(const State& state)
+    LeggedStateEstimatorNode::on_activate(const rclcpp_lifecycle::State& state)
   {
-    leggedStateEstimator_->init(const vector3_t& base_pos, const vector4_t& base_quat,
-      const vector3_t& base_lin_vel_world=vector3_t::Zero(),
-      const vector3_t& imu_gyro_bias=vector3_t::Zero(),
-      const vector3_t& imu_lin_accel_bias=vector3_t::Zero());
+
+    rclcpp::MessageInfo msgInfo;
+
+    // Start base transform message
+    geometry_msgs::msg::TransformStamped startBaseTransform;
+    if(startBaseTransformSubscriber_->take(startBaseTransform, msgInfo)) 
+    {
+      vector3_t startPosition;
+      quaternion_t startQuaternion;
+      tf2::fromMsg(startBaseTransform.transform.translation, startPosition);
+      tf2::fromMsg(startBaseTransform.transform.rotation, startQuaternion);
+      const vector4_t quaternionVector = startQuaternion.coeffs(); 
+
+      leggedStateEstimator_->init(startPosition, quaternionVector);
+    }
+    else
+    {
+      RCLCPP_ERROR(this->get_logger(), "Could not get starting base transform, failed to activate!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
+    }
 
     estimatorRunning_ = true;
-
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator activated successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
-    LeggedStateEstimator::on_deactivate(const State& state)
+    LeggedStateEstimatorNode::on_deactivate(const rclcpp_lifecycle::State& state)
   {
     estimatorRunning_ = false;
+    
+    jointPositions_ = vector_t();
+    jointVelocities_ = vector_t();
+    jointTorques_ = vector_t();
+    quaterion_ = quaternion_t(1.0, 0.0, 0.0, 0.0);
+    angularVelocity_.setZero();
+    linearAcceleration_.setZero();
+    contactFlags_.clear();
+
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator deactivated successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
-  void LeggedStateEstimator::updateCurrentSensorData()
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimatorNode::updateCurrentSensorData()
   {
+    const auto& estimatorSettings = leggedStateEstimator_->getSettings();
     rclcpp::MessageInfo msgInfo;
 
     // Joint states
@@ -204,15 +257,13 @@ namespace legged_state_estimator_ros2
         const size_t currentIndex = jointNameIndexMap_.at(jointStates.name[i]);
         jointPositions_[currentIndex] = jointStates.position[i];
         jointVelocities_[currentIndex] = jointStates.velocity[i];
-        jointTorques_[currentIndex] = jointStates.torque[i];
+        jointTorques_[currentIndex] = jointStates.effort[i];
       }
     }
 
     sensor_msgs::msg::Imu imuData;
     if(imuSubscriber_->take(imuData, msgInfo)) 
     {
-      const auto& estimatorSettings = leggedStateEstimator_->getSettings();
-      
       if(imuData.header.frame_id != estimatorSettings.imu_frame)
       {
         RCLCPP_ERROR(this->get_logger(), 
@@ -233,11 +284,13 @@ namespace legged_state_estimator_ros2
       tf2::fromMsg(imuData.linear_acceleration, linearAcceleration_);
     }
 
+    if(estimatorSettings.use_contact_estimator) return;
+
     contact_msgs::msg::Contacts contacts;
     if(contactsSubscriber_->take(contacts, msgInfo)) 
     {
       
-      if(contactFlags->contacts.size() != endEffectorNum_)
+      if(contacts.contacts.size() != endEffectorNum_)
       {
         RCLCPP_ERROR(this->get_logger(), 
           "Ignored an invalid Contacts message");
@@ -251,14 +304,14 @@ namespace legged_state_estimator_ros2
       }
 
       // TODO SPRAWDZ CZY TO NIE JEST TAK ZE KAZDY MA INNY TIMESTAMP
-      lastContactFlagsTime_ = contactFlags->contacts[0].header.stamp;
+      lastContactFlagsTime_ = contacts.contacts[0].header.stamp;
 
       contactFlags_.clear();
       contactFlags_.reserve(endEffectorNum_);
 
       for(size_t i = 0; i < endEffectorNum_; ++i)
       {
-        const auto& currentContactMessage = contactFlags->contacts[i];
+        const auto& currentContactMessage = contacts.contacts[i];
         const size_t currentIndex = contactFrameNameIndexMap_[
           currentContactMessage.header.frame_id];
 
@@ -268,28 +321,42 @@ namespace legged_state_estimator_ros2
     }
   }
 
-  void LeggedStateEstimator::sendStateEstimations()
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimatorNode::sendStateEstimations()
   {
     if(!estimatorRunning_) return;
+
+    const auto& estimatorSettings = leggedStateEstimator_->getSettings();
 
     // Update current sensor data
     this->updateCurrentSensorData();
 
     const bool jointsReady = jointPositions_.size() == jointNames_.size();
-    const bool imuReady = (quaterion_.toRotationMatrix() - quaterion_t().toRotationMatrix()).norm() > 1e-3;
-    const bool contactsReady = contactFlags_.size() == endEffectorNum_;
+    const bool imuReady = (quaterion_.toRotationMatrix() - quaternion_t().toRotationMatrix()).norm() > 1e-3;
+    const bool contactsReady = contactFlags_.size() == endEffectorNum_ || estimatorSettings.use_contact_estimator;
 
     if(jointsReady && imuReady && contactsReady)
     {
       const auto currentTime = this->get_clock()->now();
-      leggedStateEstimator_->update(angularVelocity_, linearAcceleration_, 
-        jointPositions_, jointVelocities_, contactFlags_);
+
+      if(estimatorSettings.use_contact_estimator)
+      {
+        leggedStateEstimator_->update(angularVelocity_, linearAcceleration_, 
+          jointPositions_, jointVelocities_, jointTorques_);
+      }
+      else
+      {
+        leggedStateEstimator_->update(angularVelocity_, linearAcceleration_, 
+          jointPositions_, jointVelocities_, jointTorques_, contactFlags_);
+      }
 
       const auto& estimatorSettings = leggedStateEstimator_->getSettings();
       
       // Base transform estimate
       const vector3_t& basePosition = leggedStateEstimator_->getBasePositionEstimate();
-      const vector4_t& quaterionCoeffs = leggedStateEstimator_->getBaseQuaternionEstimate();
+      const vector4_t& quaternionCoeffs = leggedStateEstimator_->getBaseQuaternionEstimate();
       
       geometry_msgs::msg::TransformStamped baseTransform;
 
@@ -299,10 +366,12 @@ namespace legged_state_estimator_ros2
 
       tf2::toMsg(basePosition, baseTransform.transform.translation);
 
-      baseTransform.transform.rotation.x = quaterionCoeffs(0);
-      baseTransform.transform.rotation.y = quaterionCoeffs(1);
-      baseTransform.transform.rotation.z = quaterionCoeffs(2);
-      baseTransform.transform.rotation.w = quaterionCoeffs(3);
+      baseTransform.transform.rotation.x = quaternionCoeffs(0);
+      baseTransform.transform.rotation.y = quaternionCoeffs(1);
+      baseTransform.transform.rotation.z = quaternionCoeffs(2);
+      baseTransform.transform.rotation.w = quaternionCoeffs(3);
+
+      baseTransformEstimatePublisher_->publish(baseTransform);
 
       // Base twist estimate
       const vector3_t& baseLinearVelocity = 
@@ -316,38 +385,40 @@ namespace legged_state_estimator_ros2
       tf2::toMsg(baseLinearVelocity, baseTwist.twist.linear);
       tf2::toMsg(baseAngularVelocity, baseTwist.twist.angular);
 
-      // Joint state estimates
-      const vector_t& jointPositions = jointPositions_;
-      const vector_t& jointVelocities = leggedStateEstimator_->getJointVelocityEstimate();
-      const vector_t& jointTorques = leggedStateEstimator_->getJointTorqueEstimate();
-
-      sensor_msgs::msg::JointState jointStates;
-
-      jointStates.header.stamp = currentTime;
-
-      const std::vector<scalar_t> positions(jointPositions.data(), 
-          jointPositions.data() + jointPositions.size());
-
-      const std::vector<scalar_t> velocities(jointVelocities.data(), 
-          jointVelocities.data() + jointVelocities.size());
-
-      const std::vector<scalar_t> torques(jointTorques.data(), 
-          jointTorques.data() + jointTorques.size());
-
-      jointStates.name = jointNames_;
-      jointStates.position = positions;
-      jointStates.velocity = velocities;
-      jointStates.torque = torques;
-
-      // Publish
-      baseTransformEstimatePublisher_->publish(baseTransform);
       baseTwistEstimatePublisher_->publish(baseTwist);
-      jointStatesEstimatePublisher_->publish(jointStates);
+
+      if(this->get_parameter("publish_joint_estimates").as_bool())
+      {
+        // Joint state estimates
+        const vector_t& jointPositions = jointPositions_;
+        const vector_t& jointVelocities = leggedStateEstimator_->getJointVelocityEstimate();
+        const vector_t& jointTorques = leggedStateEstimator_->getJointTorqueEstimate();
+
+        sensor_msgs::msg::JointState jointStates;
+
+        jointStates.header.stamp = currentTime;
+
+        const std::vector<scalar_t> positions(jointPositions.data(), 
+            jointPositions.data() + jointPositions.size());
+
+        const std::vector<scalar_t> velocities(jointVelocities.data(), 
+            jointVelocities.data() + jointVelocities.size());
+
+        const std::vector<scalar_t> torques(jointTorques.data(), 
+            jointTorques.data() + jointTorques.size());
+
+        jointStates.name = jointNames_;
+        jointStates.position = std::move(positions);
+        jointStates.velocity = std::move(velocities);
+        jointStates.effort = std::move(torques);
+
+        jointStatesEstimatePublisher_->publish(jointStates);
+      }
     }
     else
     {
       RCLCPP_ERROR(this->get_logger(), 
-          "Joints, IMU or contact flags are not ready!");
+        "Joints, IMU or contact flags are not ready!");
       return;
     }
   }

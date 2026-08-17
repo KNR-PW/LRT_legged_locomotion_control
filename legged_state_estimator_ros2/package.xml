@@ -10,12 +10,11 @@
   <depend>legged_state_estimator</depend>
 
   <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
   <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
+
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-
-  <depend>ocs2_ros_interfaces</depend>
   <depend>contact_msgs</depend>
   <depend>legged_locomotion_msgs</depend>
 

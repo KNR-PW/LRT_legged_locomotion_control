@@ -20,63 +20,33 @@ configure_file(
 find_package(ament_cmake REQUIRED)
 
 set(THIS_PACKAGE_DEPENDS
-  legged_locomotion_mpc
-  contact_msgs
-  legged_locomotion_msgs
+  legged_state_estimator
 
   rclcpp
+  rclcpp_lifecycle
+
   tf2_eigen
-  tf2_ros
+
   sensor_msgs
-  visualization_msgs
   geometry_msgs
-  trajectory_msgs
-  ocs2_ros_interfaces
+  contact_msgs
+  legged_locomotion_msgs
 )
 
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-add_library(${PROJECT_NAME}
-  src/visualization/LeggedVisualizer.cpp
-)
-
-target_include_directories(${PROJECT_NAME}
-  PUBLIC
-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
-)
-
-ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_DEPENDS})
-target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
-
 # Legged MPC controller
-add_executable(legged_mpc_controller_node
-  src/controller/LeggedMpcController.cpp
+add_executable(legged_state_estimator_node
+  src/LeggedStateEstimatorNode.cpp
+  src/main.cpp
 )
-target_link_libraries(legged_mpc_controller_node ${PROJECT_NAME})
-ament_target_dependencies(legged_mpc_controller_node ${THIS_PACKAGE_DEPENDS})
-
-# Meldog demos
-add_executable(${PROJECT_NAME}_meldog_demo_planar_terrain
-  src/demos/meldog_demo/meldog_demo_planar_terrain.cpp
+target_include_directories(legged_state_estimator_node
+  PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
 )
-target_link_libraries(${PROJECT_NAME}_meldog_demo_planar_terrain ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_meldog_demo_planar_terrain ${THIS_PACKAGE_DEPENDS})
-
-add_executable(${PROJECT_NAME}_meldog_demo_segmented_terrain
-  src/demos/meldog_demo/meldog_demo_segmented_terrain.cpp
-)
-target_link_libraries(${PROJECT_NAME}_meldog_demo_segmented_terrain ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_meldog_demo_segmented_terrain ${THIS_PACKAGE_DEPENDS})
-
-# Melman demo
-add_executable(${PROJECT_NAME}_melman_demo
-  src/demos/melman_demo/melman_demo.cpp
-)
-target_link_libraries(${PROJECT_NAME}_melman_demo ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_melman_demo ${THIS_PACKAGE_DEPENDS})
+ament_target_dependencies(legged_state_estimator_node ${THIS_PACKAGE_DEPENDS})
 
 #########################
 ###   CLANG TOOLING   ###
@@ -98,32 +68,7 @@ endif (cmake_clang_tools_FOUND)
 ## Install ##
 #############
 
-install(TARGETS legged_mpc_controller_node
+install(TARGETS legged_state_estimator_node
     DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME}_meldog_demo_planar_terrain
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME}_meldog_demo_segmented_terrain
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME}_melman_demo
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS
-  ${PROJECT_NAME}
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  DIRECTORY include/
-  DESTINATION include/${PROJECT_NAME}
-)
-
-ament_export_dependencies(${THIS_PACKAGE_DEPENDS})
-ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 ament_package()
