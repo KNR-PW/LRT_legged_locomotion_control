@@ -125,7 +125,7 @@ namespace legged_state_estimator_ros2
     // Contact flags subscriber
     if(!estimatorSettings.use_contact_estimator)
     {
-      const std::string contactFlagsTopic = "/contact_flags";
+      const std::string contactFlagsTopic = "/contacts";
       contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
         contactFlagsTopic, qos, 
         [](const contact_msgs::msg::Contacts::ConstSharedPtr) {}, subscription_options);
@@ -134,12 +134,12 @@ namespace legged_state_estimator_ros2
     // Base transform estimate publisher
     const std::string baseTransformTopic = "/base_transform_estimated";
     baseTransformEstimatePublisher_ = this->create_publisher<geometry_msgs::msg::TransformStamped>(
-      baseTransformTopic, rclcpp::QoS(1).best_effort().keep_last(1));
+      baseTransformTopic, rclcpp::QoS(1).best_effort());
 
     // Base twist estimate publisher
     const std::string baseTwistTopic = "/base_twist_estimated";
     baseTwistEstimatePublisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-      baseTwistTopic, rclcpp::QoS(1).best_effort().keep_last(1));
+      baseTwistTopic, rclcpp::QoS(1).best_effort());
 
     // Joint state estimate publisher
 
@@ -147,7 +147,7 @@ namespace legged_state_estimator_ros2
     {
       const std::string jointStateTopic = "/joint_states_estimated";
       jointStatesEstimatePublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
-        jointStateTopic, rclcpp::QoS(1).best_effort().keep_last(1));
+        jointStateTopic, rclcpp::QoS(1).best_effort());
     }
 
     /**
@@ -193,6 +193,13 @@ namespace legged_state_estimator_ros2
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
     }
 
+    baseTransformEstimatePublisher_->on_activate();
+    baseTwistEstimatePublisher_->on_activate();
+    if(this->get_parameter("publish_joint_estimates").as_bool())
+    {
+      jointStatesEstimatePublisher_->on_activate();
+    }
+
     estimatorRunning_ = true;
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator activated successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
@@ -205,6 +212,12 @@ namespace legged_state_estimator_ros2
     LeggedStateEstimatorNode::on_deactivate(const rclcpp_lifecycle::State& state)
   {
     estimatorRunning_ = false;
+    baseTransformEstimatePublisher_->on_deactivate();
+    baseTwistEstimatePublisher_->on_deactivate();
+    if(this->get_parameter("publish_joint_estimates").as_bool())
+    {
+      jointStatesEstimatePublisher_->on_deactivate();
+    }
     
     jointPositions_ = vector_t();
     jointVelocities_ = vector_t();
@@ -371,7 +384,10 @@ namespace legged_state_estimator_ros2
       baseTransform.transform.rotation.z = quaternionCoeffs(2);
       baseTransform.transform.rotation.w = quaternionCoeffs(3);
 
-      baseTransformEstimatePublisher_->publish(baseTransform);
+      if(baseTransformEstimatePublisher_->is_activated())
+      {
+        baseTransformEstimatePublisher_->publish(baseTransform);
+      }
 
       // Base twist estimate
       const vector3_t& baseLinearVelocity = 
@@ -385,7 +401,10 @@ namespace legged_state_estimator_ros2
       tf2::toMsg(baseLinearVelocity, baseTwist.twist.linear);
       tf2::toMsg(baseAngularVelocity, baseTwist.twist.angular);
 
-      baseTwistEstimatePublisher_->publish(baseTwist);
+      if(baseTwistEstimatePublisher_->is_activated())
+      {
+        baseTwistEstimatePublisher_->publish(baseTwist);
+      }
 
       if(this->get_parameter("publish_joint_estimates").as_bool())
       {
@@ -412,11 +431,17 @@ namespace legged_state_estimator_ros2
         jointStates.velocity = std::move(velocities);
         jointStates.effort = std::move(torques);
 
-        jointStatesEstimatePublisher_->publish(jointStates);
+        if(jointStatesEstimatePublisher_->is_activated())
+        {
+          jointStatesEstimatePublisher_->publish(jointStates);
+        }
       }
     }
     else
     {
+      RCLCPP_ERROR(this->get_logger(), "Joints: %d", jointsReady);
+      RCLCPP_ERROR(this->get_logger(), "IMU: %d", imuReady);
+      RCLCPP_ERROR(this->get_logger(), "Contacts: %d", contactsReady);
       RCLCPP_ERROR(this->get_logger(), 
         "Joints, IMU or contact flags are not ready!");
       return;

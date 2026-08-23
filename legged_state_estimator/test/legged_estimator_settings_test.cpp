@@ -27,6 +27,7 @@ TEST(ModelSettingsTest, loader)
   EXPECT_TRUE(settings.world_frame == "world_link");
   EXPECT_TRUE(settings.base_frame == "base_link");
   EXPECT_TRUE(settings.imu_frame == "imu_link");
+  EXPECT_TRUE(settings.use_contact_estimator == false);
   EXPECT_TRUE(settings.contact_frames == true_contact_frames);
   EXPECT_TRUE(settings.contact_estimator_settings.beta0 == true_beta0);
   EXPECT_TRUE(settings.contact_estimator_settings.beta1 == true_beta1);

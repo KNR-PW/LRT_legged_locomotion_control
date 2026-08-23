@@ -15,7 +15,6 @@ namespace legged_state_estimator
       settings_(settings), inekf_(settings.inekf_noise_params),
       leg_kinematics_(), robot_model_(urdf_path, 
         settings.imu_frame, settings.contact_frames),
-      contact_estimator_(robot_model_, settings.contact_estimator_settings),
       lpf_gyro_accel_world_(settings.sampling_time, settings.lpf_gyro_accel_cutoff_frequency),
       lpf_lin_accel_world_(settings.sampling_time, settings.lpf_lin_accel_cutoff_frequency),
       lpf_dqJ_(settings.sampling_time, settings.lpf_dqJ_cutoff_frequency, robot_model_.nJ()),
@@ -42,6 +41,12 @@ namespace legged_state_estimator
     {
       throw std::invalid_argument(
         "[LeggedStateEstimator] invalid argment: sampling_time must be positive");
+    }
+
+    if(settings.use_contact_estimator)
+    {
+      contact_estimator_ptr_ = std::make_unique<ContactEstimator>(robot_model_, 
+        settings.contact_estimator_settings);
     }
 
     const scalar_t contact_position_cov = settings.contact_position_noise * settings.contact_position_noise;
@@ -188,15 +193,22 @@ namespace legged_state_estimator
       robot_model_.updateLegDynamics(qJ, dqJ);
     }
 
-    contact_estimator_.update(robot_model_, lpf_tauJ_.getEstimate());
-    inekf_.setContacts(contact_estimator_.getContactState());
+    if(contact_estimator_ptr_)
+    {
+      contact_estimator_ptr_->update(robot_model_, lpf_tauJ_.getEstimate());
+      inekf_.setContacts(contact_estimator_ptr_->getContactState());
+    }
 
     for(int  i = 0;  i < robot_model_.numContacts(); ++i) 
     {
       leg_kinematics_[i].setContactPosition(
         robot_model_.getContactPosition(i)-robot_model_.getBasePosition());
       
-      const scalar_t contact_force_cov = contact_estimator_.getContactForceCovariance()[i];
+      scalar_t contact_force_cov = 0.0;
+      if(contact_estimator_ptr_)
+      {
+        contact_force_cov = contact_estimator_ptr_->getContactForceCovariance()[i];
+      }
       
       leg_kinematics_[i].setContactPositionCovariance(
         contact_force_cov*matrix3_t::Identity());
@@ -297,7 +309,11 @@ namespace legged_state_estimator
       leg_kinematics_[i].setContactPosition(
         robot_model_.getContactPosition(i)-robot_model_.getBasePosition());
       
-      const scalar_t contact_force_cov = contact_estimator_.getContactForceCovariance()[i];
+      scalar_t contact_force_cov  = 0.0;
+      if(contact_estimator_ptr_)
+      {
+        contact_force_cov = contact_estimator_ptr_->getContactForceCovariance()[i];
+      }
       
       leg_kinematics_[i].setContactPositionCovariance(
         contact_force_cov*matrix3_t::Identity());
@@ -419,7 +435,7 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   const ContactEstimator& LeggedStateEstimator::getContactEstimator() const 
   {
-    return contact_estimator_;
+    return *contact_estimator_ptr_;
   }
 
   /******************************************************************************************************/

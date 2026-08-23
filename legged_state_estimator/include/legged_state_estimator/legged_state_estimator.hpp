@@ -223,7 +223,7 @@ namespace legged_state_estimator
 
     RobotModel robot_model_;
 
-    ContactEstimator contact_estimator_;
+    std::unique_ptr<ContactEstimator> contact_estimator_ptr_;
 
     LowPassFilter<ocs2::scalar_t, 3> lpf_gyro_accel_world_;
     LowPassFilter<ocs2::scalar_t, 3> lpf_lin_accel_world_;
