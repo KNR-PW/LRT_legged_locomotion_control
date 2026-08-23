@@ -10,18 +10,19 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  
   <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
-  <depend>tf2_msgs</depend>
+
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>trajectory_msgs</depend>
 
-  <depend>ocs2_ros_interfaces</depend>
   <depend>legged_locomotion_mpc</depend>
   <depend>contact_msgs</depend>
   <depend>legged_locomotion_msgs</depend>
+  <depend>ocs2_ros_interfaces</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

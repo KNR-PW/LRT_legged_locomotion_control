@@ -20,18 +20,19 @@ configure_file(
 find_package(ament_cmake REQUIRED)
 
 set(THIS_PACKAGE_DEPENDS
-  legged_locomotion_mpc
-  contact_msgs
-  legged_locomotion_msgs
-
   rclcpp
+  rclcpp_lifecycle
+
   tf2_eigen
-  tf2_ros
-  tf2_msgs
+
   sensor_msgs
   visualization_msgs
   geometry_msgs
   trajectory_msgs
+
+  legged_locomotion_mpc
+  contact_msgs
+  legged_locomotion_msgs
   ocs2_ros_interfaces
 )
 
@@ -54,7 +55,7 @@ target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 
 # Legged MPC controller
 add_executable(legged_locomotion_mpc_controller_node
-  src/controller/LeggedLocomotionMpcController.cpp
+  src/controller/LeggedLocomotionMpcControllerNode.cpp
   src/controller/main.cpp
 )
 target_link_libraries(legged_locomotion_mpc_controller_node ${PROJECT_NAME})

@@ -60,11 +60,11 @@ namespace legged_locomotion_mpc_ros2
 {
   using namespace legged_locomotion_mpc;
 
-  class LeggedLocomotionMpcController: public rclcpp_lifecycle::LifecycleNode
+  class LeggedLocomotionMpcControllerNode: public rclcpp_lifecycle::LifecycleNode
   {
     public:
 
-      LeggedLocomotionMpcController(bool intraProcessComms = false);
+      LeggedLocomotionMpcControllerNode();
 
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
         on_configure(const rclcpp_lifecycle::State& state) override;
@@ -78,15 +78,6 @@ namespace legged_locomotion_mpc_ros2
     private:
 
       void updateCommand(
-        const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist);
-
-      void updateJointStates(
-        const sensor_msgs::msg::JointState::ConstSharedPtr jointStates);
-
-      void updateBaseTransform(
-        const geometry_msgs::msg::TransformStamped::ConstSharedPtr baseTransform);
-
-      void updateBaseTwist(
         const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist);
 
       void updateContactFlags(
@@ -122,16 +113,15 @@ namespace legged_locomotion_mpc_ros2
       std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       
       // Data from observation
-      ocs2::BufferedValue<vector6_t> baseTransformEstimation_;
-      ocs2::BufferedValue<vector6_t> baseTwistEstimation_;
-      ocs2::BufferedValue<ocs2::vector_t> jointPositionEstimation_;
-      ocs2::BufferedValue<ocs2::vector_t> jointVelocityEstimation_;
+      vector6_t baseTransformEstimation_;
+      vector6_t baseTwistEstimation_;
+      ocs2::vector_t jointPositionEstimation_;
+      ocs2::vector_t jointVelocityEstimation_;
       std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
       
       // Interface and other helper objects
       std::unique_ptr<LeggedInterface> leggedInterfacePtr_;
       LeggedReferenceManager* referenceManagerPtr_;
-      int i_;
       
       // MPC and MRT
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
