@@ -181,7 +181,7 @@ namespace legged_locomotion_mpc_ros2
     baseWrenchSubscriber_ = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedLocomotionMpcControllerNode::updateExternalWrench, this, std::placeholders::_1));
-
+    
     // Joint trajectory publisher
     const std::string jointTrajectoryTopic = "/joint_trajectory";
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
@@ -192,7 +192,8 @@ namespace legged_locomotion_mpc_ros2
      */
 
     // Get duration 
-    const auto mpcSettings = leggedInterfacePtr_->mpcSettings();
+    const std::string taskFilePath = configDirectoryPath + "/task.info";
+    const auto mpcSettings = mpc::loadSettings(taskFilePath, "mpc", false);
     mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
 
     mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
@@ -675,7 +676,6 @@ namespace legged_locomotion_mpc_ros2
 
   void LeggedLocomotionMpcControllerNode::sendJointTrajectory()
   {
-    
     if(mpcMrtPtr_ && controllerRunning_)
     {
       RCLCPP_INFO(this->get_logger(), "MRT iteration starting at : %f", 
@@ -726,14 +726,8 @@ namespace legged_locomotion_mpc_ros2
       // Start trajectory now (time 0 seconds 0 nanoseconds)
       jointTrajectory.header.stamp.sec = 0;
       jointTrajectory.header.stamp.nanosec = 0;
-
-      // TODO ZMIEN
       jointTrajectory.joint_names = jointNames_;
-      for(size_t i = 0; i < jointNames_.size(); ++i)
-      {
-        jointTrajectory.joint_names[i] = "joint_controller/" + jointTrajectory.joint_names[i];
-      }
-
+      
       jointTrajectory.points.resize(2);
 
       const vector_t firstPositionVector = access_helper_functions::getJointPositions(
