@@ -439,9 +439,9 @@ namespace legged_state_estimator_ros2
     }
     else
     {
-      RCLCPP_ERROR(this->get_logger(), "Joints: %d", jointsReady);
-      RCLCPP_ERROR(this->get_logger(), "IMU: %d", imuReady);
-      RCLCPP_ERROR(this->get_logger(), "Contacts: %d", contactsReady);
+      RCLCPP_ERROR(this->get_logger(), "Joints ready?: %d", jointsReady);
+      RCLCPP_ERROR(this->get_logger(), "IMU ready?: %d", imuReady);
+      RCLCPP_ERROR(this->get_logger(), "Contacts ready?: %d", contactsReady);
       RCLCPP_ERROR(this->get_logger(), 
         "Joints, IMU or contact flags are not ready!");
       return;

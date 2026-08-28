@@ -80,9 +80,6 @@ namespace legged_locomotion_mpc_ros2
       void updateCommand(
         const geometry_msgs::msg::TwistStamped::ConstSharedPtr baseTwist);
 
-      void updateContactFlags(
-        const contact_msgs::msg::Contacts::ConstSharedPtr contactFlags);
-
       void updateGaitParameters(
         const legged_locomotion_msgs::msg::GaitParameters::ConstSharedPtr gaitParameters);
 
@@ -117,6 +114,7 @@ namespace legged_locomotion_mpc_ros2
       vector6_t baseTwistEstimation_;
       ocs2::vector_t jointPositionEstimation_;
       ocs2::vector_t jointVelocityEstimation_;
+      contact_flags_t contactFlags_;
       std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
       
       // Interface and other helper objects
@@ -155,9 +153,8 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
       
       // Joint trajectory publisher from MRT
-      rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr jointTrajectoryPublisher_;
-      rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr referenceJointPublisher_;
-      rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr optimizedJointPublisher_;
+      std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
+        trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;

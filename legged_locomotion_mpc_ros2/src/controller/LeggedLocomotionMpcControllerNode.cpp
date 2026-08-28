@@ -155,8 +155,8 @@ namespace legged_locomotion_mpc_ros2
     // Contact flags subscriber
     const std::string contactFlagsTopic = "/contacts";
     contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
-      contactFlagsTopic, QoS(1).reliable().keep_last(1), 
-      std::bind(&LeggedLocomotionMpcControllerNode::updateContactFlags, this, std::placeholders::_1));
+      contactFlagsTopic, qos, 
+      [](const contact_msgs::msg::Contacts::ConstSharedPtr) {}, subscription_options);
     
     // Terrain subscriber
     const std::string terrainTopic = "/elevation";
@@ -187,11 +187,20 @@ namespace legged_locomotion_mpc_ros2
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       jointTrajectoryTopic, SystemDefaultsQoS());
 
-    referenceJointPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
-      "reference_joint_states", SystemDefaultsQoS());
+    /**
+     * Create timer for joint trajectory commands
+     */
 
-    optimizedJointPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(
-      "optimized_joint_states", SystemDefaultsQoS());
+    // Get duration 
+    const auto mpcSettings = leggedInterfacePtr_->mpcSettings();
+    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+
+    mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
+
+    // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
+    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
+      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
+      std::bind(&LeggedLocomotionMpcControllerNode::sendJointTrajectory, this));
 
     RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
@@ -211,26 +220,13 @@ namespace legged_locomotion_mpc_ros2
     }
 
     runMpc();
+
     mpcTimer_.reset();
     mrtTimer_.reset();
+    jointTrajectoryPublisher_->on_activate();
+
     controllerRunning_ = true;
 
-    /**
-     * Create timer for joint trajectory commands
-     */
-
-    // Get duration 
-    const auto mpcSettings = leggedInterfacePtr_->mpcSettings();
-    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
-
-    mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
-
-    // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
-    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
-      std::bind(&LeggedLocomotionMpcControllerNode::sendJointTrajectory, this));
-
-    
     RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller activated successfully!");
     RCLCPP_INFO(this->get_logger(), "MPC/MRT loop activated!");
 
@@ -241,9 +237,12 @@ namespace legged_locomotion_mpc_ros2
     LeggedLocomotionMpcControllerNode::on_deactivate(const State& state)
   {
     controllerRunning_ = false;
-    if (mpcThread_.joinable()) mpcThread_.join();
-    std::string returnString;
 
+    jointTrajectoryPublisher_->on_deactivate();
+
+    if (mpcThread_.joinable()) mpcThread_.join();
+
+    std::string returnString;
     returnString += "########################################################################";
     returnString += "\n### MPC Benchmarking";
     returnString += "\n###   Maximum : " + std::to_string(mpcTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
@@ -480,6 +479,38 @@ namespace legged_locomotion_mpc_ros2
 
     currentObservation_.time = std::max(std::max(lastJointStateTime_.seconds(), 
       lastBaseTwistTime_.seconds()), lastBaseTransformTime_.seconds());
+
+    contact_msgs::msg::Contacts contactFlags;
+    if(contactsSubscriber_->take(contactFlags, msgInfo))
+    {
+      if(contactFlags->contacts.size() != endEffectorNum_)
+      {
+        RCLCPP_ERROR(this->get_logger(), 
+          "Ignored an invalid Contacts message");
+        return;
+      }
+
+      if(this->get_clock()->now() - lastContactFlagsTime_ > maxDurationBetweenMessages_)
+      {
+        RCLCPP_WARN(this->get_logger(), 
+          "Time between two Contacts messages was longer than maximum duration!");
+      }
+
+      contactFlags_ = 0;
+
+      for(size_t i = 0; i < contactFlags.contacts.size(); ++i)
+      {
+        const auto currentContactMessage = contactFlags.contacts[i];
+        const size_t currentIndex = contactFrameNameIndexMap_[
+          currentContactMessage.header.frame_id];
+        contactFlags_[currentIndex] = currentContactMessage.contact;
+
+        if(lastContactFlagsTime_ < currentContactMessage.header.stamp)
+        {
+          lastContactFlagsTime_ = currentContactMessage.header.stamp;
+        }
+      }
+    }
   }
 
   void LeggedLocomotionMpcControllerNode::runMpc()
@@ -532,43 +563,6 @@ namespace legged_locomotion_mpc_ros2
     if(referenceManagerPtr_ && controllerRunning_)
     {
       referenceManagerPtr_->updateCommand(command);
-    }
-  }
-
-  void LeggedLocomotionMpcControllerNode::updateContactFlags(
-    const contact_msgs::msg::Contacts::ConstSharedPtr contactFlags)
-  {
-    if(contactFlags->contacts.size() != endEffectorNum_)
-    {
-      RCLCPP_ERROR(this->get_logger(), 
-        "Ignored an invalid Contacts message");
-      return;
-    }
-
-    if(this->get_clock()->now() - lastContactFlagsTime_ > maxDurationBetweenMessages_)
-    {
-      RCLCPP_WARN(this->get_logger(), 
-        "Time between two Contacts messages was longer than maximum duration!");
-    }
-
-    contact_flags_t contactFlagsData = 0;
-
-    for(size_t i = 0; i < contactFlags->contacts.size(); ++i)
-    {
-      const auto currentContactMessage = contactFlags->contacts[i];
-      const size_t currentIndex = contactFrameNameIndexMap_[
-        currentContactMessage.header.frame_id];
-      contactFlagsData[currentIndex] = currentContactMessage.contact;
-
-      if(lastContactFlagsTime_ < currentContactMessage.header.stamp)
-      {
-        lastContactFlagsTime_ = currentContactMessage.header.stamp;
-      }
-    }
-
-    if(referenceManagerPtr_ && controllerRunning_)
-    {
-      referenceManagerPtr_->updateContactFlags(contactFlagsData);
     }
   }
 
@@ -694,6 +688,11 @@ namespace legged_locomotion_mpc_ros2
 
       updateCurrentObservation();
 
+      if(referenceManagerPtr_)
+      {
+        referenceManagerPtr_->updateContactFlags(contactFlags_);
+      }
+
       mpcMrtPtr_->setCurrentObservation(currentObservation_);
 
       mpcMrtPtr_->updatePolicy();
@@ -755,13 +754,10 @@ namespace legged_locomotion_mpc_ros2
       const std::vector<scalar_t> firstEfforts(firstEffortVector.data(), 
           firstEffortVector.data() + firstEffortVector.size());
         
-      jointTrajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0); //rclcpp::Duration::from_seconds(mrtDurationSeconds_);
-      // jointTrajectory.points[0].positions = std::move(positions);
-      // jointTrajectory.points[0].velocities = std::move(velocities);
-      // jointTrajectory.points[0].effort = std::move(efforts);
-      jointTrajectory.points[0].positions = firstPositions;
-      jointTrajectory.points[0].velocities = firstVelocities;
-      jointTrajectory.points[0].effort = firstEfforts;
+      jointTrajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
+      jointTrajectory.points[0].positions = std::move(firstPositions);
+      jointTrajectory.points[0].velocities = std::move(firstVelocities);
+      jointTrajectory.points[0].effort = std::move(firstEfforts);
 
       const vector_t secondPositionVector = access_helper_functions::getJointPositions(
         nextState, modelInfo_);
@@ -783,44 +779,17 @@ namespace legged_locomotion_mpc_ros2
         
       jointTrajectory.points[1].time_from_start = rclcpp::Duration::from_seconds(
         mrtDurationSeconds_);
-      // jointTrajectory.points[0].positions = std::move(positions);
-      // jointTrajectory.points[0].velocities = std::move(velocities);
-      // jointTrajectory.points[0].effort = std::move(efforts);
-      jointTrajectory.points[1].positions = secondPositions;
-      jointTrajectory.points[1].velocities = secondVelocities;
-      jointTrajectory.points[1].effort = secondEfforts;
+      jointTrajectory.points[1].positions = std::move(secondPositions);
+      jointTrajectory.points[1].velocities = std::move(secondVelocities);
+      jointTrajectory.points[1].effort = std::move(secondEfforts);
 
       mrtTimer_.endTimer();
 
-      const auto& trajectory = referenceManagerPtr_->getTargetTrajectories();
-
-      const auto referencePositionVector = access_helper_functions::getJointPositions(
-        trajectory.stateTrajectory.front(), modelInfo_);
-
-      const auto referenceVelocityVector = access_helper_functions::getJointVelocities(
-        trajectory.inputTrajectory.front(), modelInfo_);
-
-       const std::vector<scalar_t> referencePositions(referencePositionVector.data(), 
-        referencePositionVector.data() + referencePositionVector.size());
-
-      const std::vector<scalar_t> refefrenceVelocities(referenceVelocityVector.data(), 
-        referenceVelocityVector.data() + referenceVelocityVector.size());
-
-      sensor_msgs::msg::JointState referenceJointStates;
-      referenceJointStates.name = jointNames_;
-      referenceJointStates.position = std::move(referencePositions);
-      referenceJointStates.velocity = std::move(refefrenceVelocities);
-
-      sensor_msgs::msg::JointState optimizedJointStates;
-      optimizedJointStates.name = jointNames_;
-      optimizedJointStates.position = firstPositions;
-      optimizedJointStates.velocity = firstVelocities;
-      optimizedJointStates.effort = firstEfforts;
-
       // Publish 
-      jointTrajectoryPublisher_->publish(jointTrajectory);
-      referenceJointPublisher_->publish(std::move(referenceJointStates));
-      optimizedJointPublisher_->publish(std::move(optimizedJointStates));
+      if(jointTrajectoryPublisher_->is_activated())
+      {
+        jointTrajectoryPublisher_->publish(jointTrajectory);
+      }
     }
   }
 } // namespace legged_locomotion_mpc_ros2
