@@ -483,7 +483,7 @@ namespace legged_locomotion_mpc_ros2
     contact_msgs::msg::Contacts contactFlags;
     if(contactsSubscriber_->take(contactFlags, msgInfo))
     {
-      if(contactFlags->contacts.size() != endEffectorNum_)
+      if(contactFlags.contacts.size() != endEffectorNum_)
       {
         RCLCPP_ERROR(this->get_logger(), 
           "Ignored an invalid Contacts message");
