@@ -529,8 +529,6 @@ namespace legged_locomotion_mpc_ros2
           const auto endTime = this->get_clock()->now();
           const auto durationLeft = mpcDuration_ - (endTime - startTime);
           this->get_clock()->sleep_for(durationLeft);
-          RCLCPP_INFO(this->get_logger(), "MPC iteration took : %f", (endTime - startTime).seconds());
-          RCLCPP_INFO(this->get_logger(), "MPC duration left : %f", durationLeft.seconds());
         } 
         catch(const std::exception& e) 
         {
@@ -678,12 +676,6 @@ namespace legged_locomotion_mpc_ros2
   {
     if(mpcMrtPtr_ && controllerRunning_)
     {
-      RCLCPP_INFO(this->get_logger(), "MRT iteration starting at : %f", 
-        this->get_clock()->now().seconds());
-
-      RCLCPP_INFO(this->get_logger(), "Observation at time : %f", 
-        currentObservation_.time);
-      
       mrtTimer_.startTimer();
 
       updateCurrentObservation();
