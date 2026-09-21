@@ -66,6 +66,9 @@ namespace legged_state_estimator_ros2
       std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       
       // Data from sensors / observations (IMU, joint states, contact sensors)
+      bool jointsReady_;
+      bool imuReady_;
+      bool contactsReady_;
       ocs2::vector_t jointPositions_;
       ocs2::vector_t jointVelocities_;
       ocs2::vector_t jointTorques_;

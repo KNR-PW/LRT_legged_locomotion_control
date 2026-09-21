@@ -26,6 +26,10 @@ namespace legged_state_estimator_ros2
 
     estimatorRunning_ = false;
 
+    jointsReady_ = false;
+    imuReady_ = false;
+    contactsReady_ = false;
+
     RCLCPP_INFO(this->get_logger(), "Legged State Estimator in unconfigured state!");
   }
 
@@ -108,7 +112,7 @@ namespace legged_state_estimator_ros2
     // Start base transform subscriber
     const std::string startBaseTransformTopic = "/initial_base_transform";
     startBaseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
-      startBaseTransformTopic, rclcpp::QoS(1).reliable(), 
+      startBaseTransformTopic, rclcpp::QoS(1).reliable().transient_local(), 
       [](const geometry_msgs::msg::TransformStamped::ConstSharedPtr) {}, subscription_options);
     
     // Joint states subscriber
@@ -185,7 +189,24 @@ namespace legged_state_estimator_ros2
       tf2::fromMsg(startBaseTransform.transform.rotation, startQuaternion);
       const vector4_t quaternionVector = startQuaternion.coeffs(); 
 
-      leggedStateEstimator_->init(startPosition, quaternionVector);
+      this->updateCurrentSensorData();
+
+      if(jointsReady_ && imuReady_)
+      {
+        jointsReady_ = false;
+        imuReady_ = false;
+
+        // Ground height at the start is 0.0
+        std::vector<scalar_t> groundHeight(endEffectorNum_, 0.0);
+        vector3_t baseStartVelocity = vector3_t::Zero();
+        leggedStateEstimator_->init(startPosition, quaternionVector, jointPositions_, 
+          groundHeight, baseStartVelocity, vector3_t::Zero(), vector3_t::Zero());
+      }
+      else
+      {
+        RCLCPP_ERROR(this->get_logger(), "Could not get starting joint positions of imu data, failed to activate!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
+      }
     }
     else
     {
@@ -246,6 +267,7 @@ namespace legged_state_estimator_ros2
       // Check if message has same amount of data
       if(jointStates.name.size() != jointStates.position.size() || 
          jointStates.name.size() != jointStates.velocity.size() ||
+         jointStates.name.size() != jointStates.effort.size() ||
          jointStates.name.size() != jointNames_.size())
       {
         RCLCPP_ERROR(this->get_logger(), 
@@ -267,11 +289,23 @@ namespace legged_state_estimator_ros2
 
       for(size_t i = 0; i < jointStates.name.size(); ++i)
       {
-        const size_t currentIndex = jointNameIndexMap_.at(jointStates.name[i]);
+        size_t currentIndex = -1;
+        try
+        {
+          currentIndex = jointNameIndexMap_.at(jointStates.name[i]);
+        }
+        catch(const std::exception& e)
+        {
+          std::cerr << "Joint with name: " << jointStates.name[i] << " does not exist!" << '\n';
+          return;
+        }
+        
         jointPositions_[currentIndex] = jointStates.position[i];
         jointVelocities_[currentIndex] = jointStates.velocity[i];
         jointTorques_[currentIndex] = jointStates.effort[i];
       }
+
+      jointsReady_ = true;
     }
 
     sensor_msgs::msg::Imu imuData;
@@ -295,6 +329,8 @@ namespace legged_state_estimator_ros2
       tf2::fromMsg(imuData.orientation, quaterion_);
       tf2::fromMsg(imuData.angular_velocity, angularVelocity_);
       tf2::fromMsg(imuData.linear_acceleration, linearAcceleration_);
+
+      imuReady_ = true;
     }
 
     if(estimatorSettings.use_contact_estimator) return;
@@ -325,12 +361,23 @@ namespace legged_state_estimator_ros2
       for(size_t i = 0; i < endEffectorNum_; ++i)
       {
         const auto& currentContactMessage = contacts.contacts[i];
-        const size_t currentIndex = contactFrameNameIndexMap_[
-          currentContactMessage.header.frame_id];
+        size_t currentIndex = -1;
+        
+        try
+        {
+          currentIndex = contactFrameNameIndexMap_.at(
+            currentContactMessage.header.frame_id);
+        }
+        catch(const std::exception& e)
+        {
+          std::cerr << "Contact frame with name: " << currentContactMessage.header.frame_id << " does not exist!" << '\n';
+        }
 
         contactFlags_.push_back(std::pair<int, bool>(currentIndex, 
           currentContactMessage.contact));
       }
+
+      contactsReady_ = true;
     }
   }
 
@@ -346,12 +393,12 @@ namespace legged_state_estimator_ros2
     // Update current sensor data
     this->updateCurrentSensorData();
 
-    const bool jointsReady = jointPositions_.size() == jointNames_.size();
-    const bool imuReady = (quaterion_.toRotationMatrix() - quaternion_t().toRotationMatrix()).norm() > 1e-3;
-    const bool contactsReady = contactFlags_.size() == endEffectorNum_ || estimatorSettings.use_contact_estimator;
-
-    if(jointsReady && imuReady && contactsReady)
+    if(jointsReady_ && imuReady_ && contactsReady_)
     {
+      jointsReady_ = false;
+      imuReady_ = false; 
+      contactsReady_ = false;
+
       const auto currentTime = this->get_clock()->now();
 
       if(estimatorSettings.use_contact_estimator)
@@ -439,9 +486,9 @@ namespace legged_state_estimator_ros2
     }
     else
     {
-      RCLCPP_ERROR(this->get_logger(), "Joints ready?: %d", jointsReady);
-      RCLCPP_ERROR(this->get_logger(), "IMU ready?: %d", imuReady);
-      RCLCPP_ERROR(this->get_logger(), "Contacts ready?: %d", contactsReady);
+      RCLCPP_ERROR(this->get_logger(), "Joints ready?: %d", jointsReady_);
+      RCLCPP_ERROR(this->get_logger(), "IMU ready?: %d", imuReady_);
+      RCLCPP_ERROR(this->get_logger(), "Contacts ready?: %d", contactsReady_);
       RCLCPP_ERROR(this->get_logger(), 
         "Joints, IMU or contact flags are not ready!");
       return;
