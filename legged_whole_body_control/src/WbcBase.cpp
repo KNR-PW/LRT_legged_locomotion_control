@@ -186,15 +186,15 @@ Task WbcBase::formulateBaseAccelTask(const vector_t& stateDesired, const vector_
   const vector_t vDesired = mapping_.getPinocchioJointVelocity(stateDesired, inputDesired);
 
   const auto& A = getCentroidalMomentumMatrix(pinocchioInterfaceDesired_);
-  const Matrix6 Ab = A.template leftCols<6>();
+  const matrix6_t Ab = A.template leftCols<6>();
   const auto AbInv = computeFloatingBaseCentroidalMomentumMatrixInverse(Ab);
   const auto Aj = A.rightCols(info_.actuatedDofNum);
   const auto ADot = pinocchio::dccrba(model, data, qDesired, vDesired);
-  Vector6 centroidalMomentumRate = info_.robotMass * getNormalizedCentroidalMomentumRate(pinocchioInterfaceDesired_, info_, inputDesired);
+  vector6_t centroidalMomentumRate = info_.robotMass * getNormalizedCentroidalMomentumRate(pinocchioInterfaceDesired_, info_, inputDesired);
   centroidalMomentumRate.noalias() -= ADot * vDesired;
   centroidalMomentumRate.noalias() -= Aj * jointAccel;
 
-  Vector6 b = AbInv * centroidalMomentumRate;
+  vector6_t b = AbInv * centroidalMomentumRate;
 
   return {a, b, matrix_t(), vector_t()};
 }
