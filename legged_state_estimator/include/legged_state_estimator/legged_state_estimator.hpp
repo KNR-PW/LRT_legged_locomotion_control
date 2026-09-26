@@ -54,7 +54,7 @@ namespace legged_state_estimator
   ///
   class LeggedStateEstimator 
   {
-  public:
+    public:
 
     ///
     /// @brief Constructor.
