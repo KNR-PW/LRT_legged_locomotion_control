@@ -48,31 +48,33 @@ namespace legged_whole_body_control
 
       void updateContactFlags(ocs2::scalar_t time, const contact_flags_t& contactFlags);
 
+      void updateTerrainNormals(ocs2::scalar_t time, const std::vector<vector3_t>& normals);
+
       vector6_t& getBaseAcceleration() const;
 
-      vector_t getJointAcceleration() const;
+      vector_t& getJointAcceleration() const;
 
-      vector_t getJointTorque() const;
+      vector_t& getJointTorque() const;
 
-      vector3_t getEndEffectorForce(size_t endEffectorIndex) const;
+      vector3_t& getEndEffectorForce(size_t endEffectorIndex) const;
 
-      vector6_t getEndEffectorWrench(size_t getEndEffectorIndex) const;
+      vector6_t& getEndEffectorWrench(size_t getEndEffectorIndex) const;
 
       virtual vector_t update(ocs2::scalar_t time);
 
    protected:
 
-    void updateMeasured(const vector_t& rbdStateMeasured);
+    void updateMeasured();
 
-    void updateDesired(const vector_t& stateDesired, const vector_t& inputDesired);
+    void updateDesired();
 
     size_t getNumDecisionVars() const { return numDecisionVars_; }
 
-    Task formulateFloatingBaseEomTask();
+    Task formulateDynamicsTask();
     Task formulateTorqueLimitsTask();
-    Task formulateNoContactMotionTask();
+    Task formulateKinematicContactTask();
     Task formulateFrictionConeTask();
-    Task formulateBaseAccelTask(const vector_t& stateDesired, 
+    Task formulateBaseTrackingTask(const vector_t& stateDesired, 
       const vector_t& inputDesired, scalar_t period);
     Task formulateSwingLegTask();
     Task formulateContactForceTask(const vector_t& inputDesired) const;
@@ -81,20 +83,35 @@ namespace legged_whole_body_control
     
     Settings settings_;
     floating_base_model::FloatingBaseModelInfo info_;
-
+    
+    floating_base_model::FloatingBaseModelPinocchioMapping mapping_;
     ocs2::PinocchioInterface pinocchioInterfaceMeasured_;
     ocs2::PinocchioInterface pinocchioInterfaceDesired_;
 
+    ocs2::scalar_t timeMeasured_;
     ocs2::vector_t stateMeasured_;
     ocs2::vector_t inputMeasured_;
 
+    ocs2::scalar_t timeDesired_;
+    ocs2::scalar_t previousTimeDesired_;
     ocs2::vector_t stateDesired_;
     ocs2::vector_t inputDesired_;
+    ocs2::vector_t previousStateDesired_;
+    ocs2::vector_t previousInputDesired_;
 
     ocs2::matrix_t stackedJacobians_;
     ocs2::matrix_t stackedJacobianDerivatives_;
 
-    contact_flags_t contactFlag_;
+    vector6_t baseAcceleration_;
+
+    ocs2::scalar_t timeContact_;
+    contact_flags_t contactFlags_;
+
+    ocs2::scalar_t timeNormals_;
+    std::vector<vector3_t> terrainNormals_;
+
+    ocs2::vector_t currentResult_;
+    ocs2::vector_t previousResult_;
   };
 } // namespace legged_whole_body_control
 #endif

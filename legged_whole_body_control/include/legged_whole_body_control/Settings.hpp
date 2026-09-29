@@ -26,42 +26,55 @@ namespace legged_whole_body_control
 {
   class WbcBase;
   
-  struct WbcBase::FloatingBaseTrackingTaskSettings
+  struct WbcBase::BaseTrackingTaskSettings
   {
-    vector3_t proportionalGain;
-    vector3_t derivativeGain;
+    vector3_t linearFeedForwardGain;
+    vector3_t linearProportionalGain;
+    vector3_t linearDerivativeGain;
+
+    vector3_t angularFeedForwardGain;
+    vector3_t angularProportionalGain;
+    vector3_t angularDerivativeGain;
   };
 
   struct WbcBase::EndEffectorsTrackingTaskSettings
   {
-    vector3_t proportionalGain;
-    vector3_t derivativeGain;
-  };
+    // For 3 DoF end-effectors
+    vector3_t linearFeedForwardGain;
+    vector3_t linearProportionalGain;
+    vector3_t linearDerivativeGain;
 
-  struct WbcBase::TorqueLimitsTaskSettings
-  {
-    ocs2::vector_t maximumTorque;
+    // For 6 DoF end-effectors
+    vector3_t angularFeedForwardGain;
+    vector3_t angularProportionalGain;
+    vector3_t angularDerivativeGain;
   };
 
   struct WbcBase::FrictionConeTaskSettings
   {
-    ocs2::scalar_t frictionCoefficient;
+    ocs2::scalar_t frictionCoefficient = 0.5;
   };
 
   struct WbcBase::Settings
   {
-    ocs2::scalar_t frequency;
     bool useDynamicsTask = true;
-    bool useFloatingBaseTrackingTask = true;
+    bool useBaseTrackingTask = true;
     bool useEndEffectorsTrackingTask = true;
     bool useContactForceTrackingTask = true;
     bool useTorqueLimitsTask = true;
     bool useKinematicContactTask = true;
     bool useFrictionConeTask = true;
 
-    FloatingBaseTrackingTaskSettings floatingBaseSettings;
+    ocs2::scalar_t weightDynamicsTask = 1.0;
+    ocs2::scalar_t weightBaseTrackingTask = 1.0;
+    ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
+    ocs2::scalar_t weightContactForceTrackingTask = 1.0;
+    ocs2::scalar_t weightTorqueLimitsTask = 1.0;
+    ocs2::scalar_t weightKinematicContactTask = 1.0;
+    ocs2::scalar_t weightFrictionConeTask = 1.0;
+
+    BaseTrackingTaskSettings baseSettings;
     EndEffectorsTrackingTaskSettings endEffectorSettings;
-    TorqueLimitsTaskSettings torqueLimitsSettings;
     FrictionConeTaskSettings frictionConeSettings;
   };
 } // namespace legged_whole_body_control
