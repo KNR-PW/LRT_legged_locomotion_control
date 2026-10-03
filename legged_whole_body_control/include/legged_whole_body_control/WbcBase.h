@@ -110,7 +110,6 @@ namespace legged_whole_body_control
     ocs2::matrix_t stackedJacobianDerivatives_;
 
     ocs2::vector_t currentResult_;
-    ocs2::vector_t previousResult_;
   };
 }; // namespace legged_whole_body_control
 #endif

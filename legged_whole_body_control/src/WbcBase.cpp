@@ -242,8 +242,7 @@ namespace legged_whole_body_control
       floatingBaseModelInfo_.actuatedDofNum);
 
     vector_t f(2 * info_.actuatedDofNum);
-    f.segment(0, info_.actuatedDofNum) = jointMaxTorque;
-    f.segment(info_.actuatedDofNum, info_.actuatedDofNum) = jointMaxTorque;
+    f << jointMaxTorque, jointMaxTorque;
     
     return Task(matrix_t(), vector_t(), std::move(d), std::move(f));
   }

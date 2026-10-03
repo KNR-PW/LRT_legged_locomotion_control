@@ -43,7 +43,11 @@ namespace legged_whole_body_control
 
       explicit HoQp(const Task& task) : HoQp(task, nullptr) {};
 
+      explicit HoQp(Task&& task) : HoQp(std::move(task), nullptr) {};
+
       HoQp(Task task, HoQpPtr higherProblem);
+
+      HoQp(Task&& task, HoQpPtr higherProblem);
 
       ocs2::matrix_t getStackedZMatrix() const { return stackedZ_; }
 

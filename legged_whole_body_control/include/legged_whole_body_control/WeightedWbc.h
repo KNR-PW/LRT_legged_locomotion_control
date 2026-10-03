@@ -26,6 +26,8 @@
 
 #include <legged_whole_body_control/WbcBase.h>
 
+#include <proxsuite/proxqp/dense/dense.hpp>
+
 namespace legged_whole_body_control 
 {
   class WeightedWbc: public WbcBase
@@ -41,8 +43,13 @@ namespace legged_whole_body_control
     private:
 
       Task formulateWeightedTask();
+      Task formulateConstraints();
+
+      std::unique_ptr<proxsuite::proxqp::dense::QP<scalar_t>> qpSolver_;
+
+      bool started_ = true;
 
       Weights weights_;
   };
-}; // namespace legged_whole_body_control
+} // namespace legged_whole_body_control
 #endif

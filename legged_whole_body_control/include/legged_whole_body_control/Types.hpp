@@ -45,6 +45,7 @@ namespace legged_whole_body_control
   const ocs2::scalar_t PLUS_GRAVITY_VALUE = 9.81;
   const ocs2::scalar_t MINUS_GRAVITY_VALUE = -PLUS_GRAVITY_VALUE;
   const size_t MAX_LEG_NUMBER = 8;
+  const size_t MAX_TASK_NUMBER = 7;
   using contact_flags_t = std::bitset<MAX_LEG_NUMBER>; // Dont expect for robot to have more than 8 legs
 
   const ocs2::scalar_t SCALAR_EPSILON = 1e-12;

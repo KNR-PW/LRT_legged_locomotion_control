@@ -23,12 +23,11 @@
 
 #include <legged_whole_body_control/WeightedWbc.h>
 
-#include <qpOASES.hpp>
-
 namespace legged_whole_body_control 
 {
   using namespace ocs2;
   using namespace floating_base_model;
+  using namespace proxsuite;
 
   WeightedWbc::WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
     floating_base_model::FloatingBaseModelInfo info, 
@@ -39,62 +38,89 @@ namespace legged_whole_body_control
   {
     WbcBase::calculate(time);
 
-    Task weighedTask = formulateWeightedTask()
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> H = weighedTask.a_.transpose() * weighedTask.a_;
+    const Task weighedTask = formulateWeightedTask();
+    const Task constraints = formulateConstraints();
+
+    const size_t problemDimension = weighedTask.b_.size();
+    const size_t equalityConstraintsDimension = constraints.b_.size();
+    const size_t inequalityConstraintsDimension = constraints.f.size();
+
+    constexpr double infinity = std::numeric_limits<scalar_t>::infinity();
+
+    matrix_t H = weighedTask.a_.transpose() * weighedTask.a_;
     vector_t g = -weighedTask.a_.transpose() * weighedTask.b_;
 
-    // Solve
-    auto qpProblem = qpOASES::QProblem(numberOfDecisionVariables_, numConstraints);
-    qpOASES::Options options;
-    options.setToMPC();
-    options.printLevel = qpOASES::PL_LOW;
-    options.enableEqualities = qpOASES::BT_TRUE;
-    qpProblem.setOptions(options);
-    int nWsr = 20;
+    if(started_)
+    {
+      started_ = false;
 
-    qpProblem.init(H.data(), g.data(), A.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWsr);
-    vector_t qpSol(numberOfDecisionVariables_);
+      qpSolver_ = std::make_unique<proxqp::dense::QP<scalar_t>>(numberOfDecisionVariables_, 
+        equalityConstraintsDimension, inequalityConstraintsDimension);
 
-    qpProblem.getPrimalSolution(qpSol.data());
-    return qpSol;
+      qpSolver->settings.initial_guess =
+        proxqp::InitialGuessStatus::WARM_START_WITH_PREVIOUS_RESULT;
+
+      qpSolver_->init(H, g, constraints.a_, constraints.b_, constraints.d_, 
+        -infinity * vector_t::Ones(constraints.f_.size()), constraints.f_);
+    }
+    else
+    {
+      // f (u) is const for all constraints, same with l 
+      qpSolver_->update(H, g, constraints.a_, constraints.b_, constraints.d_, 
+        std::nullopt, std::nullopt);
+    }
+
+    qpSolver_->solve();
+
+    currentResult_ = qpSolver_->results.x;
   }
 
   Task WeightedWbc::formulateWeightedTask() 
   {
     Task weightedTask;
 
-    if(settings_.useDynamicsTask)
-    {
-      weightedTask += weights_.weightDynamicsTask * formulateDynamicsTask();
-    }
     if(settings_.useBaseTrackingTask)
     {
-      weightedTask += weights_.weightBaseTrackingTask * formulateBaseTrackingTask();
+      weightedTask += std::move(weights_.weightBaseTrackingTask * formulateBaseTrackingTask());
     }
     if(settings_.useEndEffectorsTrackingTask)
     {
-      weightedTask += weights_.weightEndEffectorsTrackingTask * formulateEndEffectorsTrackingTask();
+      weightedTask += std::move(weights_.weightEndEffectorsTrackingTask * formulateEndEffectorsTrackingTask());
     }
     if(settings_.useContactForceTrackingTask)
     {
-      weightedTask += weights_.weightContactForceTrackingTask * formulateContactForceTrackingTask();
-    }
-    if(settings_.useTorqueLimitsTask)
-    {
-      weightedTask += weights_.weightTorqueLimitsTask * formulateTorqueLimitsTask();
-    }
-    if(settings_.useKinematicContactTask)
-    {
-      weightedTask += weights_.weightKinematicContactTask * formulateKinematicContactTask();
-    }
-    if(settings_.useFrictionConeTask)
-    {
-      weightedTask += weights_.weightFrictionConeTask * formulateFrictionConeTask();
+      weightedTask += std::move(weights_.weightContactForceTrackingTask * formulateContactForceTrackingTask());
     }
 
     return weightedTask;
   }
+
+  Task WeightedWbc::formulateConstraints()
+  {
+    Task constraints;
+
+    if(settings_.useDynamicsTask)
+    {
+      constraints += formulateDynamicsTask();
+    }
+    if(settings_.useTorqueLimitsTask)
+    {
+      constraints += formulateTorqueLimitsTask();
+    }
+    if(settings_.useKinematicContactTask)
+    {
+      constraints += formulateKinematicContactTask();
+    }
+    if(settings_.useFrictionConeTask)
+    {
+      constraints += formulateFrictionConeTask();
+    }
+    
+    return constraints;
+  }
 } //  namespace legged_whole_body_control
+
+
 void WeightedWbc::loadTasksSetting(const std::string& taskFile, bool verbose) {
   WbcBase::loadTasksSetting(taskFile, verbose);
 

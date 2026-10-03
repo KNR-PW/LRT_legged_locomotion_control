@@ -161,6 +161,11 @@ public:
     return std::move(lhs);
   }
 
+  bool isActive()
+  {
+    return a_.rows() > 0;
+  }
+
 public:
   ocs2::matrix_t a_;
   ocs2::matrix_t d_;
