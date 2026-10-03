@@ -24,6 +24,8 @@
 #ifndef __LEGGED_WHOLE_BODY_CONTROL_WBC_BASE__
 #define __LEGGED_WHOLE_BODY_CONTROL_WBC_BASE__
 
+#include <ocs2_pinocchio_interface/PinocchioInterface.h>
+
 #include <floating_base_model/FloatingBaseModelInfo.hpp>
 
 #include <legged_whole_body_control/Settings.hpp>
@@ -60,24 +62,21 @@ namespace legged_whole_body_control
 
       vector6_t& getEndEffectorWrench(size_t getEndEffectorIndex) const;
 
-      virtual vector_t update(ocs2::scalar_t time);
+      virtual void calculate(ocs2::scalar_t time);
 
    protected:
 
-    void updateMeasured();
+    void calculateMeasured();
 
-    void updateDesired();
+    void calculateDesired();
 
-    size_t getNumDecisionVars() const { return numDecisionVars_; }
-
-    Task formulateDynamicsTask();
-    Task formulateTorqueLimitsTask();
-    Task formulateKinematicContactTask();
-    Task formulateFrictionConeTask();
-    Task formulateBaseTrackingTask(const vector_t& stateDesired, 
-      const vector_t& inputDesired, scalar_t period);
-    Task formulateSwingLegTask();
-    Task formulateContactForceTask(const vector_t& inputDesired) const;
+    Task formulateDynamicsTask() const;
+    Task formulateTorqueLimitsTask() const;
+    Task formulateKinematicContactTask() const;
+    Task formulateFrictionConeTask() const;
+    Task formulateBaseTrackingTask() const;
+    Task formulateEndEffectorsTrackingTask() const;
+    Task formulateContactForceTrackingTask() const;
 
     size_t numberOfDecisionVariables_;
     
@@ -99,19 +98,19 @@ namespace legged_whole_body_control
     ocs2::vector_t previousStateDesired_;
     ocs2::vector_t previousInputDesired_;
 
-    ocs2::matrix_t stackedJacobians_;
-    ocs2::matrix_t stackedJacobianDerivatives_;
-
-    vector6_t baseAcceleration_;
-
     ocs2::scalar_t timeContact_;
     contact_flags_t contactFlags_;
 
     ocs2::scalar_t timeNormals_;
     std::vector<vector3_t> terrainNormals_;
 
+    vector6_t feedFrowardBaseAcceleration_;
+
+    ocs2::matrix_t stackedJacobians_;
+    ocs2::matrix_t stackedJacobianDerivatives_;
+
     ocs2::vector_t currentResult_;
     ocs2::vector_t previousResult_;
   };
-} // namespace legged_whole_body_control
+}; // namespace legged_whole_body_control
 #endif

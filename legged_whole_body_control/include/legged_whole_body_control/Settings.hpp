@@ -17,14 +17,16 @@
  * Author: Bartłomiej Krajewski (https://github.com/BartlomiejK2)
  */
 
-#ifndef __LEGGED_WHOLE_BODY_CONTROL_TASK__
-#define __LEGGED_WHOLE_BODY_CONTROL_TASK__
+#ifndef __LEGGED_WHOLE_BODY_CONTROL_SETTINGS__
+#define __LEGGED_WHOLE_BODY_CONTROL_SETTINGS__
 
 #include <legged_whole_body_control/Types.hpp>
 
 namespace legged_whole_body_control 
 {
   class WbcBase;
+  class WeightedWbc;
+  class HierarchicalWbc;
   
   struct WbcBase::BaseTrackingTaskSettings
   {
@@ -65,6 +67,13 @@ namespace legged_whole_body_control
     bool useKinematicContactTask = true;
     bool useFrictionConeTask = true;
 
+    BaseTrackingTaskSettings baseSettings;
+    EndEffectorsTrackingTaskSettings endEffectorSettings;
+    FrictionConeTaskSettings frictionConeSettings;
+  };
+
+  struct WeightedWbc::Weights
+  {
     ocs2::scalar_t weightDynamicsTask = 1.0;
     ocs2::scalar_t weightBaseTrackingTask = 1.0;
     ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
@@ -72,10 +81,17 @@ namespace legged_whole_body_control
     ocs2::scalar_t weightTorqueLimitsTask = 1.0;
     ocs2::scalar_t weightKinematicContactTask = 1.0;
     ocs2::scalar_t weightFrictionConeTask = 1.0;
+  };
 
-    BaseTrackingTaskSettings baseSettings;
-    EndEffectorsTrackingTaskSettings endEffectorSettings;
-    FrictionConeTaskSettings frictionConeSettings;
+  struct HierarchicalWbc::Hierarchy
+  {
+    ocs2::scalar_t weightDynamicsTask = 1.0;
+    ocs2::scalar_t weightBaseTrackingTask = 1.0;
+    ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
+    ocs2::scalar_t weightContactForceTrackingTask = 1.0;
+    ocs2::scalar_t weightTorqueLimitsTask = 1.0;
+    ocs2::scalar_t weightKinematicContactTask = 1.0;
+    ocs2::scalar_t weightFrictionConeTask = 1.0;
   };
 } // namespace legged_whole_body_control
 #endif

@@ -68,28 +68,28 @@ namespace legged_whole_body_control
       info_.generalizedCoordinatesNum);
   }
 
-  void WbcBase:updateDesired(ocs2::scalar_t time, const ocs2::vector_t& state, 
-    const ocs2::vector_t& input)
+  void WbcBase:updateDesired(scalar_t time, const vector_t& state, 
+    const vector_t& input)
   {
     previousTimeDesired_ = timeDesired_;
     timeDesired_ = time;
 
-    previousStateDesired_ = stateDesired_;
+    previousStateDesired_ = std::move(stateDesired_);
     stateDesired_ = state;
 
     previousInputDesired_ = std::move(inputDesired_);
     inputDesired_ = input;
   }
 
-  void WbcBase::updateCurrent(ocs2::scalar_t time, const ocs2::vector_t& state, 
-    const ocs2::vector_t& input)
+  void WbcBase::updateCurrent(scalar_t time, const vector_t& state, 
+    const vector_t& input)
   {
     timeMeasured_ = time;
     stateMeasured_ = state;
     inputMeasured_ = input;
   }
 
-  void WbcBase::updateContactFlags(ocs2::scalar_t time, 
+  void WbcBase::updateContactFlags(scalar_t time, 
     const contact_flags_t& contactFlags)
   {
     timeContact_ = time;
@@ -127,13 +127,13 @@ namespace legged_whole_body_control
     return currentResult_.block<6, 1>(contactStartIndex, 0).finished();
   }
 
-  vector_t WbcBase::update(ocs2::scalar_t time)
+  void WbcBase::calculate(scalar_t time)
   {
-    updateMeasured();
-    updateDesired();
+    calculateMeasured();
+    calculateDesired();
   }
 
-  void WbcBase::updateMeasured() 
+  void WbcBase::calculateMeasured() 
   {
     mapping_.setPinocchioInterface(pinocchioInterfaceMeasured_);
 
@@ -190,7 +190,7 @@ namespace legged_whole_body_control
     }
   }
 
-  void WbcBase::updateDesired() 
+  void WbcBase::calculateDesired() 
   {
     mapping_.setPinocchioInterface(pinocchioInterfaceDesired_);
 
@@ -204,7 +204,7 @@ namespace legged_whole_body_control
 
     const vector_t generalizedAcceleration = (currentVelocities - previousVelocities) / (timeDesired_ - previousTimeDesired_);
 
-    baseAcceleration_ = generalizedAcceleration.block<6, 1>(0, 0);
+    feedFrowardBaseAcceleration_ = generalizedAcceleration.block<6, 1>(0, 0);
 
     pinocchio::forwardKinematics(model, data, generalizedPosition, currentVelocities, 
       generalizedAcceleration);
@@ -212,7 +212,7 @@ namespace legged_whole_body_control
     pinocchio::updateFramePlacements(model, data);
   }
 
-  Task WbcBase::formulateDynamicsTask() 
+  Task WbcBase::formulateDynamicsTask() const
   {
     auto& data = pinocchioInterfaceMeasured_.getData();
 
@@ -224,10 +224,10 @@ namespace legged_whole_body_control
       << data.M, -stackedJacobians_.transpose(), -s.transpose()).finished();
     vector_t b = -data.nle;
 
-    return {a, b, matrix_t(), vector_t()};
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
-  Task WbcBase::formulateTorqueLimitsTask() 
+  Task WbcBase::formulateTorqueLimitsTask() const
   {
     matrix_t i = matrix_t::Identity(info_.actuatedDofNum, info_.actuatedDofNum);
 
@@ -245,10 +245,10 @@ namespace legged_whole_body_control
     f.segment(0, info_.actuatedDofNum) = jointMaxTorque;
     f.segment(info_.actuatedDofNum, info_.actuatedDofNum) = jointMaxTorque;
     
-    return {matrix_t(), vector_t(), d, f};
+    return Task(matrix_t(), vector_t(), std::move(d), std::move(f));
   }
 
-  Task WbcBase::formulateKinematicContactTask() 
+  Task WbcBase::formulateKinematicContactTask() const
   {
     mapping_.setPinocchioInterface(pinocchioInterfaceMeasured_);
 
@@ -290,10 +290,10 @@ namespace legged_whole_body_control
       }
     }
 
-    return {a, b, matrix_t(), vector_t()};
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
-  Task WbcBase::formulateFrictionConeTask() 
+  Task WbcBase::formulateFrictionConeTask() const
   {
     // No contact == zero force/wrench
     const size_t numberOf6DofContacts = (contactFlags_ >> info_.numThreeDofContacts).count();
@@ -372,10 +372,10 @@ namespace legged_whole_body_control
 
     vector_t f = Eigen::VectorXd::Zero(d.rows());
 
-    return {a, b, d, f};
+    return Task(std::move(a), std::move(b), std::move(d), std::move(f));
   }
 
-  Task WbcBase::formulateBaseTrackingTask()
+  Task WbcBase::formulateBaseTrackingTask() const
   {
     matrix_t a(6, numberOfDecisionVariables_);
     a.setZero();
@@ -405,18 +405,18 @@ namespace legged_whole_body_control
     const vector3_t baseAngularVelocityError = baseAngularVelocityDesired - baseAngularVelocityMeasured;
 
     vector6_t b;
-    b.segment<3>(0) = baseSettings.linearFeedForwardGain.asDiagonal() * baseAcceleration_.segment<3>(0);
+    b.segment<3>(0) = baseSettings.linearFeedForwardGain.asDiagonal() * feedFrowardBaseAcceleration_.segment<3>(0);
     b.segment<3>(0) += baseSettings.linearProportionalGain.asDiagonal() * basePositionError;
     b.segment<3>(0) += baseSettings.linearDerivativeGain.asDiagonal() * baseLinearVelocityError;
 
-    b.segment<3>(3) = baseSettings.linearFeedForwardGain.asDiagonal() * baseAcceleration_.segment<3>(3);
+    b.segment<3>(3) = baseSettings.linearFeedForwardGain.asDiagonal() * feedFrowardBaseAcceleration_.segment<3>(3);
     b.segment<3>(3) += baseSettings.angularProportionalGain.asDiagonal() * baseOrientationErrorError;
     b.segment<3>(3) += baseSettings.angularDerivativeGain.asDiagonal() * baseAngularVelocityError;
     
-    return {a, b, matrix_t(), vector_t()};
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
-  Task WbcBase::formulateSwingLegTask() 
+  Task WbcBase::formulateEndEffectorsTrackingTask() const
   {
     mapping_.setPinocchioInterface(pinocchioInterfaceMeasured_);
 
@@ -527,7 +527,7 @@ namespace legged_whole_body_control
       }
     }
 
-    return {a, b, matrix_t(), vector_t()};
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
   Task WbcBase::formulateContactForceTrackingTask() const 
@@ -552,7 +552,7 @@ namespace legged_whole_body_control
     
     b = inputDesired.head(a.rows());
 
-    return {a, b, matrix_t(), vector_t()};
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
   void WbcBase::loadTasksSetting(const std::string& taskFile, bool verbose) {

@@ -27,110 +27,263 @@
 #ifndef __LEGGED_WHOLE_BODY_CONTROL_TASK__
 #define __LEGGED_WHOLE_BODY_CONTROL_TASK__
 
+#include <cassert>
+#include <cstddef>
 #include <utility>
 
 #include <legged_whole_body_control/Types.hpp>
 
-namespace legged_whole_body_control 
+namespace legged_whole_body_control
 {
-  class Task 
+
+class Task
+{
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  Task() = default;
+
+  Task(ocs2::matrix_t&& a,
+       ocs2::vector_t&& b,
+       ocs2::matrix_t&& d,
+       ocs2::vector_t&& f)
+      : a_(std::move(a)),
+        d_(std::move(d)),
+        b_(std::move(b)),
+        f_(std::move(f))
   {
-    public:
-      EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  }
 
-      Task() = default;
+  explicit Task(std::size_t numDecisionVars)
+      : a_(ocs2::matrix_t::Zero(0, numDecisionVars)),
+        d_(ocs2::matrix_t::Zero(0, numDecisionVars)),
+        b_(ocs2::vector_t::Zero(0)),
+        f_(ocs2::vector_t::Zero(0))
+  {
+  }
 
-      Task(ocs2::matrix_t a, ocs2::vector_t b, ocs2::matrix_t d, ocs2::vector_t f): 
-        a_(std::move(a)), d_(std::move(d)), b_(std::move(b)), f_(std::move(f)) {}
+  // --------------------------------------------------------------------------
+  // Addition
+  // --------------------------------------------------------------------------
 
-      explicit Task(size_t numDecisionVars): 
-        Task(ocs2::matrix_t::Zero(0, numDecisionVars), ocs2::vector_t::Zero(0), 
-        ocs2::matrix_t::Zero(0, numDecisionVars), ocs2::vector_t::Zero(0)) {}
+  // lvalue += lvalue
+  Task& operator+=(const Task& rhs)
+  {
+    a_ = concatenateMatrices(std::move(a_), rhs.a_);
+    d_ = concatenateMatrices(std::move(d_), rhs.d_);
+    b_ = concatenateVectors(std::move(b_), rhs.b_);
+    f_ = concatenateVectors(std::move(f_), rhs.f_);
 
-      Task operator+(const Task& rhs) const 
-      {
-        return {concatenateMatrices(std::move(a_), std::move(rhs.a_)), 
-          concatenateVectors(std::move(b_), std::move(rhs.b_)), 
-          concatenateMatrices(std::move(d_), std::move(rhs.d_)), 
-          concatenateVectors(std::move(f_), std::move(rhs.f_))};
-      }
+    return *this;
+  }
 
-      Task operator*(ocs2::scalar_t rhs) const // clang-format off
-      {  
-        return {a_.cols() > 0 ? rhs * a_ : a_,
-          b_.cols() > 0 ? rhs * b_ : b_,
-          d_.cols() > 0 ? rhs * d_ : d_,
-          f_.cols() > 0 ? rhs * f_ : f_};  // clang-format on
-      }
+  // lvalue += temporary
+  //
+  // This is the important overload for:
+  //
+  //   weightedTask += weight * formulateTask();
+  //
+  Task& operator+=(Task&& rhs)
+  {
+    a_ = concatenateMatrices(std::move(a_), std::move(rhs.a_));
+    d_ = concatenateMatrices(std::move(d_), std::move(rhs.d_));
+    b_ = concatenateVectors(std::move(b_), std::move(rhs.b_));
+    f_ = concatenateVectors(std::move(f_), std::move(rhs.f_));
 
-      ocs2::matrix_t a_, d_;
-      ocs2::vector_t b_, f_;
+    return *this;
+  }
 
-      static ocs2::matrix_t concatenateMatrices(ocs2::matrix_t&& m1, ocs2::matrix_t&& m2) 
-      {
-        if (m1.cols() <= 0) 
-        {
-          return m2;
-        } 
-        else if (m2.cols() <= 0) 
-        {
-          return m1;
-        }
-        assert(m1.cols() == m2.cols());
-        ocs2::matrix_t res(m1.rows() + m2.rows(), m1.cols());
-        res << m1, m2;
-        return res;
-      }
+  // a + b
+  Task operator+(const Task& rhs) const&
+  {
+    Task result = *this;
+    result += rhs;
+    return result;
+  }
 
-      static ocs2::matrix_t concatenateMatrices(const ocs2::matrix_t& m1, 
-        const ocs2::matrix_t& m2) 
-      {
-        if (m1.cols() <= 0) 
-        {
-          return m2;
-        } 
-        else if (m2.cols() <= 0) 
-        {
-          return m1;
-        }
-        assert(m1.cols() == m2.cols());
-        ocs2::matrix_t res(m1.rows() + m2.rows(), m1.cols());
-        res << m1, m2;
-        return res;
-      }
+  // std::move(a) + b
+  //
+  // Allows the storage owned by a to be reused.
+  friend Task operator+(Task&& lhs, const Task& rhs)
+  {
+    lhs += rhs;
+    return std::move(lhs);
+  }
 
-      static ocs2::vector_t concatenateVectors(ocs2::vector_t&& v1, ocs2::vector_t&& v2) 
-      {
-        if (v1.cols() <= 0) 
-        {
-          return v2;
-        } 
-        else if (v2.cols() <= 0) 
-        {
-          return v1;
-        }
-        assert(v1.cols() == v2.cols());
-        ocs2::vector_t res(v1.rows() + v2.rows());
-        res << v1, v2;
-        return res;
-      }
+  // --------------------------------------------------------------------------
+  // Scalar multiplication
+  // --------------------------------------------------------------------------
 
-      static ocs2::vector_t concatenateVectors(const ocs2::vector_t& v1, 
-        const ocs2::vector_t& v2) 
-      {
-        if (v1.cols() <= 0) 
-        {
-          return v2;
-        } 
-        else if (v2.cols() <= 0) 
-        {
-          return v1;
-        }
-        assert(v1.cols() == v2.cols());
-        ocs2::vector_t res(v1.rows() + v2.rows());
-        res << v1, v2;
-        return res;
-      }
-  };
+  // scalar * temporary Task
+  //
+  // This is important for:
+  //
+  //   weight * formulateTask()
+  //
+  // The existing Task buffers are scaled in-place. No additional
+  // matrix/vector allocations are required here.
+  friend Task operator*(ocs2::scalar_t lhs, Task&& rhs)
+  {
+    rhs.a_ *= lhs;
+    rhs.b_ *= lhs;
+    rhs.d_ *= lhs;
+    rhs.f_ *= lhs;
+
+    return std::move(rhs);
+  }
+
+  // scalar * const Task
+  //
+  // Required when the Task is an lvalue.
+  friend Task operator*(ocs2::scalar_t lhs, const Task& rhs)
+  {
+    return Task{
+        lhs * rhs.a_,
+        lhs * rhs.b_,
+        lhs * rhs.d_,
+        lhs * rhs.f_};
+  }
+
+  // Task * scalar, lvalue
+  friend Task operator*(const Task& lhs, ocs2::scalar_t rhs)
+  {
+    return rhs * lhs;
+  }
+
+  // Task * scalar, temporary
+  friend Task operator*(Task&& lhs, ocs2::scalar_t rhs)
+  {
+    lhs.a_ *= rhs;
+    lhs.b_ *= rhs;
+    lhs.d_ *= rhs;
+    lhs.f_ *= rhs;
+
+    return std::move(lhs);
+  }
+
+public:
+  ocs2::matrix_t a_;
+  ocs2::matrix_t d_;
+  ocs2::vector_t b_;
+  ocs2::vector_t f_;
+
+private:
+  // --------------------------------------------------------------------------
+  // Matrix concatenation
+  // --------------------------------------------------------------------------
+
+  // First matrix can be moved from, second one must be preserved.
+  static ocs2::matrix_t concatenateMatrices(
+      ocs2::matrix_t&& m1,
+      const ocs2::matrix_t& m2)
+  {
+    if (m1.cols() == 0)
+    {
+      return m2;
+    }
+
+    if (m2.cols() == 0)
+    {
+      return std::move(m1);
+    }
+
+    assert(m1.cols() == m2.cols());
+
+    const Eigen::Index rows1 = m1.rows();
+    const Eigen::Index rows2 = m2.rows();
+
+    ocs2::matrix_t result(rows1 + rows2, m1.cols());
+
+    result.topRows(rows1) = m1;
+    result.bottomRows(rows2) = m2;
+
+    return result;
+  }
+
+  // Both matrices can be consumed.
+  static ocs2::matrix_t concatenateMatrices(
+      ocs2::matrix_t&& m1,
+      ocs2::matrix_t&& m2)
+  {
+    if (m1.cols() == 0)
+    {
+      return std::move(m2);
+    }
+
+    if (m2.cols() == 0)
+    {
+      return std::move(m1);
+    }
+
+    assert(m1.cols() == m2.cols());
+
+    const Eigen::Index rows1 = m1.rows();
+    const Eigen::Index rows2 = m2.rows();
+
+    ocs2::matrix_t result(rows1 + rows2, m1.cols());
+
+    result.topRows(rows1) = m1;
+    result.bottomRows(rows2) = m2;
+
+    return result;
+  }
+
+  // --------------------------------------------------------------------------
+  // Vector concatenation
+  // --------------------------------------------------------------------------
+
+  // First vector can be moved from, second one must be preserved.
+  static ocs2::vector_t concatenateVectors(
+      ocs2::vector_t&& v1,
+      const ocs2::vector_t& v2)
+  {
+    if (v1.size() == 0)
+    {
+      return v2;
+    }
+
+    if (v2.size() == 0)
+    {
+      return std::move(v1);
+    }
+
+    const Eigen::Index size1 = v1.size();
+    const Eigen::Index size2 = v2.size();
+
+    ocs2::vector_t result(size1 + size2);
+
+    result.head(size1) = v1;
+    result.tail(size2) = v2;
+
+    return result;
+  }
+
+  // Both vectors can be consumed.
+  static ocs2::vector_t concatenateVectors(
+      ocs2::vector_t&& v1,
+      ocs2::vector_t&& v2)
+  {
+    if (v1.size() == 0)
+    {
+      return std::move(v2);
+    }
+
+    if (v2.size() == 0)
+    {
+      return std::move(v1);
+    }
+
+    const Eigen::Index size1 = v1.size();
+    const Eigen::Index size2 = v2.size();
+
+    ocs2::vector_t result(size1 + size2);
+
+    result.head(size1) = v1;
+    result.tail(size2) = v2;
+
+    return result;
+  }
+};
+
 } // namespace legged_whole_body_control
 #endif

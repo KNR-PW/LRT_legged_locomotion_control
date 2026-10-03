@@ -2,60 +2,99 @@
 // Created by qiayuan on 22-12-23.
 //
 
-#include "legged_whole_body_control/WeightedWbc.h"
+// Copyright (c) 2026, Bartłomiej Krajewski
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * Modified by: Bartłomiej Krajewski (https://github.com/BartlomiejK2)
+ */
+
+#include <legged_whole_body_control/WeightedWbc.h>
 
 #include <qpOASES.hpp>
 
-namespace legged {
+namespace legged_whole_body_control 
+{
+  using namespace ocs2;
+  using namespace floating_base_model;
 
-vector_t WeightedWbc::update(const vector_t& stateDesired, const vector_t& inputDesired, const vector_t& rbdStateMeasured, size_t mode,
-                             scalar_t period) {
-  WbcBase::update(stateDesired, inputDesired, rbdStateMeasured, mode, period);
+  WeightedWbc::WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
+    floating_base_model::FloatingBaseModelInfo info, 
+    WbcBase::Settings settings, Weights weights):
+      WbcBase(pinocchioInterface, info, settings), settings_(std::move(weights));
 
-  // Constraints
-  Task constraints = formulateConstraints();
-  size_t numConstraints = constraints.b_.size() + constraints.f_.size();
+  void WeightedWbc::calculate(ocs2::scalar_t time) override
+  {
+    WbcBase::calculate(time);
 
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A(numConstraints, getNumDecisionVars());
-  vector_t lbA(numConstraints), ubA(numConstraints);  // clang-format off
-  A << constraints.a_,
-       constraints.d_;
+    Task weighedTask = formulateWeightedTask()
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> H = weighedTask.a_.transpose() * weighedTask.a_;
+    vector_t g = -weighedTask.a_.transpose() * weighedTask.b_;
 
-  lbA << constraints.b_,
-         -qpOASES::INFTY * vector_t::Ones(constraints.f_.size());
-  ubA << constraints.b_,
-         constraints.f_;  // clang-format on
+    // Solve
+    auto qpProblem = qpOASES::QProblem(numberOfDecisionVariables_, numConstraints);
+    qpOASES::Options options;
+    options.setToMPC();
+    options.printLevel = qpOASES::PL_LOW;
+    options.enableEqualities = qpOASES::BT_TRUE;
+    qpProblem.setOptions(options);
+    int nWsr = 20;
 
-  // Cost
-  Task weighedTask = formulateWeightedTasks(stateDesired, inputDesired, period);
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> H = weighedTask.a_.transpose() * weighedTask.a_;
-  vector_t g = -weighedTask.a_.transpose() * weighedTask.b_;
+    qpProblem.init(H.data(), g.data(), A.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWsr);
+    vector_t qpSol(numberOfDecisionVariables_);
 
-  // Solve
-  auto qpProblem = qpOASES::QProblem(getNumDecisionVars(), numConstraints);
-  qpOASES::Options options;
-  options.setToMPC();
-  options.printLevel = qpOASES::PL_LOW;
-  options.enableEqualities = qpOASES::BT_TRUE;
-  qpProblem.setOptions(options);
-  int nWsr = 20;
+    qpProblem.getPrimalSolution(qpSol.data());
+    return qpSol;
+  }
 
-  qpProblem.init(H.data(), g.data(), A.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWsr);
-  vector_t qpSol(getNumDecisionVars());
+  Task WeightedWbc::formulateWeightedTask() 
+  {
+    Task weightedTask;
 
-  qpProblem.getPrimalSolution(qpSol.data());
-  return qpSol;
-}
+    if(settings_.useDynamicsTask)
+    {
+      weightedTask += weights_.weightDynamicsTask * formulateDynamicsTask();
+    }
+    if(settings_.useBaseTrackingTask)
+    {
+      weightedTask += weights_.weightBaseTrackingTask * formulateBaseTrackingTask();
+    }
+    if(settings_.useEndEffectorsTrackingTask)
+    {
+      weightedTask += weights_.weightEndEffectorsTrackingTask * formulateEndEffectorsTrackingTask();
+    }
+    if(settings_.useContactForceTrackingTask)
+    {
+      weightedTask += weights_.weightContactForceTrackingTask * formulateContactForceTrackingTask();
+    }
+    if(settings_.useTorqueLimitsTask)
+    {
+      weightedTask += weights_.weightTorqueLimitsTask * formulateTorqueLimitsTask();
+    }
+    if(settings_.useKinematicContactTask)
+    {
+      weightedTask += weights_.weightKinematicContactTask * formulateKinematicContactTask();
+    }
+    if(settings_.useFrictionConeTask)
+    {
+      weightedTask += weights_.weightFrictionConeTask * formulateFrictionConeTask();
+    }
 
-Task WeightedWbc::formulateConstraints() {
-  return formulateFloatingBaseEomTask() + formulateTorqueLimitsTask() + formulateFrictionConeTask() + formulateNoContactMotionTask();
-}
-
-Task WeightedWbc::formulateWeightedTasks(const vector_t& stateDesired, const vector_t& inputDesired, scalar_t period) {
-  return formulateSwingLegTask() * weightSwingLeg_ + formulateBaseAccelTask(stateDesired, inputDesired, period) * weightBaseAccel_ +
-         formulateContactForceTask(inputDesired) * weightContactForce_;
-}
-
+    return weightedTask;
+  }
+} //  namespace legged_whole_body_control
 void WeightedWbc::loadTasksSetting(const std::string& taskFile, bool verbose) {
   WbcBase::loadTasksSetting(taskFile, verbose);
 
