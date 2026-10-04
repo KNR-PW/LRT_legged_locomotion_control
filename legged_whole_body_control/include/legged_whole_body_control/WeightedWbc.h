@@ -34,6 +34,13 @@ namespace legged_whole_body_control
   {
     public:
 
+      struct Weights
+      {
+        ocs2::scalar_t weightBaseTrackingTask = 1.0;
+        ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
+        ocs2::scalar_t weightContactForceTrackingTask = 1.0;
+      };
+
       WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
         floating_base_model::FloatingBaseModelInfo info, 
         WbcBase::Settings settings, Weights weights);
@@ -45,11 +52,22 @@ namespace legged_whole_body_control
       Task formulateWeightedTask();
       Task formulateConstraints();
 
-      std::unique_ptr<proxsuite::proxqp::dense::QP<scalar_t>> qpSolver_;
+      std::unique_ptr<proxsuite::proxqp::dense::QP<ocs2::scalar_t>> qpSolver_;
 
       bool started_ = true;
 
       Weights weights_;
   };
+
+  /**
+   * Creates WeightedWbc weights
+   * @param [in] filename: file path with weighted wbc base weights.
+   * @param [in] fieldName: field where settings are defined
+   * @param [in] verbose: verbose flag
+   * @return WeightedWbc weights struct
+   */
+  WeightedWbc::Weights loadWeightedWbcSettings(const std::string& filename,
+    const std::string& fieldName = "weighted_wbc_settings",
+    bool verbose = "true");
 } // namespace legged_whole_body_control
 #endif

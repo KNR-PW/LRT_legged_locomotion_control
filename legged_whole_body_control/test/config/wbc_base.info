@@ -1,0 +1,212 @@
+wbc_base_settings
+{
+  baseLinkName trunk_link
+
+  endEffectorThreeDofNames
+  {
+    [0] RFF_link
+    [1] RRF_link
+  }
+
+  endEffectorSixDofNames
+  {
+    [0] LFF_link
+    [1] LRF_link
+  }
+
+  useDynamicsTask             true
+  useBaseTrackingTask         true
+  useEndEffectorsTrackingTask true   
+  useContactForceTrackingTask true
+  useTorqueLimitsTask         true
+  useKinematicContactTask     false  
+  useFrictionConeTask         true
+
+  baseSettings
+  {
+    linearFeedForwardGain
+    {
+      (0,0) 0.1
+      (1,0) 0.2
+      (2,0) 0.3
+    }
+
+    linearProportionalGain
+    {
+      (0,0)  0.4
+      (1,0)  0.5
+      (2,0)  0.6
+    }
+
+    linearDerivativeGain
+    {
+      (0,0)  0.7
+      (1,0)  0.8
+      (2,0)  0.9
+    }
+
+    angularFeedForwardGain
+    {
+      (0,0)  1.0
+      (1,0)  1.1
+      (2,0)  1.2
+    }
+
+    angularProportionalGain
+    {
+      (0,0)  1.3
+      (1,0)  1.4
+      (2,0)  1.5
+    }
+
+    angularDerivativeGain
+    {
+      (0,0)  1.6
+      (1,0)  1.7
+      (2,0)  1.8
+    }
+  }
+
+  endEffectorSettings
+  {
+    RFF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  0.0
+        (1,0)  0.1
+        (2,0)  0.2
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  0.3
+        (1,0)  0.4
+        (2,0)  0.5
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  0.6
+        (1,0)  0.7
+        (2,0)  0.8
+      }
+    }
+    RRF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  0.1
+        (1,0)  0.2
+        (2,0)  0.3
+      }
+  
+      linearProportionalGain
+      {
+        (0,0)  0.4
+        (1,0)  0.5
+        (2,0)  0.6
+      }
+  
+      linearDerivativeGain
+      {
+        (0,0)  0.7
+        (1,0)  0.8
+        (2,0)  0.9
+      }
+    }
+    LFF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  0.2
+        (1,0)  0.3
+        (2,0)  0.4
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  0.5
+        (1,0)  0.6
+        (2,0)  0.7
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  0.8
+        (1,0)  0.9
+        (2,0)  1.0
+      }
+
+      angularFeedForwardGain
+      {
+        (0,0)  0.0
+        (1,0)  0.1
+        (2,0)  0.2
+      }
+
+      angularProportionalGain
+      {
+        (0,0)  0.3
+        (1,0)  0.4
+        (2,0)  0.5
+      }
+
+      angularDerivativeGain
+      {
+        (0,0)  0.6
+        (1,0)  0.7
+        (2,0)  0.8
+      }
+    }
+    LRF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  0.3
+        (1,0)  0.4
+        (2,0)  0.5
+      }
+  
+      linearProportionalGain
+      {
+        (0,0)  0.6
+        (1,0)  0.7
+        (2,0)  0.8
+      }
+  
+      linearDerivativeGain
+      {
+        (0,0)  0.9
+        (1,0)  1.0
+        (2,0)  1.1
+      }
+  
+      angularFeedForwardGain
+      {
+        (0,0)  0.1
+        (1,0)  0.2
+        (2,0)  0.3
+      }
+  
+      angularProportionalGain
+      {
+        (0,0)  0.4
+        (1,0)  0.5
+        (2,0)  0.6
+      }
+  
+      angularDerivativeGain
+      {
+        (0,0)  0.7
+        (1,0)  0.8
+        (2,0)  0.9
+      }
+    }
+  }
+
+  frictionConeSettings
+  {
+    frictionCoefficient 0.6
+  }
+}

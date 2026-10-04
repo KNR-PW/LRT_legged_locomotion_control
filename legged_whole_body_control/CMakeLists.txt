@@ -20,8 +20,9 @@ find_package(ament_cmake REQUIRED)
 find_package(Eigen3 3.3 REQUIRED)
 find_package(pinocchio)
 set(THIS_PACKAGE_DEPENDS
-  Eigen3
   ocs2_core
+  ocs2_robotic_tools
+  floating_base_model
   proxsuite
 )
 
@@ -45,9 +46,7 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_DEPENDS})
 endforeach()
 
 add_library(${PROJECT_NAME}
-  src/HoQp.cpp
   src/WbcBase.cpp
-  src/HierarchicalWbc.cpp
   src/WeightedWbc.cpp
 )
 
@@ -59,7 +58,6 @@ target_include_directories(${PROJECT_NAME}
 )
 
 ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_DEPENDS})
-target_link_libraries(${PROJECT_NAME} pinocchio::pinocchio)
 target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 
 
@@ -94,13 +92,7 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 
-install(
-  DIRECTORY doc/
-  DESTINATION doc/${PROJECT_NAME}
-)
-
 ament_export_dependencies(${THIS_PACKAGE_DEPENDS})
-ament_export_dependencies(pinocchio)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 
@@ -115,10 +107,9 @@ if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
 
     ament_add_gtest(${PROJECT_NAME}_test
-        test/legged_estimator_settings_test.cpp
+        test/SettingsTest.cpp
     )
     ament_target_dependencies(${PROJECT_NAME}_test ${THIS_PACKAGE_DEPENDS})
-    target_include_directories(${PROJECT_NAME}_test PRIVATE test/include)
     target_link_libraries(${PROJECT_NAME}_test ${PROJECT_NAME})
     target_compile_options(${PROJECT_NAME}_test PUBLIC ${FLAGS})
 endif()

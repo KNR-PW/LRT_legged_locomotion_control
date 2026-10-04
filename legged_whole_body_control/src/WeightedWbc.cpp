@@ -23,6 +23,13 @@
 
 #include <legged_whole_body_control/WeightedWbc.h>
 
+#include <unordered_set>
+
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+
+#include <ocs2_core/misc/LoadData.h>
+
 namespace legged_whole_body_control 
 {
   using namespace ocs2;
@@ -35,21 +42,17 @@ namespace legged_whole_body_control
   WeightedWbc::WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
     floating_base_model::FloatingBaseModelInfo info, 
     WbcBase::Settings settings, Weights weights):
-      WbcBase(pinocchioInterface, info, settings), settings_(std::move(weights));
+      WbcBase(pinocchioInterface, info, settings), weights_(std::move(weights)) {}
   
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void WeightedWbc::calculate(ocs2::scalar_t time) override
+  void WeightedWbc::calculate(ocs2::scalar_t time)
   {
     WbcBase::calculate(time);
 
     const Task weighedTask = formulateWeightedTask();
     const Task constraints = formulateConstraints();
-
-    const size_t problemDimension = weighedTask.b_.size();
-    const size_t equalityConstraintsDimension = constraints.b_.size();
-    const size_t inequalityConstraintsDimension = constraints.f.size();
 
     constexpr double infinity = std::numeric_limits<scalar_t>::infinity();
 
@@ -60,10 +63,14 @@ namespace legged_whole_body_control
     {
       started_ = false;
 
+      const size_t problemDimension = weighedTask.b_.size();
+      const size_t equalityConstraintsDimension = constraints.b_.size();
+      const size_t inequalityConstraintsDimension = constraints.f_.size();
+
       qpSolver_ = std::make_unique<proxqp::dense::QP<scalar_t>>(numberOfDecisionVariables_, 
         equalityConstraintsDimension, inequalityConstraintsDimension);
 
-      qpSolver->settings.initial_guess =
+      qpSolver_->settings.initial_guess =
         proxqp::InitialGuessStatus::WARM_START_WITH_PREVIOUS_RESULT;
 
       qpSolver_->init(H, g, constraints.a_, constraints.b_, constraints.d_, 
@@ -130,22 +137,45 @@ namespace legged_whole_body_control
 
     return constraints;
   }
-} // namespace legged_whole_body_control
 
+  WeightedWbc::Weights loadWeightedWbcSettings(const std::string& filename,
+    const std::string& fieldName, bool verbose)
+  {
+    WeightedWbc::Weights weights;
 
-void WeightedWbc::loadTasksSetting(const std::string& taskFile, bool verbose) {
-  WbcBase::loadTasksSetting(taskFile, verbose);
+    boost::property_tree::ptree pt;
+    read_info(filename, pt);
 
-  boost::property_tree::ptree pt;
-  boost::property_tree::read_info(taskFile, pt);
-  std::string prefix = "weight.";
-  if (verbose) {
-    std::cerr << "\n #### WBC weight:";
-    std::cerr << "\n #### =============================================================================\n";
+    if(verbose) 
+    {
+      std::cerr << "\n #### Legged Weighted Whole Body Controller Weights :";
+      std::cerr << "\n #### =============================================================================\n";
+    }
+
+    loadData::loadPtreeValue(pt, weights.weightBaseTrackingTask, fieldName + ".weightBaseTrackingTask", verbose);
+    if(weights.weightBaseTrackingTask < 0.0)
+    {
+      throw std::invalid_argument("[WeightedWbc]: Base tracking task weight smaller than 0!");
+    }
+    
+    loadData::loadPtreeValue(pt, weights.weightEndEffectorsTrackingTask, fieldName + ".weightEndEffectorsTrackingTask", verbose);
+    if(weights.weightEndEffectorsTrackingTask < 0.0)
+    {
+      throw std::invalid_argument("[WeightedWbc]: End effector tracking task weight smaller than 0!");
+    }
+    
+    loadData::loadPtreeValue(pt, weights.weightContactForceTrackingTask, fieldName + ".weightContactForceTrackingTask", verbose);
+    if(weights.weightContactForceTrackingTask < 0.0)
+    {
+      throw std::invalid_argument("[WeightedWbc]: Contact force tracking task weight smaller than 0!");
+    }
+
+    if(verbose) 
+    {
+      std::cerr << " #### =============================================================================" <<
+      std::endl;
+    }
+
+    return weights;
   }
-  loadData::loadPtreeValue(pt, weightSwingLeg_, prefix + "swingLeg", verbose);
-  loadData::loadPtreeValue(pt, weightBaseAccel_, prefix + "baseAccel", verbose);
-  loadData::loadPtreeValue(pt, weightContactForce_, prefix + "contactForce", verbose);
-}
-
-}  // namespace legged
+} // namespace legged_whole_body_control

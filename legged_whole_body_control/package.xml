@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>ocs2_core</depend>
+  <depend>ocs2_robotic_tools</depend>
   <depend>floating_base_model</depend>
   <depend>proxsuite</depend>
 

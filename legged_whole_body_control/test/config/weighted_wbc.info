@@ -1,0 +1,6 @@
+weighted_wbc_settings
+{
+  weightBaseTrackingTask 1.0
+  weightEndEffectorsTrackingTask 2.0
+  weightContactForceTrackingTask 3.0
+}
