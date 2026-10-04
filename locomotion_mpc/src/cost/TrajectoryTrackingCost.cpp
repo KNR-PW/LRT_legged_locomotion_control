@@ -711,7 +711,7 @@ namespace legged_locomotion_mpc
         }
 
         // Only for 6 DoF end effectors
-        if(endEffectorNum > modelSettings.endEffectorThreeDofNames.size())
+        if(i > modelSettings.endEffectorThreeDofNames.size())
         {
           auto& torque = endEffectorWeights.torques[i - modelSettings.endEffectorThreeDofNames.size()];
           loadData::loadEigenMatrix(filename, fieldName + "." + name + ".torque", torque);
