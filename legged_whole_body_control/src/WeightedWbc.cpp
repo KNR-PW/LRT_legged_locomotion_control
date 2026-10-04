@@ -29,11 +29,17 @@ namespace legged_whole_body_control
   using namespace floating_base_model;
   using namespace proxsuite;
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   WeightedWbc::WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
     floating_base_model::FloatingBaseModelInfo info, 
     WbcBase::Settings settings, Weights weights):
       WbcBase(pinocchioInterface, info, settings), settings_(std::move(weights));
-
+  
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   void WeightedWbc::calculate(ocs2::scalar_t time) override
   {
     WbcBase::calculate(time);
@@ -75,6 +81,9 @@ namespace legged_whole_body_control
     currentResult_ = qpSolver_->results.x;
   }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   Task WeightedWbc::formulateWeightedTask() 
   {
     Task weightedTask;
@@ -95,6 +104,9 @@ namespace legged_whole_body_control
     return weightedTask;
   }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   Task WeightedWbc::formulateConstraints()
   {
     Task constraints;
@@ -115,10 +127,10 @@ namespace legged_whole_body_control
     {
       constraints += formulateFrictionConeTask();
     }
-    
+
     return constraints;
   }
-} //  namespace legged_whole_body_control
+} // namespace legged_whole_body_control
 
 
 void WeightedWbc::loadTasksSetting(const std::string& taskFile, bool verbose) {

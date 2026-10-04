@@ -26,7 +26,6 @@ namespace legged_whole_body_control
 {
   class WbcBase;
   class WeightedWbc;
-  class HierarchicalWbc;
   
   struct WbcBase::BaseTrackingTaskSettings
   {
@@ -77,23 +76,6 @@ namespace legged_whole_body_control
     ocs2::scalar_t weightBaseTrackingTask = 1.0;
     ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
     ocs2::scalar_t weightContactForceTrackingTask = 1.0;
-  };
-
-  enum class TaskType
-  {
-    dynamicsTask = 0;
-    baseTrackingTask = 1;
-    endEffectorsTrackingTask = 2;
-    contactForceTrackingTask = 3;
-    torqueLimitsTask = 4;
-    kinematicContactTask = 5;
-    frictionConeTask = 6;
-  };
-
-  struct HierarchicalWbc::Hierarchy
-  {
-    using Priority = size_t;
-    std::vector<std::pair<TaskType, Priority>> hierarchy;
   };
 } // namespace legged_whole_body_control
 #endif
