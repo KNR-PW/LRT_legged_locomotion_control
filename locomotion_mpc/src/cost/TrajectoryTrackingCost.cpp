@@ -540,7 +540,7 @@ namespace legged_locomotion_mpc
     {
       const auto targetRotation = getRotationMatrixFromZyxEulerAngles(targetEulerAngles);
       const auto currentRotation = getRotationMatrixFromZyxEulerAngles(currentEulerAngles);
-      return pinocchio::log3(targetRotation.transpose() * currentRotation);
+      return pinocchio::log3(currentRotation.transpose() * targetRotation);
     }
 
     TrajectoryTrackingCost::BaseWeights loadBaseWeights(const std::string& filename,
