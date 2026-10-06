@@ -222,8 +222,8 @@ namespace legged_locomotion_mpc_ros2
 
     runMpc();
 
-    mpcTimer_.reset();
-    mrtTimer_.reset();
+    mpcBenchmarkTimer_.reset();
+    mrtBenchmarkTimer_.reset();
     jointTrajectoryPublisher_->on_activate();
 
     controllerRunning_ = true;
@@ -246,12 +246,12 @@ namespace legged_locomotion_mpc_ros2
     std::string returnString;
     returnString += "########################################################################";
     returnString += "\n### MPC Benchmarking";
-    returnString += "\n###   Maximum : " + std::to_string(mpcTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
-    returnString += "\n###   Average : " + std::to_string(mpcTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    returnString += "\n###   Maximum : " + std::to_string(mpcBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+    returnString += "\n###   Average : " + std::to_string(mpcBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
     returnString += "########################################################################";
     returnString += "\n### WRT Benchmarking";
-    returnString += "\n###   Maximum : " + std::to_string(mrtTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
-    returnString += "\n###   Average : " + std::to_string(mpcTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    returnString += "\n###   Maximum : " + std::to_string(mrtBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+    returnString += "\n###   Average : " + std::to_string(mpcBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
 
     RCLCPP_INFO(this->get_logger(), "%s", returnString.c_str());
 
@@ -523,9 +523,9 @@ namespace legged_locomotion_mpc_ros2
         try 
         {
           const auto startTime = this->get_clock()->now();
-          mpcTimer_.startTimer();
+          mpcBenchmarkTimer_.startTimer();
           mpcMrtPtr_->advanceMpc();
-          mpcTimer_.endTimer();
+          mpcBenchmarkTimer_.endTimer();
           const auto endTime = this->get_clock()->now();
           const auto durationLeft = mpcDuration_ - (endTime - startTime);
           this->get_clock()->sleep_for(durationLeft);
@@ -676,7 +676,7 @@ namespace legged_locomotion_mpc_ros2
   {
     if(mpcMrtPtr_ && controllerRunning_)
     {
-      mrtTimer_.startTimer();
+      mrtBenchmarkTimer_.startTimer();
 
       updateCurrentObservation();
 
@@ -769,7 +769,7 @@ namespace legged_locomotion_mpc_ros2
       jointTrajectory.points[1].velocities = std::move(secondVelocities);
       jointTrajectory.points[1].effort = std::move(secondEfforts);
 
-      mrtTimer_.endTimer();
+      mrtBenchmarkTimer_.endTimer();
 
       // Publish 
       if(jointTrajectoryPublisher_->is_activated())

@@ -167,9 +167,9 @@ namespace legged_locomotion_mpc_ros2
       // Maximum duration between robot state messages
       rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);
       
-      // Timers
-      ocs2::benchmark::RepeatedTimer mpcTimer_;
-      ocs2::benchmark::RepeatedTimer mrtTimer_;
+      // Benchmark timers
+      ocs2::benchmark::RepeatedTimer mpcBenchmarkTimer_;
+      ocs2::benchmark::RepeatedTimer mrtBenchmarkTimer_;
 
       // Decomposition pipeline for segmented terrain model
       std::unique_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipelinePtr_;
