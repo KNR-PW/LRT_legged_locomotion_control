@@ -84,6 +84,8 @@ namespace legged_whole_body_control
         BaseTrackingTaskSettings baseSettings;
         EndEffectorsTrackingTaskSettings endEffectorSettings;
         FrictionConeTaskSettings frictionConeSettings;
+
+        ocs2::scalar_t desiredFrequency;
       };
 
       WbcBase(const ocs2::PinocchioInterface& pinocchioInterface, 
@@ -99,6 +101,8 @@ namespace legged_whole_body_control
       void updateContactFlags(ocs2::scalar_t time, const contact_flags_t& contactFlags);
 
       void updateTerrainNormals(ocs2::scalar_t time, const std::vector<vector3_t>& normals);
+
+      void updateExternalWrench(ocs2::scalar_t time, const vector6_t& externalBaseWrench);
 
       Eigen::Ref<const vector6_t> getBaseAcceleration() const;
 
@@ -153,6 +157,9 @@ namespace legged_whole_body_control
 
     ocs2::scalar_t timeNormals_;
     std::vector<vector3_t> terrainNormals_;
+
+    ocs2::scalar_t timeExternalWrench_;
+    vector6_t externalWrench_;
 
     vector6_t feedFrowardBaseAcceleration_;
 

@@ -23,7 +23,7 @@
 
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
 
-#include <legged_whole_body_control/WbcBase.h>
+#include <legged_whole_body_control/WbcBase.hpp>
 
 #include <utility>
 #include <unordered_set>
@@ -92,6 +92,9 @@ namespace legged_whole_body_control
   void WbcBase::updateDesired(scalar_t time, const vector_t& state, 
     const vector_t& input)
   {
+    assert(state.size() == info_.stateDim);
+    assert(input.size() == info_.inputDim);
+
     if(desiredCached_)
     {
       previousTimeDesired_ = timeDesired_;
@@ -124,6 +127,9 @@ namespace legged_whole_body_control
   void WbcBase::updateCurrent(scalar_t time, const vector_t& state, 
     const vector_t& input)
   {
+    assert(state.size() == info_.stateDim);
+    assert(input.size() == info_.inputDim);
+
     timeMeasured_ = time;
     stateMeasured_ = state;
     inputMeasured_ = input;
@@ -135,8 +141,32 @@ namespace legged_whole_body_control
   void WbcBase::updateContactFlags(scalar_t time, 
     const contact_flags_t& contactFlags)
   {
+    assert(contactFlags_.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
+
     timeContact_ = time;
     contactFlags_ = contactFlags;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void WbcBase::updateTerrainNormals(ocs2::scalar_t time, 
+    const std::vector<vector3_t>& normals)
+  {
+    assert(terrainNormals_.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
+
+    timeNormals_ = time;
+    terrainNormals_ = normals;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void WbcBase::updateExternalWrench(ocs2::scalar_t time, 
+    const vector6_t& externalBaseWrench)
+  {
+    timeExternalWrench_ = time;
+    externalWrench_ = externalBaseWrench;
   }
 
   /******************************************************************************************************/
@@ -285,6 +315,7 @@ namespace legged_whole_body_control
     matrix_t a = (matrix_t(info_.generalizedCoordinatesNum, numberOfDecisionVariables_) 
       << data.M, -stackedJacobians_.transpose(), -jointActuationMatrix_).finished();
     vector_t b = -data.nle;
+    b.segment<6>(0) += externalWrench_; 
 
     return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
@@ -412,7 +443,7 @@ namespace legged_whole_body_control
       if(contactFlags_[i]) 
       {
         const vector3_t normal = [&](){
-        if(i < terrainNormals_.size())
+        if(terrainNormals_.size() == 0)
         {
           return terrainNormals_[i].normalized();
         }
@@ -676,6 +707,12 @@ namespace legged_whole_body_control
     auto& endEffectorThreeDofNames = settings.endEffectorThreeDofNames;
     auto& endEffectorSixDofNames = settings.endEffectorSixDofNames;
 
+    loadData::loadPtreeValue(pt, settings.desiredFrequency, fieldName + ".desiredFrequency", verbose);
+    if(settings.desiredFrequency < 0.0)
+    {
+      throw std::invalid_argument("[WbcBase]: desired frequency smaller than 0!");
+    }
+
     loadData::loadPtreeValue(pt, settings.baseLinkName, fieldName + ".baseLinkName", verbose);
 
     loadData::loadStdVector(filename, fieldName + ".endEffectorThreeDofNames", endEffectorThreeDofNames, verbose);
@@ -753,7 +790,7 @@ namespace legged_whole_body_control
       loadData::loadPtreeValue(pt, settings.frictionConeSettings.frictionCoefficient, fieldName + ".frictionConeSettings.frictionCoefficient", verbose);
       if(settings.frictionConeSettings.frictionCoefficient < 0.0)
       {
-          throw std::invalid_argument("[WbcBase]: Fricition coefficient smaller than 0!");
+        throw std::invalid_argument("[WbcBase]: Fricition coefficient smaller than 0!");
       }
     }
 

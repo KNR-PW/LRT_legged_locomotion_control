@@ -24,7 +24,7 @@
 #ifndef __LEGGED_WHOLE_BODY_CONTROL_WEIGHTED_WBC__
 #define __LEGGED_WHOLE_BODY_CONTROL_WEIGHTED_WBC__
 
-#include <legged_whole_body_control/WbcBase.h>
+#include <legged_whole_body_control/WbcBase.hpp>
 
 #include <proxsuite/proxqp/dense/dense.hpp>
 

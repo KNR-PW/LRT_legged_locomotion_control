@@ -21,7 +21,7 @@
  * Modified by: Bartłomiej Krajewski (https://github.com/BartlomiejK2)
  */
 
-#include <legged_whole_body_control/WeightedWbc.h>
+#include <legged_whole_body_control/WeightedWbc.hpp>
 
 #include <unordered_set>
 

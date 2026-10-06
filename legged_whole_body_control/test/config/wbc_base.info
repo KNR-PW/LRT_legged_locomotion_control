@@ -209,4 +209,6 @@ wbc_base_settings
   {
     frictionCoefficient 0.6
   }
+
+  desiredFrequency 100.0
 }

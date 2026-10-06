@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include <legged_whole_body_control/WbcBase.h>
-#include <legged_whole_body_control/WeightedWbc.h>
+#include <legged_whole_body_control/WbcBase.hpp>
+#include <legged_whole_body_control/WeightedWbc.hpp>
 #include <legged_whole_body_control/path_management/package_path.h>
 
 using namespace ocs2;
@@ -61,11 +61,6 @@ TEST(WbcBaseSettingsTest, loader)
     const vector3_t trueEELinearDerivative   = vector3_t{scalar_t(i + 6) / 10.0, 
       scalar_t(i + 7) / 10.0, scalar_t(i + 8) / 10.0};
 
-    std::cerr << i << std::endl;
-    std::cerr << settings.endEffectorSettings.linearFeedForwardGain[i].transpose() << std::endl;
-    std::cerr << trueEELinearFeedForward.transpose() << std::endl;
-    std::cerr << std::endl;
-
     EXPECT_TRUE((settings.endEffectorSettings.linearFeedForwardGain[i] 
       - trueEELinearFeedForward).norm() < eps);
     EXPECT_TRUE((settings.endEffectorSettings.linearProportionalGain[i] 
@@ -82,11 +77,6 @@ TEST(WbcBaseSettingsTest, loader)
       scalar_t(i + 4) / 10.0, scalar_t(i + 5) / 10.0};
     const vector3_t trueEEAngularDerivative   = vector3_t{scalar_t(i + 6) / 10.0, 
       scalar_t(i + 7) / 10.0, scalar_t(i + 8) / 10.0};
-    
-    std::cerr << i << std::endl;
-    std::cerr << settings.endEffectorSettings.angularDerivativeGain[i].transpose() << std::endl;
-    std::cerr << trueEEAngularDerivative.transpose() << std::endl;
-    std::cerr << std::endl;
 
     EXPECT_TRUE((settings.endEffectorSettings.angularFeedForwardGain[i] 
       - trueEEAngularFeedForward).norm() < eps);
@@ -99,6 +89,10 @@ TEST(WbcBaseSettingsTest, loader)
   const scalar_t trueFrictionCoefficiient = 0.6;
   EXPECT_TRUE(std::abs(settings.frictionConeSettings.frictionCoefficient 
     - trueFrictionCoefficiient) < eps);
+
+  const scalar_t trueWbcDesiredFrequency = 100.0;
+  EXPECT_TRUE(std::abs(settings.desiredFrequency 
+    - trueWbcDesiredFrequency) < eps);
 }
 
 TEST(WeightedWbcSettingsTest, loader)
