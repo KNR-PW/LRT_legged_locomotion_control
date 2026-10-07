@@ -251,7 +251,7 @@ namespace legged_locomotion_mpc_ros2
     returnString += "########################################################################";
     returnString += "\n### WRT Benchmarking";
     returnString += "\n###   Maximum : " + std::to_string(mrtBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
-    returnString += "\n###   Average : " + std::to_string(mpcBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    returnString += "\n###   Average : " + std::to_string(mrtBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
 
     RCLCPP_INFO(this->get_logger(), "%s", returnString.c_str());
 
