@@ -124,7 +124,7 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void WbcBase::updateCurrent(scalar_t time, const vector_t& state, 
+  void WbcBase::updateMeasured(scalar_t time, const vector_t& state, 
     const vector_t& input)
   {
     assert(state.size() == info_.stateDim);

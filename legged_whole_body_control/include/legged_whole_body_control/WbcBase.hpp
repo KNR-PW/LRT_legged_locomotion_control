@@ -37,6 +37,7 @@ namespace legged_whole_body_control
   class WbcBase 
   {
     public:
+
       struct BaseTrackingTaskSettings
       {
         vector3_t linearFeedForwardGain;
@@ -95,7 +96,7 @@ namespace legged_whole_body_control
       void updateDesired(ocs2::scalar_t time, const ocs2::vector_t& state, 
         const ocs2::vector_t& input);
 
-      void updateCurrent(ocs2::scalar_t time, const ocs2::vector_t& state, 
+      void updateMeasured(ocs2::scalar_t time, const ocs2::vector_t& state, 
         const ocs2::vector_t& input);
 
       void updateContactFlags(ocs2::scalar_t time, const contact_flags_t& contactFlags);
