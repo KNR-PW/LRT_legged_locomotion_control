@@ -713,6 +713,8 @@ namespace legged_whole_body_control
       throw std::invalid_argument("[WbcBase]: desired frequency smaller than 0!");
     }
 
+    loadData::loadPtreeValue(pt, settings.worldLinkName, fieldName + ".worldLinkName", verbose);
+
     loadData::loadPtreeValue(pt, settings.baseLinkName, fieldName + ".baseLinkName", verbose);
 
     loadData::loadStdVector(filename, fieldName + ".endEffectorThreeDofNames", endEffectorThreeDofNames, verbose);

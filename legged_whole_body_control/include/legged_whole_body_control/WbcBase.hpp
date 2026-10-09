@@ -69,6 +69,7 @@ namespace legged_whole_body_control
     
       struct Settings
       {
+        std::string worldLinkName;
         std::string baseLinkName;
       
         std::vector<std::string> endEffectorThreeDofNames;

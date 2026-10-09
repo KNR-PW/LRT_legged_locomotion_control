@@ -15,6 +15,8 @@ TEST(WbcBaseSettingsTest, loader)
     + "/test/config/wbc_base.info";
 
   const auto settings = loadWbcBaseSettings(filePath);
+  
+  EXPECT_TRUE(settings.worldLinkName == "world");
 
   EXPECT_TRUE(settings.baseLinkName == "trunk_link");
 

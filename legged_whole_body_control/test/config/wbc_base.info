@@ -1,5 +1,6 @@
 wbc_base_settings
 {
+  worldLinkName world
   baseLinkName trunk_link
 
   endEffectorThreeDofNames
