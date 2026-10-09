@@ -12,6 +12,7 @@
   
   <depend>tf2_eigen</depend>
 
+  <depend>ocs2_mpc</depend>
   <depend>legged_whole_body_control</depend>
 
   <depend>sensor_msgs</depend>

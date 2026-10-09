@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(legged_locomotion_mpc_ros2)
+project(legged_whole_body_control_ros2)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -25,6 +25,7 @@ set(THIS_PACKAGE_DEPENDS
 
   tf2_eigen
 
+  ocs2_mpc
   legged_whole_body_control
 
   sensor_msgs
@@ -40,46 +41,16 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-add_library(${PROJECT_NAME}
-  src/visualization/LeggedVisualizer.cpp
+# Legged WBC controller
+add_executable(legged_whole_body_controller_node
+  src/LeggedWholeBodyControllerNode.cpp
+  src/main.cpp
 )
-
-target_include_directories(${PROJECT_NAME}
-  PUBLIC
-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
+target_include_directories(legged_whole_body_controller_node
+  PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
 )
-
-ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_DEPENDS})
-target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
-
-# Legged MPC controller
-add_executable(legged_locomotion_mpc_controller_node
-  src/controller/LeggedLocomotionMpcControllerNode.cpp
-  src/controller/main.cpp
-)
-target_link_libraries(legged_locomotion_mpc_controller_node ${PROJECT_NAME})
-ament_target_dependencies(legged_locomotion_mpc_controller_node ${THIS_PACKAGE_DEPENDS})
-
-# Meldog demos
-add_executable(${PROJECT_NAME}_meldog_demo_planar_terrain
-  src/demos/meldog_demo/meldog_demo_planar_terrain.cpp
-)
-target_link_libraries(${PROJECT_NAME}_meldog_demo_planar_terrain ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_meldog_demo_planar_terrain ${THIS_PACKAGE_DEPENDS})
-
-add_executable(${PROJECT_NAME}_meldog_demo_segmented_terrain
-  src/demos/meldog_demo/meldog_demo_segmented_terrain.cpp
-)
-target_link_libraries(${PROJECT_NAME}_meldog_demo_segmented_terrain ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_meldog_demo_segmented_terrain ${THIS_PACKAGE_DEPENDS})
-
-# Melman demo
-add_executable(${PROJECT_NAME}_melman_demo
-  src/demos/melman_demo/melman_demo.cpp
-)
-target_link_libraries(${PROJECT_NAME}_melman_demo ${PROJECT_NAME})
-ament_target_dependencies(${PROJECT_NAME}_melman_demo ${THIS_PACKAGE_DEPENDS})
+ament_target_dependencies(legged_whole_body_controller_node ${THIS_PACKAGE_DEPENDS})
 
 #########################
 ###   CLANG TOOLING   ###
@@ -96,38 +67,12 @@ if(cmake_clang_tools_FOUND)
     )
 endif (cmake_clang_tools_FOUND)
 
-
 #############
 ## Install ##
 #############
 
-install(TARGETS legged_locomotion_mpc_controller_node
-    DESTINATION lib/${PROJECT_NAME})
-    
-install(TARGETS ${PROJECT_NAME}_meldog_demo_planar_terrain
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME}_meldog_demo_segmented_terrain
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME}_melman_demo
-    DESTINATION lib/${PROJECT_NAME})
-
-install(TARGETS
-  ${PROJECT_NAME}
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  DIRECTORY include/
-  DESTINATION include/${PROJECT_NAME}
-)
-
-ament_export_dependencies(${THIS_PACKAGE_DEPENDS})
-ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+install(TARGETS legged_whole_body_controller_node
+  DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
 

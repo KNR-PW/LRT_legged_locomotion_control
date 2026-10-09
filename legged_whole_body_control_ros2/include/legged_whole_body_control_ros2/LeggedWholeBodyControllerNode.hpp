@@ -47,6 +47,8 @@
 
 #include <contact_msgs/msg/contacts.hpp>
 
+#include <legged_locomotion_msgs/msg/terrain_normals_stamped.hpp>
+
 namespace legged_whole_body_control_ros2
 {
   class LeggedWholeBodyControllerNode: public rclcpp_lifecycle::LifecycleNode
@@ -75,60 +77,60 @@ namespace legged_whole_body_control_ros2
       
       void updateMeasuredObservation();
       void updateDesiredObservation();
+      void updateContactFlags();
+      void updateTerrainNormals();
 
       // Helper data
       floating_base_model::FloatingBaseModelInfo modelInfo_;
+      legged_whole_body_control::WbcBase::Settings wbcSettings_;
 
       std::vector<std::string> jointNames_;
       std::unordered_map<std::string, size_t> jointNameIndexMap_;
-      
-
-      std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
-      std::unique_ptr<ocs2::MPC_MRT_Interface> mpcMrtPtr_;
-
-      // Rollout for getting future optimal trajectory
-      std::unique_ptr<ocs2::RolloutBase> rolloutPtr_;
-
+      std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       std::atomic_bool controllerRunning_;
-
-      // Timer for MRT
-      ocs2::scalar_t mrtDurationSeconds_;
-      rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
+      size_t endEffectorNum_;
 
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr baseTransformSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
-      rclcpp::Subscription<ocs2_msgs::msg::MpcObservation>::SharedPtr desiredObservationSubscriber_;
+      rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
       
       // Command subscribers
+      rclcpp::Subscription<ocs2_msgs::msg::MpcObservation>::SharedPtr desiredObservationSubscriber_;
+      rclcpp::Subscription<legged_locomotion_msgs::msg::TerrainNormalsStamped>::SharedPtr terrainNormalsSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
       
       // Joint trajectory publisher from MRT
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
         trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
+      // WBC loop timer
+      ocs2::scalar_t wbcDurationSeconds_;
+      rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
+
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;
       rclcpp::Time lastBaseTransformTime_;
       rclcpp::Time lastBaseTwistTime_;
       rclcpp::Time lastContactFlagsTime_;
+      rclcpp::Time lastDesiredObservationTime_;
+      rclcpp::Time lastTerrainNormalsTime_;
 
       // WBC Base
       std::unique_ptr<legged_whole_body_control::WbcBase> wbcPtr_;
 
-      // System observations
+      // System observations and normals
       ocs2::SystemObservation currentMeasuredObservation_;
       ocs2::SystemObservation currentDesiredObservation_;
+      std::vector<legged_whole_body_control::vector3_t> terrainNormals_;
+      legged_whole_body_control::contact_flags_t contactFlags_;
       
       // Maximum duration between robot state messages
       rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);
       
-      // Timers
-      ocs2::benchmark::RepeatedTimer wbcTimer_;
-
-      // Decomposition pipeline for segmented terrain model
-      std::unique_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipelinePtr_;
+      // Benchmark timers
+      ocs2::benchmark::RepeatedTimer wbcBenchmarkTimer_;
   };  
 } // namespace legged_whole_body_control_ros2
 
