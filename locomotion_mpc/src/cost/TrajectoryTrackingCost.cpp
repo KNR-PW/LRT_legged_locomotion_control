@@ -179,7 +179,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(state, info_);
 
       const auto baseCurrentAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(state, info_);
+        access_helper_functions::getBaseAngularVelocity(state, info_);
 
       // Base target data
       const auto baseTargetPosition = floating_base_model::
@@ -192,7 +192,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(targetState, info_);
 
       const auto baseTargetAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(targetState, info_);
+        access_helper_functions::getBaseAngularVelocity(targetState, info_);
       
       // Base error
       const vector3_t basePositionError = baseTargetPosition - baseCurrentPosition;
@@ -287,7 +287,7 @@ namespace legged_locomotion_mpc
       // Add joint weighted squared cost
       cost += jointPositionError.dot(jointWeights_.positions.asDiagonal() 
         * jointPositionError);
-      cost += jointVelocityError.dot(jointWeights_.positions.asDiagonal() 
+      cost += jointVelocityError.dot(jointWeights_.velocities.asDiagonal()
         * jointVelocityError);
       
       // 1 / 2 of sum
@@ -324,7 +324,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(state, info_);
 
       const auto baseCurrentAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(state, info_);
+        access_helper_functions::getBaseAngularVelocity(state, info_);
 
       // Base target data
       const auto baseTargetPosition = floating_base_model::
@@ -337,7 +337,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(targetState, info_);
 
       const auto baseTargetAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(targetState, info_);
+        access_helper_functions::getBaseAngularVelocity(targetState, info_);
       
       // Base error
       const vector3_t basePositionError = baseTargetPosition - baseCurrentPosition;
@@ -711,11 +711,11 @@ namespace legged_locomotion_mpc
         }
 
         // Only for 6 DoF end effectors
-        if(i > modelSettings.endEffectorThreeDofNames.size())
+        if(i >= modelSettings.endEffectorThreeDofNames.size())
         {
           auto& torque = endEffectorWeights.torques[i - modelSettings.endEffectorThreeDofNames.size()];
           loadData::loadEigenMatrix(filename, fieldName + "." + name + ".torque", torque);
-          if((force.array() < 0.0).any())
+          if((torque.array() < 0.0).any())
           {
             std::string message = "[TrajectoryTrackingCost]: " + name + " torque weights vector element smaller than 0!";
             throw std::invalid_argument(message);

@@ -133,7 +133,10 @@ namespace legged_locomotion_mpc
         BaseReferenceCommand clampReferenceCommand(const BaseReferenceCommand& command) const;
         
         bool baseHeightInitialized_ = false;
+        // Base height at currentBaseHeightTime_ and vertical velocity commanded since then
         ocs2::scalar_t currentBaseHeight_;
+        ocs2::scalar_t currentBaseHeightTime_ = 0.0;
+        ocs2::scalar_t currentBaseVerticalVelocity_ = 0.0;
         floating_base_model::FloatingBaseModelInfo modelInfo_;
         StaticSettings settings_;
         const terrain_model::TerrainModel* terrainModel_;

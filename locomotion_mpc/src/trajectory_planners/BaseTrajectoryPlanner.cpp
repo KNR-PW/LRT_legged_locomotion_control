@@ -162,15 +162,27 @@ namespace legged_locomotion_mpc
 
         currentBaseHeight_ = (currentBasePosition - currentPlane.getPosition()).dot(
           currentPlane.getSurfaceNormalInWorld());
-        currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight, 
+        currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight,
+          settings_.maximumBaseHeight);
+      }
+      else
+      {
+        // Move base height to initTime with vertical velocity used since last update
+        currentBaseHeight_ = std::clamp(currentBaseHeight_ + currentBaseVerticalVelocity_
+          * (initTime - currentBaseHeightTime_), settings_.minimumBaseHeight,
           settings_.maximumBaseHeight);
       }
 
-      for (size_t i = 1; i < referenceSize; ++i) 
+      currentBaseHeightTime_ = initTime;
+      currentBaseVerticalVelocity_ = clampedCommand.baseVerticalVelocity;
+
+      scalar_t newBaseHeight = currentBaseHeight_;
+
+      for (size_t i = 1; i < referenceSize; ++i)
       {
-        // New base height normal to plane 
-        currentBaseHeight_ = std::clamp(currentBaseHeight_ + 
-          clampedCommand.baseVerticalVelocity * settings_.deltaTime, settings_.minimumBaseHeight, 
+        // New base height normal to plane
+        newBaseHeight = std::clamp(newBaseHeight +
+          clampedCommand.baseVerticalVelocity * settings_.deltaTime, settings_.minimumBaseHeight,
           settings_.maximumBaseHeight);
         
         // Get new position and orientation with current body velocities
@@ -192,7 +204,7 @@ namespace legged_locomotion_mpc
         newBasePosition = newBaseTerrain.getPosition();
 
         // Add new height to position, taking into accoount fact that base is on terrain plane
-        newBasePosition.z() += currentBaseHeight_ / 
+        newBasePosition.z() += newBaseHeight /
           newBaseTerrain.getSurfaceNormalInWorld().z();
       
         newBaseOrientationZyx = getEulerAnglesFromRotationMatrix(

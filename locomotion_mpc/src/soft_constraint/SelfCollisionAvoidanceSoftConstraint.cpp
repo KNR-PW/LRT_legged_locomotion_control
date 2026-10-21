@@ -481,8 +481,8 @@ namespace legged_locomotion_mpc
       const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
 
       cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient * distanceSecondGradient * 
-          positionDifferenceGradient.transpose();
+        + penaltyDerivative * positionDifferenceGradient.transpose()
+          * distanceSecondGradient * positionDifferenceGradient;
     }
 
     // 3 DoF - 6 DoF
@@ -562,8 +562,8 @@ namespace legged_locomotion_mpc
       const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
 
       cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient * distanceSecondGradient * 
-          positionDifferenceGradient.transpose();
+        + penaltyDerivative * positionDifferenceGradient.transpose()
+          * distanceSecondGradient * positionDifferenceGradient;
     }
 
     // 6 DoF - 6 DoF
@@ -668,8 +668,8 @@ namespace legged_locomotion_mpc
       const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
 
       cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient * distanceSecondGradient * 
-          positionDifferenceGradient.transpose();
+        + penaltyDerivative * positionDifferenceGradient.transpose()
+          * distanceSecondGradient * positionDifferenceGradient;
     }
 
     // 3 DoF - Collision Link
@@ -750,8 +750,8 @@ namespace legged_locomotion_mpc
       const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
 
       cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient * distanceSecondGradient * 
-          positionDifferenceGradient.transpose();
+        + penaltyDerivative * positionDifferenceGradient.transpose()
+          * distanceSecondGradient * positionDifferenceGradient;
     }
 
     // 6 DoF - Collision Link
@@ -852,8 +852,8 @@ namespace legged_locomotion_mpc
       const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
 
       cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient * distanceSecondGradient * 
-          positionDifferenceGradient.transpose();
+        + penaltyDerivative * positionDifferenceGradient.transpose()
+          * distanceSecondGradient * positionDifferenceGradient;
     }
 
     // Collision Link - Collision Link
@@ -964,9 +964,10 @@ namespace legged_locomotion_mpc
   matrix3_t SelfCollisionAvoidanceSoftConstraint::getDistanceSecondGradient(
     const vector3_t& normal, scalar_t distance) const
   {
-    matrix3_t temp = - normal * normal.transpose() / distance;
-    temp.diagonal().array() += distance * distance;
-    return temp;
+    // Hessian of the euclidean norm: (I - n * n^T) / distance
+    matrix3_t temp = - normal * normal.transpose();
+    temp.diagonal().array() += 1.0;
+    return temp / distance;
   }
 
   SelfCollisionAvoidanceSoftConstraint::SelfCollisionAvoidanceSoftConstraint(

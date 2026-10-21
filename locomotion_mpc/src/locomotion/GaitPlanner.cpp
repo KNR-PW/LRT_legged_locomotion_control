@@ -151,9 +151,11 @@ namespace legged_locomotion_mpc
       const GaitDynamicParameters& dynamicParams)
     {
       assert(time >= currentDynamicParamsTime_);
-      if(dynamicParams == dynamicParams_) return;
 
       const auto clampedParams = clampGaitDynamicParams(dynamicParams);
+
+      // Compare clamped parameters, stored parameters are also clamped
+      if(clampedParams == dynamicParams_) return;
 
       // Check mode with new parameters at time t
       const scalar_t basePhase = phaseController_.getPhasesAtTime(time)[0];
@@ -219,7 +221,9 @@ namespace legged_locomotion_mpc
       // Not the same mode
       else
       {
-        if(std::abs(time - eventTimes[endIndex]) < Definitions::MIN_TIME_BETWEEN_CHANGES)
+        // Last event before time (later events were erased above)
+        if(!eventTimes.empty() &&
+          std::abs(time - eventTimes.back()) < Definitions::MIN_TIME_BETWEEN_CHANGES)
         {
           // Move time of dynamic params change by MIN_TIME_BETWEEN_CHANGES
           currentDynamicParamsTime_ = time + Definitions::MIN_TIME_BETWEEN_CHANGES;
@@ -291,6 +295,10 @@ namespace legged_locomotion_mpc
     {
       auto newDynamicsParams = dynamicParams;
 
+      // Stepping frequency cannot be higher than maximum
+      newDynamicsParams.steppingFrequency = std::min(newDynamicsParams.steppingFrequency,
+        staticParams_.maximumSteppingFrequency);
+
       auto& phaseOffsets = newDynamicsParams.phaseOffsets;
       const scalar_t steppingFrequency = newDynamicsParams.steppingFrequency;
       const scalar_t gaitPeriod = 1.0 / steppingFrequency;
@@ -305,14 +313,15 @@ namespace legged_locomotion_mpc
         timeOffsets.emplace_back(gaitPeriod * phaseOffsets[i]);
       }
 
-      for(size_t i = 0; i < (offsetSize - 1); ++i)
+      for(size_t i = 0; (i + 1) < offsetSize; ++i)
       {
-        for(size_t j = (i + 1); i < offsetSize; ++i)
+        for(size_t j = (i + 1); j < offsetSize; ++j)
         {
-          if(std::abs(timeOffsets[i] - timeOffsets[j]) < 
+          if(std::abs(timeOffsets[i] - timeOffsets[j]) <
             Definitions::MIN_TIME_BETWEEN_CHANGES)
           {
             phaseOffsets[j] = phaseOffsets[i];
+            timeOffsets[j] = timeOffsets[i];
           }
         }
       }

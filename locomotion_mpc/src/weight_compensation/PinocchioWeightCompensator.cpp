@@ -62,10 +62,11 @@ namespace legged_locomotion_mpc
     if(info_.numSixDofContacts == 0)
     {
       const vector_t input = utils::weightCompensatingInput(info_, contactFlags);
-      const auto force = access_helper_functions::getContactForces(input, 0, info_);
-      vector6_t wrench; 
-      wrench << force, vector3_t::Zero();
-      std::vector<vector6_t> wrenches(info_.numThreeDofContacts, wrench);
+      std::vector<vector6_t> wrenches(info_.numThreeDofContacts, vector6_t::Zero());
+      for(size_t i = 0; i < info_.numThreeDofContacts; ++i)
+      {
+        wrenches[i].block<3, 1>(0, 0) = access_helper_functions::getContactForces(input, i, info_);
+      }
       return wrenches;
     }
 
