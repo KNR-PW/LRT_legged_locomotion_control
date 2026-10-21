@@ -70,10 +70,8 @@ TEST(PinocchioFloatingBaseDynamicsTest, getValue)
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseGravityExternalForcesVector = pinocchio::computeStaticTorque(modelTrue, dataTrue, q, fext).block<6, 1>(0, 0);
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseTorque = -1.0 * (baseCoriollisVector + baseGravityExternalForcesVector) + disturbance;
     
-    Eigen::Matrix<ocs2::scalar_t, 6, 1> baseAccelerationTrue = baseInertiaMatrix.ldlt().solve(baseTorque);
-    const Eigen::Matrix<ocs2::scalar_t, 3, 1> baseLinearVelocity = v.block<3, 1>(0, 0);
-    const Eigen::Matrix<ocs2::scalar_t, 3, 1> baseAngularVelocity = v.block<3, 1>(3, 0);
-    baseAccelerationTrue.block<3, 1>(0, 0) += baseAngularVelocity.cross(baseLinearVelocity);
+    // Spatial base acceleration (time derivative of the body-frame base velocity), no omega x v term
+    const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseAccelerationTrue = baseInertiaMatrix.ldlt().solve(baseTorque);
 
     const auto value = dynamics.getValue(0, state, input, disturbance);
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> baseAcceleration = value.block<6, 1>(0, 0);

@@ -13,12 +13,12 @@ namespace floating_base_model
   {
     using joint_pair_t = std::pair<const std::string, std::shared_ptr<::urdf::Joint>>;
 
-    // Copy existing urdf interface
-    ::urdf::ModelInterfaceSharedPtr urdfTree = std::make_shared<::urdf::ModelInterface>(*urdfInterface);
-    
-    if (urdfTree == nullptr) {
+    if (urdfInterface == nullptr) {
       throw std::invalid_argument("URDF model tree is nullptr!");
     }
+
+    // Copy existing urdf interface
+    ::urdf::ModelInterfaceSharedPtr urdfTree = std::make_shared<::urdf::ModelInterface>(*urdfInterface);
 
     // remove extraneous joints from urdf
     std::vector<std::string> jointsToRemove;

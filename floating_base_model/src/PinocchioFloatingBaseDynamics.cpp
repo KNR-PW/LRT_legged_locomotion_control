@@ -16,7 +16,10 @@ namespace floating_base_model
   : mapping_(rhs.mapping_.getFloatingBaseModelInfo()), 
     pinocchioInterfacePtr_(rhs.pinocchioInterfacePtr_)
   {
-    mapping_.setPinocchioInterface(*rhs.pinocchioInterfacePtr_);
+    if (rhs.pinocchioInterfacePtr_ != nullptr)
+    {
+      mapping_.setPinocchioInterface(*rhs.pinocchioInterfacePtr_);
+    }
     fext_ = rhs.fext_;
   }
 
@@ -70,10 +73,9 @@ namespace floating_base_model
 
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> tau = -model_helper_functions::computeFloatingBaseGeneralizedTorques(interface, q, v, fext_) + disturbance;
     
-    auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
-    
-    bodyVelocityDerivative.block<3, 1>(0, 0) += baseAngularVelocity.cross(baseLinearVelocity);
-    
+    // Spatial acceleration of the base = exact time derivative of the body-frame base velocity in the state
+    const auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
+
     ocs2::vector_t dynamics(info.stateDim);
     dynamics << bodyVelocityDerivative, basePositionDerivative, eulerAnglesDerivative, actuatedJointPositionDerivative;
     

@@ -90,7 +90,8 @@ namespace floating_base_model
     
     matrix_t dfdx = matrix_t::Zero(Jv.rows(), info.stateDim);
     dfdx.template leftCols<6>() = Jv.template leftCols<6>();
-    dfdx.template middleCols<3>(6) = Jq.template leftCols<3>() * baseRotationMatrix;
+    // Freeflyer tangent is expressed in base frame: d(tangent_linear)/d(position_world) = R^T
+    dfdx.template middleCols<3>(6) = Jq.template leftCols<3>() * baseRotationMatrix.transpose();
     dfdx.template middleCols<3>(9) = Jq.template middleCols<3>(3) * E_inv;
     dfdx.rightCols(info.actuatedDofNum) = Jq.rightCols(info.actuatedDofNum);
 

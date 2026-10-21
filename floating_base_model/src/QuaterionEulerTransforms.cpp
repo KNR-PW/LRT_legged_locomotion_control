@@ -26,9 +26,18 @@ namespace quaterion_euler_transforms
     Eigen::Matrix<SCALAR_T, 3, 1> eulerAngles;
     if(rotationMatrix(0, 0) == 0 && rotationMatrix(1, 0) == 0)
     {
+      // Gimbal lock: R(2, 0) = -sin(pitch) = -1 or 1, yaw is set to 0
       eulerAngles(0) = 0;
-      eulerAngles(1) = SCALAR_T(M_PI_2);
-      eulerAngles(2) = atan2(rotationMatrix(0, 1), rotationMatrix(1, 1));
+      if(rotationMatrix(2, 0) < 0)
+      {
+        eulerAngles(1) = SCALAR_T(M_PI_2);
+        eulerAngles(2) = atan2(rotationMatrix(0, 1), rotationMatrix(1, 1));
+      }
+      else
+      {
+        eulerAngles(1) = -SCALAR_T(M_PI_2);
+        eulerAngles(2) = atan2(-rotationMatrix(0, 1), rotationMatrix(1, 1));
+      }
     }
     else
     {
