@@ -18,7 +18,7 @@ namespace floating_base_model
       const auto& model = interface.getModel();
       auto& data = interface.getData();
 
-      assert(fext.size() == model.njoints);
+      assert(fext.size() == static_cast<size_t>(model.njoints));
 
       using Force = pinocchio::ForceTpl<SCALAR_T, 0>;
       Force force;

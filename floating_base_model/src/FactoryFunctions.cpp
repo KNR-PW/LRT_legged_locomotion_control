@@ -1,5 +1,7 @@
 #include "floating_base_model/FactoryFunctions.hpp"
 
+#include <set>
+
 
 namespace floating_base_model
 {
@@ -22,7 +24,7 @@ namespace floating_base_model
 
     // remove extraneous joints from urdf
     std::vector<std::string> jointsToRemove;
-    std::vector<std::string> linksToRemove; 
+    std::vector<std::string> linksToRemove;
 
     ::urdf::LinkConstSharedPtr baseLink = urdfTree ->getLink(baseLinkName);
 
@@ -31,20 +33,31 @@ namespace floating_base_model
       throw std::invalid_argument("Could not find base link with name: " + baseLinkName);
     }
 
-    // Get all parents of Base Link
-    while(baseLink->getParent() != nullptr)
+    // Keep only Base Link and its descendants (removes parents of Base Link and all other branches)
+    std::set<std::string> linksToKeep;
+    std::vector<::urdf::LinkConstSharedPtr> linksToVisit = {baseLink};
+    while(!linksToVisit.empty())
     {
-      linksToRemove.push_back(baseLink->getParent()->name);
-      baseLink = baseLink->getParent();
+      ::urdf::LinkConstSharedPtr link = linksToVisit.back();
+      linksToVisit.pop_back();
+      linksToKeep.insert(link->name);
+      linksToVisit.insert(linksToVisit.end(), link->child_links.begin(), link->child_links.end());
     }
 
-    // Get all joints before Base Link
-    for (joint_pair_t& jointPair : urdfTree ->joints_) 
+    for(auto& link : urdfTree ->links_)
     {
-      std::string parent_name = jointPair.second->parent_link_name;
-      if (std::find(linksToRemove.begin(), linksToRemove.end(), parent_name) != linksToRemove.end()) 
+      if(linksToKeep.count(link.first) == 0)
       {
-        jointsToRemove.push_back(jointPair.second->name);
+        linksToRemove.push_back(link.first);
+      }
+    }
+
+    // Get all joints that are not between kept links (including the joint into Base Link)
+    for (joint_pair_t& jointPair : urdfTree ->joints_)
+    {
+      if (linksToKeep.count(jointPair.second->parent_link_name) == 0 || linksToKeep.count(jointPair.second->child_link_name) == 0)
+      {
+        jointsToRemove.push_back(jointPair.first);
       }
     }
 

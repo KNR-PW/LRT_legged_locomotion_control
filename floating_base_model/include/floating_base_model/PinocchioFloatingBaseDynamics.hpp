@@ -20,6 +20,7 @@
 #ifndef __FLOATING_BASE_MODEL_DYNAMICS_HPP__
 #define __FLOATING_BASE_MODEL_DYNAMICS_HPP__
 
+#include <memory>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -36,8 +37,6 @@
 #include <floating_base_model/AccessHelperFunctions.hpp>
 #include <floating_base_model/ModelHelperFunctions.hpp>
 #include <floating_base_model/FloatingBaseModelPinocchioMapping.hpp>
-
-using namespace ocs2;
 
 namespace floating_base_model
 {
@@ -62,11 +61,11 @@ class PinocchioFloatingBaseDynamics final
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
  
-    using Vector3 = Eigen::Matrix<scalar_t, 3, 1>;
-    using Matrix3x = Eigen::Matrix<scalar_t, 3, Eigen::Dynamic>;
-    using Matrix6x = Eigen::Matrix<scalar_t, 6, Eigen::Dynamic>;
-    using Matrix3 = Eigen::Matrix<scalar_t, 3, 3>;
-    using Matrix6 = Eigen::Matrix<scalar_t, 6, 6>;
+    using Vector3 = Eigen::Matrix<ocs2::scalar_t, 3, 1>;
+    using Matrix3x = Eigen::Matrix<ocs2::scalar_t, 3, Eigen::Dynamic>;
+    using Matrix6x = Eigen::Matrix<ocs2::scalar_t, 6, Eigen::Dynamic>;
+    using Matrix3 = Eigen::Matrix<ocs2::scalar_t, 3, 3>;
+    using Matrix6 = Eigen::Matrix<ocs2::scalar_t, 6, 6>;
  
     /**
      * Constructor
@@ -74,14 +73,17 @@ class PinocchioFloatingBaseDynamics final
      */
     explicit PinocchioFloatingBaseDynamics(FloatingBaseModelInfo floatingBaseModelInfo);
   
-    /** Copy Constructor */
+    /** Copy Constructor
+     * @note The copy owns its own copy of the pinocchio interface (model is shared, data is not),
+     * so copies can be used from different threads.
+     */
     PinocchioFloatingBaseDynamics(const PinocchioFloatingBaseDynamics& rhs);
   
     /** Set the pinocchio interface for caching.
      * @param [in] pinocchioInterface: pinocchio interface on which computations are expected. It will keep a pointer for the getters.
      * @note The pinocchio interface must be set before calling the getters.
      */
-    void setPinocchioInterface(PinocchioInterface& pinocchioInterface);
+    void setPinocchioInterface(ocs2::PinocchioInterface& pinocchioInterface);
     
     /**
      * Computes system flow map x_dot = f(x, u)
@@ -111,11 +113,14 @@ class PinocchioFloatingBaseDynamics final
    
   private:
    
-    PinocchioInterface* pinocchioInterfacePtr_;
+    ocs2::PinocchioInterface* pinocchioInterfacePtr_;
     FloatingBaseModelPinocchioMapping mapping_;
-    
+
     std::vector<pinocchio::ForceTpl<ocs2::scalar_t, 0>> fext_;
- 
+
+    // Pinocchio interface owned by a copy (nullptr when the interface is set externally)
+    std::unique_ptr<ocs2::PinocchioInterface> ownedPinocchioInterfacePtr_;
+
  };
 
 };  // namespace floating_base_model

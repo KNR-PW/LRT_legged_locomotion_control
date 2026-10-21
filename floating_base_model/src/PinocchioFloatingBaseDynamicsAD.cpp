@@ -58,7 +58,7 @@ namespace floating_base_model
     const Eigen::Matrix<ocs2::ad_scalar_t, 6, 1>& disturbance) 
   {
     const auto& info = mappingCppAd.getFloatingBaseModelInfo();
-    assert(info.stateDim == state.rows());
+    assert(info.stateDim == static_cast<size_t>(state.rows()));
     
     const auto& model = pinocchioInterfaceCppAd.getModel();
     auto& data = pinocchioInterfaceCppAd.getData();

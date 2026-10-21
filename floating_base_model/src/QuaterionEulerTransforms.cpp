@@ -127,8 +127,6 @@ namespace quaterion_euler_transforms
   {
     const SCALAR_T sinx = sin(eulerAngles(2));
     const SCALAR_T cosx = cos(eulerAngles(2));
-    const SCALAR_T siny = sin(eulerAngles(1));
-    const SCALAR_T cosy = cos(eulerAngles(1));
     const SCALAR_T tgy = tan(eulerAngles(1));
     const SCALAR_T inv_cosy = 1/cos(eulerAngles(1));
     Eigen::Matrix<SCALAR_T, 3, 3> transformationMatrix;
@@ -149,7 +147,6 @@ namespace quaterion_euler_transforms
     const SCALAR_T sinx = sin(eulerAngles(2));
     const SCALAR_T cosx = cos(eulerAngles(2));
     const SCALAR_T siny = sin(eulerAngles(1));
-    const SCALAR_T cosy = cos(eulerAngles(1));
     const SCALAR_T tgy = tan(eulerAngles(1));
     const SCALAR_T inv_cosy = 1/cos(eulerAngles(1));
     const SCALAR_T inv_cosy2 = inv_cosy * inv_cosy;
@@ -172,12 +169,14 @@ namespace quaterion_euler_transforms
   /******************************************************************************************************/
   /******************************************************************************************************/
   template<typename SCALAR_T>
-  Eigen::Matrix<SCALAR_T, 3, 3> getMappingFromLocalAngularVelocitytoEulerAnglesDerivative(const Eigen::Quaternion<SCALAR_T>& quaterion) 
+  Eigen::Matrix<SCALAR_T, 3, 3> getMappingFromLocalAngularVelocitytoEulerAnglesDerivative(const Eigen::Quaternion<SCALAR_T>& quaterion)
   {
-    const SCALAR_T x = quaterion.x();
-    const SCALAR_T y = quaterion.y();
-    const SCALAR_T z = quaterion.z();
-    const SCALAR_T w = quaterion.w();
+    // Formula below is valid for unit quaternions only
+    const Eigen::Quaternion<SCALAR_T> unitQuaterion = quaterion.normalized();
+    const SCALAR_T x = unitQuaterion.x();
+    const SCALAR_T y = unitQuaterion.y();
+    const SCALAR_T z = unitQuaterion.z();
+    const SCALAR_T w = unitQuaterion.w();
 
     const SCALAR_T inv_cosy = SCALAR_T(1.0) / sqrt(SCALAR_T(1.0) - SCALAR_T(4.0) * (w * y - x * z) * (w * y - x * z));
 
@@ -219,12 +218,14 @@ namespace quaterion_euler_transforms
   /******************************************************************************************************/
   /******************************************************************************************************/
   template<typename SCALAR_T>
-  std::array<Eigen::Matrix<SCALAR_T, 3, 3>, 4> getMappingFromLocalAngularVelocitytoEulerAnglesDerivativeQuaterionGradient(const Eigen::Quaternion<SCALAR_T>& quaterion) 
+  std::array<Eigen::Matrix<SCALAR_T, 3, 3>, 4> getMappingFromLocalAngularVelocitytoEulerAnglesDerivativeQuaterionGradient(const Eigen::Quaternion<SCALAR_T>& quaterion)
   {
-    const SCALAR_T qx = quaterion.x();
-    const SCALAR_T qy = quaterion.y();
-    const SCALAR_T qz = quaterion.z();
-    const SCALAR_T qw = quaterion.w();
+    // Gradient is computed for the normalized quaternion and chained through the normalization below
+    const SCALAR_T inv_norm = SCALAR_T(1.0) / quaterion.norm();
+    const SCALAR_T qx = quaterion.x() * inv_norm;
+    const SCALAR_T qy = quaterion.y() * inv_norm;
+    const SCALAR_T qz = quaterion.z() * inv_norm;
+    const SCALAR_T qw = quaterion.w() * inv_norm;
 
     // Helper values
     const SCALAR_T a = sqrt(SCALAR_T(1.0) - SCALAR_T(4.0) * (qw * qy - qx * qz) * (qw * qy - qx * qz));
@@ -232,7 +233,6 @@ namespace quaterion_euler_transforms
     const SCALAR_T inv_a = SCALAR_T(1.0) / a;
     const SCALAR_T inv_a2 = inv_a * inv_a;
     const SCALAR_T inv_a3 = inv_a2 * inv_a;
-    const SCALAR_T inv_a4 = inv_a3 * inv_a;
     const SCALAR_T b = (SCALAR_T(1.0) - SCALAR_T(2.0) * (qx * qx + qy * qy));
     const SCALAR_T c = 2 * (qw * qx + qy * qz);
     const SCALAR_T d = 2 * (qw * qy - qx * qz);
@@ -287,7 +287,21 @@ namespace quaterion_euler_transforms
             SCALAR_T(0), dcosx_dqw, - dsinx_dqw,
             SCALAR_T(0), dsinx_dqw * tgy + sinx * dtgy_dqw, dcosx_dqw * tgy + cosx * dtgy_dqw;
 
-    return {dEdx, dEdy, dEdz, dEdw};
+    // Chain rule through normalization: d(q / |q|)/dq = (I - n * n^T) / |q|
+    const std::array<Eigen::Matrix<SCALAR_T, 3, 3>, 4> dEdn = {dEdx, dEdy, dEdz, dEdw};
+    const Eigen::Matrix<SCALAR_T, 4, 1> n(qx, qy, qz, qw);
+    std::array<Eigen::Matrix<SCALAR_T, 3, 3>, 4> dEdq;
+    for(int j = 0; j < 4; ++j)
+    {
+      dEdq[j] = dEdn[j];
+      for(int k = 0; k < 4; ++k)
+      {
+        dEdq[j] -= dEdn[k] * (n(k) * n(j));
+      }
+      dEdq[j] *= inv_norm;
+    }
+
+    return dEdq;
   }
 
   /******************************************************************************************************/
