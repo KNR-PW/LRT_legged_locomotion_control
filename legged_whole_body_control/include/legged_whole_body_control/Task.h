@@ -163,9 +163,9 @@ public:
     return std::move(lhs);
   }
 
-  bool isActive()
+  bool isActive() const
   {
-    return a_.rows() > 0;
+    return b_.size() > 0 || f_.size() > 0;
   }
 
   // --------------------------------------------------------------------------

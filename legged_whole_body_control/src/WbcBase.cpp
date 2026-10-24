@@ -25,6 +25,7 @@
 
 #include <legged_whole_body_control/WbcBase.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <utility>
 #include <unordered_set>
@@ -52,9 +53,9 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   WbcBase::WbcBase(const PinocchioInterface& pinocchioInterface, 
     FloatingBaseModelInfo info, WbcBase::Settings settings):
-      settings_(std::move(settings)), info_(info), 
-      mappingMeasured_(info), 
-      mappingDesired_(info), 
+      settings_(std::move(settings)), info_(std::move(info)),
+      mappingMeasured_(info_),
+      mappingDesired_(info_),
       pinocchioInterfaceMeasured_(pinocchioInterface), 
       pinocchioInterfaceDesired_(pinocchioInterface)
   {
@@ -99,6 +100,48 @@ namespace legged_whole_body_control
     }
     baseFrameIndex_ = model.getFrameId(settings_.baseLinkName);
 
+    // End effectors from settings must be the same (and in the same order) as in the model info,
+    // because gains are indexed with model info end effector indices
+    const size_t numberOfEndEffectors = info_.numThreeDofContacts + info_.numSixDofContacts;
+    if(numberOfEndEffectors > MAX_LEG_NUMBER)
+    {
+      throw std::invalid_argument("[WbcBase]: More end effectors than supported contact flags ("
+        + std::to_string(MAX_LEG_NUMBER) + ")!");
+    }
+
+    if(settings_.endEffectorThreeDofNames.size() != info_.numThreeDofContacts
+      || settings_.endEffectorSixDofNames.size() != info_.numSixDofContacts
+      || info_.endEffectorFrameIndices.size() < numberOfEndEffectors)
+    {
+      throw std::invalid_argument("[WbcBase]: Number of end effectors different than in the model info!");
+    }
+
+    for(size_t i = 0; i < numberOfEndEffectors; ++i)
+    {
+      const std::string& name = (i < info_.numThreeDofContacts) ? settings_.endEffectorThreeDofNames[i] :
+        settings_.endEffectorSixDofNames[i - info_.numThreeDofContacts];
+      if(!model.existFrame(name)
+        || model.getFrameId(name) != static_cast<size_t>(info_.endEffectorFrameIndices[i]))
+      {
+        throw std::invalid_argument("[WbcBase]: End effector " + name + " is not end effector "
+          + std::to_string(i) + " of the model info!");
+      }
+    }
+
+    if(settings_.useEndEffectorsTrackingTask)
+    {
+      const auto& gains = settings_.endEffectorSettings;
+      if(gains.linearFeedForwardGain.size() != numberOfEndEffectors
+        || gains.linearProportionalGain.size() != numberOfEndEffectors
+        || gains.linearDerivativeGain.size() != numberOfEndEffectors
+        || gains.angularFeedForwardGain.size() != info_.numSixDofContacts
+        || gains.angularProportionalGain.size() != info_.numSixDofContacts
+        || gains.angularDerivativeGain.size() != info_.numSixDofContacts)
+      {
+        throw std::invalid_argument("[WbcBase]: Number of end effector gains different than number of end effectors!");
+      }
+    }
+
     torqueLimitsTask_ = formulateTorqueLimitsTask();
 
     mappingMeasured_.setPinocchioInterface(pinocchioInterfaceMeasured_);
@@ -119,10 +162,11 @@ namespace legged_whole_body_control
       previousTimeDesired_ = timeDesired_;
       timeDesired_ = time;
 
-      previousStateDesired_ = std::move(stateDesired_);
+      // Swap reuses the old previous buffers, so assignment does not allocate
+      previousStateDesired_.swap(stateDesired_);
       stateDesired_ = state;
 
-      previousInputDesired_ = std::move(inputDesired_);
+      previousInputDesired_.swap(inputDesired_);
       inputDesired_ = input;
     }
     else
@@ -174,9 +218,17 @@ namespace legged_whole_body_control
     const std::vector<vector3_t>& normals)
   {
     assert(normals.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
+    // Normals must be finite and non-zero
+    assert(std::all_of(normals.cbegin(), normals.cend(), [](const vector3_t& normal) {
+      return normal.allFinite() && normal.norm() > 1e-6;
+    }));
 
     timeNormals_ = time;
-    terrainNormals_ = normals;
+    terrainNormals_.resize(normals.size());
+    for(size_t i = 0; i < normals.size(); ++i)
+    {
+      terrainNormals_[i] = normals[i].normalized();
+    }
   }
 
   /******************************************************************************************************/
@@ -237,10 +289,11 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void WbcBase::calculate(scalar_t time)
+  bool WbcBase::calculate(scalar_t /* time */)
   {
     calculateMeasured();
     calculateDesired();
+    return true;
   }
 
   /******************************************************************************************************/
@@ -335,7 +388,14 @@ namespace legged_whole_body_control
     matrix_t a = (matrix_t(info_.generalizedCoordinatesNum, numberOfDecisionVariables_) 
       << data.M, -stackedJacobians_.transpose(), -jointActuationMatrix_).finished();
     vector_t b = -data.nle;
-    b.segment<6>(0) += externalWrench_; 
+
+    // External wrench is expressed in the base frame: rotated to LOCAL_WORLD_ALIGNED frame
+    // and mapped to generalized forces with the base Jacobian (J_B^T w)
+    const matrix3_t& baseRotation = data.oMf[baseFrameIndex_].rotation();
+    vector6_t externalWrenchWorldAligned;
+    externalWrenchWorldAligned << baseRotation * externalWrench_.head<3>(),
+      baseRotation * externalWrench_.tail<3>();
+    b.noalias() += baseJacobian_.transpose() * externalWrenchWorldAligned;
 
     return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
@@ -355,10 +415,17 @@ namespace legged_whole_body_control
       info_.actuatedDofNum) = -i;
 
     const auto& model = pinocchioInterfaceDesired_.getModel();
-    const vector_t jointMaxTorque =  model.effortLimit.segment(6, info_.actuatedDofNum);
+#if PINOCCHIO_VERSION_AT_LEAST(4, 0, 0)
+    const vector_t jointMaxTorque = model.upperEffortLimit.segment(6, info_.actuatedDofNum);
+    const vector_t jointMinTorque = model.lowerEffortLimit.segment(6, info_.actuatedDofNum);
+#else
+    const vector_t jointMaxTorque = model.effortLimit.segment(6, info_.actuatedDofNum);
+    const vector_t jointMinTorque = -jointMaxTorque;
+#endif
 
+    // tau <= tau_max, -tau <= -tau_min
     vector_t f(2 * info_.actuatedDofNum);
-    f << jointMaxTorque, jointMaxTorque;
+    f << jointMaxTorque, -jointMinTorque;
     
     return Task(matrix_t(), vector_t(), std::move(d), std::move(f));
   }
@@ -460,6 +527,7 @@ namespace legged_whole_body_control
     {
       if(contactFlags_[i])
       {
+        // Terrain normals are normalized in updateTerrainNormals
         const vector3_t normal = [&](){
         if(terrainNormals_.size() == 0)
         {
@@ -467,7 +535,7 @@ namespace legged_whole_body_control
         }
         else
         {
-          return vector3_t(terrainNormals_[i].normalized());
+          return terrainNormals_[i];
         }}();
 
         // Base heading projected on the terrain plane, base lateral axis if heading is parallel to normal
@@ -483,8 +551,8 @@ namespace legged_whole_body_control
         const vector3_t lateral = normal.cross(heading);
         const vector3_t frictionNormal = settings_.frictionConeSettings.frictionCoefficient * normal;
         
-        Eigen::Matrix<scalar_t, 5, 3> frictionPyramic;
-        frictionPyramic << -normal.transpose(), 
+        Eigen::Matrix<scalar_t, 5, 3> frictionPyramid;
+        frictionPyramid << -normal.transpose(),
                            (heading - frictionNormal).transpose(),
                            -(heading + frictionNormal).transpose(),
                            (lateral - frictionNormal).transpose(),
@@ -502,7 +570,7 @@ namespace legged_whole_body_control
           }
         }();
 
-        d.block(5 * j++, offset, 5, 3) = frictionPyramic;
+        d.block(5 * j++, offset, 5, 3) = frictionPyramid;
       }
     }
 
@@ -716,6 +784,21 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
+  Task WbcBase::formulateTorqueRegularizationTask() const
+  {
+    // Minimizes joint torques: [0 0 I] x = 0
+    matrix_t a = matrix_t::Zero(info_.actuatedDofNum, numberOfDecisionVariables_);
+    const size_t startIndex = info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts + 6 * info_.numSixDofContacts;
+    a.block(0, startIndex, info_.actuatedDofNum, info_.actuatedDofNum).setIdentity();
+
+    vector_t b = vector_t::Zero(info_.actuatedDofNum);
+
+    return Task(std::move(a), std::move(b), matrix_t(), vector_t());
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   WbcBase::Settings loadWbcBaseSettings(const std::string& filename,
     const std::string& fieldName, bool verbose)
   {
@@ -773,7 +856,8 @@ namespace legged_whole_body_control
     loadData::loadPtreeValue(pt, settings.useKinematicContactTask, fieldName + ".useKinematicContactTask", verbose);
     loadData::loadPtreeValue(pt, settings.useFrictionConeTask, fieldName + ".useFrictionConeTask", verbose);
     loadData::loadPtreeValue(pt, settings.useBaseTrackingTask, fieldName + ".useBaseTrackingTask", verbose);
-  
+    loadData::loadPtreeValue(pt, settings.useTorqueRegularizationTask, fieldName + ".useTorqueRegularizationTask", verbose);
+
     if(settings.useBaseTrackingTask)
     {
       loadData::loadEigenMatrix(filename, fieldName + ".baseSettings" + ".linearFeedForwardGain", settings.baseSettings.linearFeedForwardGain);

@@ -33,6 +33,7 @@ TEST(WbcBaseSettingsTest, loader)
   EXPECT_TRUE(settings.useTorqueLimitsTask == true);
   EXPECT_TRUE(settings.useKinematicContactTask == false);
   EXPECT_TRUE(settings.useFrictionConeTask == true);
+  EXPECT_TRUE(settings.useTorqueRegularizationTask == true);
 
   const vector3_t trueBaseLinearFeedForward     = vector3_t{0.1, 0.2, 0.3};
   const vector3_t trueBaseLinearProportional    = vector3_t{0.4, 0.5, 0.6};
@@ -107,11 +108,14 @@ TEST(WeightedWbcSettingsTest, loader)
   const scalar_t trueWeightBaseTrackingTask = 1.0;
   const scalar_t trueWeightEndEffectorsTrackingTask = 2.0;
   const scalar_t trueWeightContactForceTrackingTask = 3.0;
+  const scalar_t trueWeightTorqueRegularizationTask = 4.0;
 
   EXPECT_TRUE(std::abs(weights.weightBaseTrackingTask 
     - trueWeightBaseTrackingTask) < eps);
   EXPECT_TRUE(std::abs(weights.weightEndEffectorsTrackingTask 
     - trueWeightEndEffectorsTrackingTask) < eps);
-  EXPECT_TRUE(std::abs(weights.weightContactForceTrackingTask 
+  EXPECT_TRUE(std::abs(weights.weightContactForceTrackingTask
     - trueWeightContactForceTrackingTask) < eps);
+  EXPECT_TRUE(std::abs(weights.weightTorqueRegularizationTask
+    - trueWeightTorqueRegularizationTask) < eps);
 }

@@ -47,28 +47,34 @@ namespace legged_whole_body_control
   WeightedWbc::WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
     floating_base_model::FloatingBaseModelInfo info, 
     WbcBase::Settings settings, Weights weights):
-      WbcBase(pinocchioInterface, info, settings), weights_(std::move(weights)) {}
+      WbcBase(pinocchioInterface, std::move(info), std::move(settings)), weights_(std::move(weights))
+  {
+    if(settings_.useTorqueRegularizationTask)
+    {
+      torqueRegularizationTask_ = std::sqrt(weights_.weightTorqueRegularizationTask) * formulateTorqueRegularizationTask();
+    }
+  }
   
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void WeightedWbc::calculate(ocs2::scalar_t time)
+  bool WeightedWbc::calculate(ocs2::scalar_t time)
   {
     WbcBase::calculate(time);
 
     // Stacked tasks always have (rows x numberOfDecisionVariables_) matrices, as expected by the solver
-    const Task weighedTask = formulateWeightedTask();
+    const Task weightedTask = formulateWeightedTask();
     const Task constraints = formulateConstraints();
 
     constexpr double infinity = std::numeric_limits<scalar_t>::infinity();
 
     // H = a^T a, only the lower triangle is computed
     matrix_t H = matrix_t::Zero(numberOfDecisionVariables_, numberOfDecisionVariables_);
-    H.selfadjointView<Eigen::Lower>().rankUpdate(weighedTask.a_.transpose());
+    H.selfadjointView<Eigen::Lower>().rankUpdate(weightedTask.a_.transpose());
     H.triangularView<Eigen::StrictlyUpper>() = H.transpose();
 
     vector_t g(numberOfDecisionVariables_);
-    g.noalias() = -weighedTask.a_.transpose() * weighedTask.b_;
+    g.noalias() = -weightedTask.a_.transpose() * weightedTask.b_;
 
     const size_t equalityConstraintsDimension = constraints.b_.size();
     const size_t inequalityConstraintsDimension = constraints.f_.size();
@@ -79,11 +85,11 @@ namespace legged_whole_body_control
     const auto& a = constraints.a_;
     const auto& d = constraints.d_;
 
+    // Previous result is kept when QP data is not finite
     if(!H.allFinite() || !g.allFinite() || !a.allFinite() || !constraints.b_.allFinite()
       || !d.allFinite() || !constraints.f_.allFinite())
     {
-      std::cerr << "[WeightedWbc]: QP data is not finite, keeping previous result!" << std::endl;
-      return;
+      return false;
     }
 
     // Number of constraints depends on contact flags, solver must be recreated when it changes
@@ -113,16 +119,16 @@ namespace legged_whole_body_control
 
     qpSolver_->solve();
 
+    // Previous result is kept when QP is not solved, solver is recreated after a failure
     if(qpSolver_->results.info.status != proxqp::QPSolverOutput::PROXQP_SOLVED
       || !qpSolver_->results.x.allFinite())
     {
-      std::cerr << "[WeightedWbc]: QP not solved, keeping previous result!" << std::endl;
-      // Solver is recreated after a failure
       qpSolver_.reset();
-      return;
+      return false;
     }
 
     currentResult_ = qpSolver_->results.x;
+    return true;
   }
 
   /******************************************************************************************************/
@@ -130,7 +136,6 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   Task WeightedWbc::formulateWeightedTask()
   {
-    // Tasks are kept in place (reserved), so references to them stay valid
     std::vector<Task> tasks;
     tasks.reserve(MAX_TASK_NUMBER);
 
@@ -150,7 +155,16 @@ namespace legged_whole_body_control
       tasks.push_back(std::sqrt(weights_.weightContactForceTrackingTask) * formulateContactForceTrackingTask());
     }
 
-    return Task::stack({tasks.begin(), tasks.end()}, numberOfDecisionVariables_);
+    // References are taken after all insertions, so they stay valid
+    std::vector<std::reference_wrapper<const Task>> weightedTasks(tasks.begin(), tasks.end());
+
+    if(settings_.useTorqueRegularizationTask)
+    {
+      // Constant task, not copied
+      weightedTasks.emplace_back(torqueRegularizationTask_);
+    }
+
+    return Task::stack(weightedTasks, numberOfDecisionVariables_);
   }
 
   /******************************************************************************************************/
@@ -218,6 +232,12 @@ namespace legged_whole_body_control
     if(weights.weightContactForceTrackingTask < 0.0)
     {
       throw std::invalid_argument("[WeightedWbc]: Contact force tracking task weight smaller than 0!");
+    }
+
+    loadData::loadPtreeValue(pt, weights.weightTorqueRegularizationTask, fieldName + ".weightTorqueRegularizationTask", verbose);
+    if(weights.weightTorqueRegularizationTask < 0.0)
+    {
+      throw std::invalid_argument("[WeightedWbc]: Torque regularization task weight smaller than 0!");
     }
 
     if(verbose) 

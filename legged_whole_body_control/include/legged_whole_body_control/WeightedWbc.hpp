@@ -39,13 +39,14 @@ namespace legged_whole_body_control
         ocs2::scalar_t weightBaseTrackingTask = 1.0;
         ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
         ocs2::scalar_t weightContactForceTrackingTask = 1.0;
+        ocs2::scalar_t weightTorqueRegularizationTask = 0.01;
       };
 
       WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
         floating_base_model::FloatingBaseModelInfo info, 
         WbcBase::Settings settings, Weights weights);
 
-      void calculate(ocs2::scalar_t time) override;
+      bool calculate(ocs2::scalar_t time) override;
 
     private:
 
@@ -55,6 +56,9 @@ namespace legged_whole_body_control
       std::unique_ptr<proxsuite::proxqp::dense::QP<ocs2::scalar_t>> qpSolver_;
 
       Weights weights_;
+
+      // Constant, formulated (and weighted) once
+      Task torqueRegularizationTask_;
   };
 
   /**
