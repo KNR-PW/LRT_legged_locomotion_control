@@ -54,8 +54,6 @@ namespace legged_whole_body_control
 
       std::unique_ptr<proxsuite::proxqp::dense::QP<ocs2::scalar_t>> qpSolver_;
 
-      bool started_ = true;
-
       Weights weights_;
   };
 
@@ -68,6 +66,6 @@ namespace legged_whole_body_control
    */
   WeightedWbc::Weights loadWeightedWbcSettings(const std::string& filename,
     const std::string& fieldName = "weighted_wbc_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_whole_body_control
 #endif

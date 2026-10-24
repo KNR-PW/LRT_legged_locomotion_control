@@ -29,7 +29,9 @@
 
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <utility>
+#include <vector>
 
 #include <legged_whole_body_control/Types.hpp>
 
@@ -164,6 +166,55 @@ public:
   bool isActive()
   {
     return a_.rows() > 0;
+  }
+
+  // --------------------------------------------------------------------------
+  // Stacking
+  // --------------------------------------------------------------------------
+
+  // Stacks tasks with a single allocation per matrix/vector (repeated += copies
+  // the already stacked rows each time). Result always has numDecisionVars columns,
+  // also when it has no rows.
+  static Task stack(const std::vector<std::reference_wrapper<const Task>>& tasks,
+                    Eigen::Index numDecisionVars)
+  {
+    Eigen::Index equalityRows = 0;
+    Eigen::Index inequalityRows = 0;
+    for (const Task& task : tasks)
+    {
+      equalityRows += task.b_.size();
+      inequalityRows += task.f_.size();
+    }
+
+    Task result(ocs2::matrix_t(equalityRows, numDecisionVars),
+                ocs2::vector_t(equalityRows),
+                ocs2::matrix_t(inequalityRows, numDecisionVars),
+                ocs2::vector_t(inequalityRows));
+
+    Eigen::Index equalityRow = 0;
+    Eigen::Index inequalityRow = 0;
+    for (const Task& task : tasks)
+    {
+      const Eigen::Index taskEqualityRows = task.b_.size();
+      if (taskEqualityRows > 0)
+      {
+        assert(task.a_.rows() == taskEqualityRows && task.a_.cols() == numDecisionVars);
+        result.a_.middleRows(equalityRow, taskEqualityRows) = task.a_;
+        result.b_.segment(equalityRow, taskEqualityRows) = task.b_;
+        equalityRow += taskEqualityRows;
+      }
+
+      const Eigen::Index taskInequalityRows = task.f_.size();
+      if (taskInequalityRows > 0)
+      {
+        assert(task.d_.rows() == taskInequalityRows && task.d_.cols() == numDecisionVars);
+        result.d_.middleRows(inequalityRow, taskInequalityRows) = task.d_;
+        result.f_.segment(inequalityRow, taskInequalityRows) = task.f_;
+        inequalityRow += taskInequalityRows;
+      }
+    }
+
+    return result;
   }
 
 public:

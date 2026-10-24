@@ -25,6 +25,7 @@
 
 #include <legged_whole_body_control/WbcBase.hpp>
 
+#include <iostream>
 #include <utility>
 #include <unordered_set>
 
@@ -69,18 +70,36 @@ namespace legged_whole_body_control
     previousTimeDesired_ = 0.0;
     stateDesired_ = vector_t::Zero(info_.stateDim);
     inputDesired_ = vector_t::Zero(info_.inputDim);
+    previousStateDesired_ = vector_t::Zero(info_.stateDim);
     previousInputDesired_ = vector_t::Zero(info_.inputDim);
 
-    stackedJacobians_ = matrix_t::Zero(3 * info_.numThreeDofContacts + 6 * info_.numSixDofContacts, 
-      info_.generalizedCoordinatesNum);
-    stackedJacobianDerivatives_ = matrix_t::Zero(3 * info_.numThreeDofContacts + 6 * info_.numSixDofContacts, 
-      info_.generalizedCoordinatesNum);
+    timeContact_ = 0.0;
+    timeNormals_ = 0.0;
+    timeExternalWrench_ = 0.0;
+    externalWrench_.setZero();
 
-    jointActuationMatrix_ = matrix_t(info_.actuatedDofNum, 
+    baseJacobian_ = Eigen::Matrix<scalar_t, 6, Eigen::Dynamic>::Zero(6, info_.generalizedCoordinatesNum);
+    baseAccelerationBias_.setZero();
+
+    stackedJacobians_ = matrix_t::Zero(3 * info_.numThreeDofContacts + 6 * info_.numSixDofContacts,
       info_.generalizedCoordinatesNum);
-    jointActuationMatrix_.block(0, 0, info_.actuatedDofNum, 6).setZero();
-    jointActuationMatrix_.block(0, 6, info_.actuatedDofNum, info_.actuatedDofNum).setIdentity();
-    jointActuationMatrix_ = jointActuationMatrix_.transpose();
+    stackedAccelerationBiases_ = vector_t::Zero(3 * info_.numThreeDofContacts + 6 * info_.numSixDofContacts);
+
+    currentResult_ = vector_t::Zero(numberOfDecisionVariables_);
+
+    // S^T: maps joint torques to generalized forces (nv x nj)
+    jointActuationMatrix_ = matrix_t::Zero(info_.generalizedCoordinatesNum,
+      info_.actuatedDofNum);
+    jointActuationMatrix_.block(6, 0, info_.actuatedDofNum, info_.actuatedDofNum).setIdentity();
+
+    const auto& model = pinocchioInterfaceMeasured_.getModel();
+    if(!model.existFrame(settings_.baseLinkName))
+    {
+      throw std::invalid_argument("[WbcBase]: Base link " + settings_.baseLinkName + " not found in the model!");
+    }
+    baseFrameIndex_ = model.getFrameId(settings_.baseLinkName);
+
+    torqueLimitsTask_ = formulateTorqueLimitsTask();
 
     mappingMeasured_.setPinocchioInterface(pinocchioInterfaceMeasured_);
     mappingDesired_.setPinocchioInterface(pinocchioInterfaceDesired_);
@@ -141,7 +160,8 @@ namespace legged_whole_body_control
   void WbcBase::updateContactFlags(scalar_t time, 
     const contact_flags_t& contactFlags)
   {
-    assert(contactFlags_.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
+    // Only the first numThreeDofContacts + numSixDofContacts flags may be set
+    assert((contactFlags >> (info_.numThreeDofContacts + info_.numSixDofContacts)).none());
 
     timeContact_ = time;
     contactFlags_ = contactFlags;
@@ -153,7 +173,7 @@ namespace legged_whole_body_control
   void WbcBase::updateTerrainNormals(ocs2::scalar_t time, 
     const std::vector<vector3_t>& normals)
   {
-    assert(terrainNormals_.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
+    assert(normals.size() == (info_.numThreeDofContacts + info_.numSixDofContacts));
 
     timeNormals_ = time;
     terrainNormals_ = normals;
@@ -235,51 +255,48 @@ namespace legged_whole_body_control
     const auto& model = pinocchioInterfaceMeasured_.getModel();
     auto& data = pinocchioInterfaceMeasured_.getData();
 
-    pinocchio::forwardKinematics(model, data, generalizedPositions, generalizedVelocities);
-    pinocchio::computeJointJacobians(model, data);
+    // Forward kinematics with zero generalized acceleration: the classical frame acceleration
+    // is then equal to the acceleration bias \dot J u. getFrameJacobianTimeVariation is not used,
+    // because it is not exact for composite (translation + spherical ZYX) base joints.
+    pinocchio::forwardKinematics(model, data, generalizedPositions, generalizedVelocities,
+      vector_t::Zero(info_.generalizedCoordinatesNum));
     pinocchio::updateFramePlacements(model, data);
+    pinocchio::computeJointJacobians(model, data);
+
+    const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED;
+
+    baseJacobian_.setZero();
+    pinocchio::getFrameJacobian(model, data, baseFrameIndex_, rf, baseJacobian_);
+    baseAccelerationBias_ = pinocchio::getFrameClassicalAcceleration(model, data,
+      baseFrameIndex_, rf).toVector();
+
+    Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac(6, info_.generalizedCoordinatesNum);
+
+    for (size_t i = 0; i < info_.numThreeDofContacts; ++i)
+    {
+      const size_t frameId = info_.endEffectorFrameIndices[i];
+      jac.setZero();
+      pinocchio::getFrameJacobian(model, data, frameId, rf, jac);
+      stackedJacobians_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();
+      stackedAccelerationBiases_.segment<3>(3 * i) = pinocchio::getFrameClassicalAcceleration(model,
+        data, frameId, rf).linear();
+    }
+
+    for (size_t i = info_.numThreeDofContacts;
+      i < (info_.numThreeDofContacts + info_.numSixDofContacts); ++i)
+    {
+      const size_t frameId = info_.endEffectorFrameIndices[i];
+      const size_t startIndex = 3 * info_.numThreeDofContacts + 6 * (i - info_.numThreeDofContacts);
+      jac.setZero();
+      pinocchio::getFrameJacobian(model, data, frameId, rf, jac);
+      stackedJacobians_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum) = jac;
+      stackedAccelerationBiases_.segment<6>(startIndex) = pinocchio::getFrameClassicalAcceleration(model,
+        data, frameId, rf).toVector();
+    }
+
     pinocchio::crba(model, data, generalizedPositions);
     data.M.triangularView<Eigen::StrictlyLower>() = data.M.transpose().triangularView<Eigen::StrictlyLower>();
     pinocchio::nonLinearEffects(model, data, generalizedPositions, generalizedVelocities);
-    
-    for (size_t i = 0; i < info_.numThreeDofContacts; ++i) 
-    {
-      Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
-      jac.setZero(6, info_.generalizedCoordinatesNum);
-      pinocchio::getFrameJacobian(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
-      stackedJacobians_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();
-    }
-
-    for (size_t i = info_.numThreeDofContacts; 
-      i < (info_.numThreeDofContacts + info_.numSixDofContacts); ++i) 
-    {
-      Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
-      jac.setZero(6, info_.generalizedCoordinatesNum);
-      pinocchio::getFrameJacobian(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
-      size_t startIndex = 3 * info_.numThreeDofContacts + 6 * (i - info_.numThreeDofContacts);
-      stackedJacobians_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum) = jac;
-    }
-
-    pinocchio::computeJointJacobiansTimeVariation(model, data, generalizedPositions, 
-      generalizedVelocities);
-
-    for (size_t i = 0; i < info_.numThreeDofContacts; ++i) 
-    {
-      Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
-      jac.setZero(6, info_.generalizedCoordinatesNum);
-      pinocchio::getFrameJacobianTimeVariation(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
-      stackedJacobianDerivatives_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();
-    }
-
-    for (size_t i = info_.numThreeDofContacts; 
-      i < (info_.numThreeDofContacts + info_.numSixDofContacts); ++i) 
-    {
-      Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
-      jac.setZero(6, info_.generalizedCoordinatesNum);
-      pinocchio::getFrameJacobianTimeVariation(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
-      size_t startIndex = 3 * info_.numThreeDofContacts + 6 * (i - info_.numThreeDofContacts);
-      stackedJacobianDerivatives_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum) = jac;
-    }
   }
 
   /******************************************************************************************************/
@@ -295,13 +312,16 @@ namespace legged_whole_body_control
     const vector_t previousVelocities = mappingDesired_.getPinocchioJointVelocity(
       previousStateDesired_, previousInputDesired_);
 
-    const vector_t generalizedAcceleration = (currentVelocities - previousVelocities) / (timeDesired_ - previousTimeDesired_);
+    // Finite difference is undefined for the first sample (or repeated time stamps)
+    constexpr scalar_t minimalTimeStep = 1e-6;
+    const scalar_t timeStep = timeDesired_ - previousTimeDesired_;
+    const vector_t generalizedAcceleration = (timeStep > minimalTimeStep) ?
+      vector_t((currentVelocities - previousVelocities) / timeStep) :
+      vector_t::Zero(info_.generalizedCoordinatesNum);
 
-    feedFrowardBaseAcceleration_ = generalizedAcceleration.block<6, 1>(0, 0);
-
-    pinocchio::forwardKinematics(model, data, generalizedPosition, currentVelocities, 
+    // Desired Jacobians are not used, only frame placements, velocities and accelerations
+    pinocchio::forwardKinematics(model, data, generalizedPosition, currentVelocities,
       generalizedAcceleration);
-    pinocchio::computeJointJacobians(model, data, generalizedPosition);
     pinocchio::updateFramePlacements(model, data);
   }
 
@@ -348,23 +368,20 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   Task WbcBase::formulateKinematicContactTask() const
   {
-    const vector_t generalizedVelocities = mappingMeasured_.getPinocchioJointVelocity(stateMeasured_, 
-      inputMeasured_);
-
     const size_t numberOf6DofContacts = (contactFlags_ >> info_.numThreeDofContacts).count();
     const size_t numberOf3DofContacts = contactFlags_.count() - numberOf6DofContacts;
 
-    matrix_t a(3 * numberOf3DofContacts + 6 * numberOf6DofContacts, 
+    matrix_t a = matrix_t::Zero(3 * numberOf3DofContacts + 6 * numberOf6DofContacts,
       numberOfDecisionVariables_);
     vector_t b(a.rows());
 
     size_t j = 0;
-    for (size_t i = 0; i < info_.numThreeDofContacts; i++) 
+    for (size_t i = 0; i < info_.numThreeDofContacts; i++)
     {
-      if(contactFlags_[i]) 
+      if(contactFlags_[i])
       {
         a.block(3 * j, 0, 3, info_.generalizedCoordinatesNum) = stackedJacobians_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum);
-        b.segment<3>(3 * j) = -stackedJacobianDerivatives_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) * generalizedVelocities;
+        b.segment<3>(3 * j) = -stackedAccelerationBiases_.segment<3>(3 * i);
         j++;
       }
     }
@@ -378,7 +395,7 @@ namespace legged_whole_body_control
       {
         const size_t startIndex = 6 * i - 3 * info_.numThreeDofContacts;
         a.block(6 * k + j, 0, 6, info_.generalizedCoordinatesNum) = stackedJacobians_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum);
-        b.segment<6>(6 * k + j) = -stackedJacobianDerivatives_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum) * generalizedVelocities;
+        b.segment<6>(6 * k + j) = -stackedAccelerationBiases_.segment<6>(startIndex);
         k++;
       }
     }
@@ -433,6 +450,7 @@ namespace legged_whole_body_control
     const matrix3_t baseRotationMatrix = getRotationMatrixFromZyxEulerAngles(baseEulerAngles);
 
     const vector3_t baseHeading =  baseRotationMatrix.col(0);
+    const vector3_t baseLateral =  baseRotationMatrix.col(1);
 
     matrix_t d(5 * (numberOf3DofContacts + numberOf6DofContacts), numberOfDecisionVariables_);
     d.setZero();
@@ -440,18 +458,28 @@ namespace legged_whole_body_control
     j = 0;
     for(size_t i = 0; i < info_.numThreeDofContacts + info_.numSixDofContacts; ++i)
     {
-      if(contactFlags_[i]) 
+      if(contactFlags_[i])
       {
         const vector3_t normal = [&](){
         if(terrainNormals_.size() == 0)
         {
-          return terrainNormals_[i].normalized();
+          return vector3_t(0.0, 0.0, 1.0);
         }
         else
         {
-          return vector3_t(0.0, 0.0, 1.0);
+          return vector3_t(terrainNormals_[i].normalized());
         }}();
-        const vector3_t heading = (baseHeading - normal.dot(baseHeading) * normal).normalized();
+
+        // Base heading projected on the terrain plane, base lateral axis if heading is parallel to normal
+        const vector3_t heading = [&](){
+          constexpr scalar_t minimalProjectionNorm = 1e-6;
+          const vector3_t projectedHeading = baseHeading - normal.dot(baseHeading) * normal;
+          if(projectedHeading.norm() > minimalProjectionNorm)
+          {
+            return vector3_t(projectedHeading.normalized());
+          }
+          return vector3_t((baseLateral - normal.dot(baseLateral) * normal).normalized());
+        }();
         const vector3_t lateral = normal.cross(heading);
         const vector3_t frictionNormal = settings_.frictionConeSettings.frictionCoefficient * normal;
         
@@ -488,50 +516,50 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   Task WbcBase::formulateBaseTrackingTask() const
   {
-    matrix_t a(6, numberOfDecisionVariables_);
-    a.setZero();
-    a.block(0, 0, 6, 6) = matrix6_t::Identity();
+    // Task is formulated on the base frame in LOCAL_WORLD_ALIGNED frame (J_B \dot u = a_des - \dot J_B u),
+    // so it does not depend on the parametrization of the base joint velocity.
+    matrix_t a = matrix_t::Zero(6, numberOfDecisionVariables_);
+    a.block(0, 0, 6, info_.generalizedCoordinatesNum) = baseJacobian_;
 
     const auto& baseSettings = settings_.baseSettings;
 
-    const auto basePositionMeasured = access_helper_functions::getBasePosition(
-      stateMeasured_, info_);
-    const auto basePositionDesired = access_helper_functions::getBasePosition(
-      stateDesired_, info_);
+    const pinocchio::ReferenceFrame rf = pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED;
 
-    const vector3_t baseEulerMeasured = access_helper_functions::getBaseOrientationZyx(
-      stateMeasured_, info_);
-    const vector3_t baseEulerDesired = access_helper_functions::getBaseOrientationZyx(
-      stateDesired_, info_);
+    const auto& modelMeasured = pinocchioInterfaceMeasured_.getModel();
+    const auto& dataMeasured = pinocchioInterfaceMeasured_.getData();
 
-    const auto targetRotation = getRotationMatrixFromZyxEulerAngles(baseEulerDesired);
-    const auto currentRotation = getRotationMatrixFromZyxEulerAngles(baseEulerMeasured);
+    const auto& modelDesired = pinocchioInterfaceDesired_.getModel();
+    const auto& dataDesired  = pinocchioInterfaceDesired_.getData();
 
-    const auto baseLinearVelocityMeasured = access_helper_functions::getBaseLinearVelocity(
-      stateMeasured_, info_);
-    const auto baseLinearVelocityDesired = access_helper_functions::getBaseLinearVelocity(
-      stateDesired_, info_);
+    const auto& basePositionMeasured = dataMeasured.oMf[baseFrameIndex_].translation();
+    const auto& basePositionDesired = dataDesired.oMf[baseFrameIndex_].translation();
 
-    const auto baseAngularVelocityMeasured = access_helper_functions::getBaseAngularVelocity(
-      stateMeasured_, info_);
-    const auto baseAngularVelocityDesired = access_helper_functions::getBaseAngularVelocity(
-      stateDesired_, info_);
+    const auto& currentRotation = dataMeasured.oMf[baseFrameIndex_].rotation();
+    const auto& targetRotation = dataDesired.oMf[baseFrameIndex_].rotation();
 
-    const vector3_t basePositionError = currentRotation.transpose() * (
-      basePositionDesired - basePositionMeasured);
-    const vector3_t baseOrientationError = pinocchio::log3(currentRotation.transpose() * targetRotation);
-    const vector3_t baseLinearVelocityError = baseLinearVelocityDesired - baseLinearVelocityMeasured;
-    const vector3_t baseAngularVelocityError = baseAngularVelocityDesired - baseAngularVelocityMeasured;
+    const vector6_t baseVelocityMeasured = pinocchio::getFrameVelocity(modelMeasured,
+      dataMeasured, baseFrameIndex_, rf).toVector();
+    const vector6_t baseVelocityDesired = pinocchio::getFrameVelocity(modelDesired,
+      dataDesired, baseFrameIndex_, rf).toVector();
+
+    const vector6_t accelerationFeedForward = pinocchio::getFrameClassicalAcceleration(
+      modelDesired, dataDesired, baseFrameIndex_, rf).toVector();
+
+    const vector3_t basePositionError = basePositionDesired - basePositionMeasured;
+    const vector3_t baseOrientationError = currentRotation * pinocchio::log3(currentRotation.transpose() * targetRotation);
+    const vector6_t baseVelocityError = baseVelocityDesired - baseVelocityMeasured;
 
     vector6_t b;
-    b.segment<3>(0)  = baseSettings.linearFeedForwardGain.asDiagonal() * feedFrowardBaseAcceleration_.segment<3>(0);
+    b.segment<3>(0)  = baseSettings.linearFeedForwardGain.asDiagonal() * accelerationFeedForward.segment<3>(0);
     b.segment<3>(0) += baseSettings.linearProportionalGain.asDiagonal() * basePositionError;
-    b.segment<3>(0) += baseSettings.linearDerivativeGain.asDiagonal() * baseLinearVelocityError;
+    b.segment<3>(0) += baseSettings.linearDerivativeGain.asDiagonal() * baseVelocityError.segment<3>(0);
 
-    b.segment<3>(3)  = baseSettings.angularFeedForwardGain.asDiagonal() * feedFrowardBaseAcceleration_.segment<3>(3);
+    b.segment<3>(3)  = baseSettings.angularFeedForwardGain.asDiagonal() * accelerationFeedForward.segment<3>(3);
     b.segment<3>(3) += baseSettings.angularProportionalGain.asDiagonal() * baseOrientationError;
-    b.segment<3>(3) += baseSettings.angularDerivativeGain.asDiagonal() * baseAngularVelocityError;
-    
+    b.segment<3>(3) += baseSettings.angularDerivativeGain.asDiagonal() * baseVelocityError.segment<3>(3);
+
+    b -= baseAccelerationBias_;
+
     return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
 
@@ -540,9 +568,6 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   Task WbcBase::formulateEndEffectorsTrackingTask() const
   {
-    const vector_t generalizedVelocities = mappingMeasured_.getPinocchioJointVelocity(
-      stateMeasured_, inputMeasured_);
-
     const size_t numberOf6DofContacts = (contactFlags_ >> info_.numThreeDofContacts).count();
     const size_t numberOf3DofContacts = contactFlags_.count() - numberOf6DofContacts;
 
@@ -556,7 +581,7 @@ namespace legged_whole_body_control
 
     const auto& endEffectorSettings = settings_.endEffectorSettings;
 
-    matrix_t a(3 * (info_.numThreeDofContacts - numberOf3DofContacts) 
+    matrix_t a = matrix_t::Zero(3 * (info_.numThreeDofContacts - numberOf3DofContacts)
       + 6 * (info_.numSixDofContacts - numberOf6DofContacts), numberOfDecisionVariables_);
 
     vector_t b(a.rows());
@@ -587,7 +612,7 @@ namespace legged_whole_body_control
         acceleration += kp.asDiagonal() * (positionDesired - positionMeasured);
         acceleration += kd.asDiagonal() * (velocityDesired - velocityMeasured);
         a.block(3 * j, 0, 3, info_.generalizedCoordinatesNum) = stackedJacobians_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum);
-        b.segment(3 * j, 3) = acceleration - stackedJacobianDerivatives_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) * generalizedVelocities;
+        b.segment(3 * j, 3) = acceleration - stackedAccelerationBiases_.segment<3>(3 * i);
         j++;
       }
     }
@@ -638,7 +663,7 @@ namespace legged_whole_body_control
         const size_t startIndex = 6 * i - 3 * info_.numThreeDofContacts;
 
         a.block(6 * k + j, 0, 6, info_.generalizedCoordinatesNum) = stackedJacobians_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum);
-        b.segment(6 * k + j, 6) = acceleration - stackedJacobianDerivatives_.block(startIndex, 0, 6, info_.generalizedCoordinatesNum) * generalizedVelocities;
+        b.segment(6 * k + j, 6) = acceleration - stackedAccelerationBiases_.segment<6>(startIndex);
         k++;
       }
     }
@@ -654,17 +679,19 @@ namespace legged_whole_body_control
     const size_t numberOf6DofContacts = (contactFlags_ >> info_.numThreeDofContacts).count();
     const size_t numberOf3DofContacts = contactFlags_.count() - numberOf6DofContacts;
 
-    matrix_t a(3 * numberOf3DofContacts + 6 * numberOf6DofContacts, 
+    matrix_t a = matrix_t::Zero(3 * numberOf3DofContacts + 6 * numberOf6DofContacts,
       numberOfDecisionVariables_);
 
     vector_t b(a.rows());
 
+    // Desired contact forces/wrenches are stacked at the beginning of the input vector
     size_t j = 0;
-    for (size_t i = 0; i < info_.numThreeDofContacts; ++i) 
+    for (size_t i = 0; i < info_.numThreeDofContacts; ++i)
     {
       if(contactFlags_[i])
       {
         a.block(3 * j, info_.generalizedCoordinatesNum + 3 * i, 3, 3) = matrix3_t::Identity();
+        b.segment<3>(3 * j) = inputDesired_.segment<3>(3 * i);
         j++;
       }
     }
@@ -678,11 +705,10 @@ namespace legged_whole_body_control
       {
         const size_t startIndex = 6 * i - 3 * info_.numThreeDofContacts;
         a.block(6 * k + j, info_.generalizedCoordinatesNum + startIndex, 6, 6) = matrix6_t::Identity();
+        b.segment<6>(6 * k + j) = inputDesired_.segment<6>(startIndex);
         k++;
       }
     }
-    
-    b = inputDesired_.head(a.rows());
 
     return Task(std::move(a), std::move(b), matrix_t(), vector_t());
   }
@@ -708,9 +734,9 @@ namespace legged_whole_body_control
     auto& endEffectorSixDofNames = settings.endEffectorSixDofNames;
 
     loadData::loadPtreeValue(pt, settings.desiredFrequency, fieldName + ".desiredFrequency", verbose);
-    if(settings.desiredFrequency < 0.0)
+    if(settings.desiredFrequency <= 0.0)
     {
-      throw std::invalid_argument("[WbcBase]: desired frequency smaller than 0!");
+      throw std::invalid_argument("[WbcBase]: desired frequency not greater than 0!");
     }
 
     loadData::loadPtreeValue(pt, settings.worldLinkName, fieldName + ".worldLinkName", verbose);
@@ -792,7 +818,7 @@ namespace legged_whole_body_control
       loadData::loadPtreeValue(pt, settings.frictionConeSettings.frictionCoefficient, fieldName + ".frictionConeSettings.frictionCoefficient", verbose);
       if(settings.frictionConeSettings.frictionCoefficient < 0.0)
       {
-        throw std::invalid_argument("[WbcBase]: Fricition coefficient smaller than 0!");
+        throw std::invalid_argument("[WbcBase]: Friction coefficient smaller than 0!");
       }
     }
 

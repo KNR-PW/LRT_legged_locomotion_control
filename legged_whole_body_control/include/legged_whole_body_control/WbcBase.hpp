@@ -163,14 +163,21 @@ namespace legged_whole_body_control
     ocs2::scalar_t timeExternalWrench_;
     vector6_t externalWrench_;
 
-    vector6_t feedFrowardBaseAcceleration_;
+    size_t baseFrameIndex_;
+    // Base frame Jacobian and acceleration bias (\dot J u) in LOCAL_WORLD_ALIGNED frame
+    Eigen::Matrix<ocs2::scalar_t, 6, Eigen::Dynamic> baseJacobian_;
+    vector6_t baseAccelerationBias_;
 
+    // End effector Jacobians and acceleration biases (\dot J u) in LOCAL_WORLD_ALIGNED frame
     ocs2::matrix_t stackedJacobians_;
-    ocs2::matrix_t stackedJacobianDerivatives_;
+    ocs2::vector_t stackedAccelerationBiases_;
 
     ocs2::vector_t currentResult_;
 
     ocs2::matrix_t jointActuationMatrix_;
+
+    // Depends only on the model, formulated once
+    Task torqueLimitsTask_;
   };
 
   /**
@@ -182,6 +189,6 @@ namespace legged_whole_body_control
    */
   WbcBase::Settings loadWbcBaseSettings(const std::string& filename,
     const std::string& fieldName = "wbc_base_settings",
-    bool verbose = "true");
+    bool verbose = true);
 }; // namespace legged_whole_body_control
 #endif

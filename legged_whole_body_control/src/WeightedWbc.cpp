@@ -23,7 +23,12 @@
 
 #include <legged_whole_body_control/WeightedWbc.hpp>
 
+#include <cmath>
+#include <functional>
+#include <iostream>
+#include <limits>
 #include <unordered_set>
+#include <vector>
 
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -51,39 +56,71 @@ namespace legged_whole_body_control
   {
     WbcBase::calculate(time);
 
+    // Stacked tasks always have (rows x numberOfDecisionVariables_) matrices, as expected by the solver
     const Task weighedTask = formulateWeightedTask();
     const Task constraints = formulateConstraints();
 
     constexpr double infinity = std::numeric_limits<scalar_t>::infinity();
 
-    matrix_t H = weighedTask.a_.transpose() * weighedTask.a_;
-    vector_t g = -weighedTask.a_.transpose() * weighedTask.b_;
+    // H = a^T a, only the lower triangle is computed
+    matrix_t H = matrix_t::Zero(numberOfDecisionVariables_, numberOfDecisionVariables_);
+    H.selfadjointView<Eigen::Lower>().rankUpdate(weighedTask.a_.transpose());
+    H.triangularView<Eigen::StrictlyUpper>() = H.transpose();
 
-    if(started_)
+    vector_t g(numberOfDecisionVariables_);
+    g.noalias() = -weighedTask.a_.transpose() * weighedTask.b_;
+
+    const size_t equalityConstraintsDimension = constraints.b_.size();
+    const size_t inequalityConstraintsDimension = constraints.f_.size();
+
+    // Inequality constraints are formulated as D x <= f
+    const vector_t lowerBound = vector_t::Constant(inequalityConstraintsDimension, -infinity);
+
+    const auto& a = constraints.a_;
+    const auto& d = constraints.d_;
+
+    if(!H.allFinite() || !g.allFinite() || !a.allFinite() || !constraints.b_.allFinite()
+      || !d.allFinite() || !constraints.f_.allFinite())
     {
-      started_ = false;
+      std::cerr << "[WeightedWbc]: QP data is not finite, keeping previous result!" << std::endl;
+      return;
+    }
 
-      const size_t problemDimension = weighedTask.b_.size();
-      const size_t equalityConstraintsDimension = constraints.b_.size();
-      const size_t inequalityConstraintsDimension = constraints.f_.size();
+    // Number of constraints depends on contact flags, solver must be recreated when it changes
+    const bool dimensionsChanged = !qpSolver_
+      || static_cast<size_t>(qpSolver_->model.n_eq) != equalityConstraintsDimension
+      || static_cast<size_t>(qpSolver_->model.n_in) != inequalityConstraintsDimension;
 
-      qpSolver_ = std::make_unique<proxqp::dense::QP<scalar_t>>(numberOfDecisionVariables_, 
+    if(dimensionsChanged)
+    {
+      qpSolver_ = std::make_unique<proxqp::dense::QP<scalar_t>>(numberOfDecisionVariables_,
         equalityConstraintsDimension, inequalityConstraintsDimension);
 
+      // Warm start with previous result leads to false primal infeasibility detections
       qpSolver_->settings.initial_guess =
-        proxqp::InitialGuessStatus::WARM_START_WITH_PREVIOUS_RESULT;
+        proxqp::InitialGuessStatus::EQUALITY_CONSTRAINED_INITIAL_GUESS;
 
-      qpSolver_->init(H, g, constraints.a_, constraints.b_, constraints.d_, 
-        -infinity * vector_t::Ones(constraints.f_.size()), constraints.f_);
+      qpSolver_->init(H, g, a, constraints.b_, d, lowerBound, constraints.f_);
     }
     else
     {
-      // f (u) is const for all constraints, same with l 
-      qpSolver_->update(H, g, constraints.a_, constraints.b_, constraints.d_, 
-        std::nullopt, std::nullopt);
+      // Preconditioner is computed only in init(); recomputing it on every update costs ~80 us
+      // and does not reduce the number of iterations, also after contact switches
+      constexpr bool updatePreconditioner = false;
+      qpSolver_->update(H, g, a, constraints.b_, d, lowerBound, constraints.f_,
+        updatePreconditioner);
     }
 
     qpSolver_->solve();
+
+    if(qpSolver_->results.info.status != proxqp::QPSolverOutput::PROXQP_SOLVED
+      || !qpSolver_->results.x.allFinite())
+    {
+      std::cerr << "[WeightedWbc]: QP not solved, keeping previous result!" << std::endl;
+      // Solver is recreated after a failure
+      qpSolver_.reset();
+      return;
+    }
 
     currentResult_ = qpSolver_->results.x;
   }
@@ -91,24 +128,29 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  Task WeightedWbc::formulateWeightedTask() 
+  Task WeightedWbc::formulateWeightedTask()
   {
-    Task weightedTask;
+    // Tasks are kept in place (reserved), so references to them stay valid
+    std::vector<Task> tasks;
+    tasks.reserve(MAX_TASK_NUMBER);
 
+    // Tasks are scaled in place by sqrt(weight), so that cost is weight * ||a x - b||^2
     if(settings_.useBaseTrackingTask)
     {
-      weightedTask += std::move(weights_.weightBaseTrackingTask * formulateBaseTrackingTask());
-    }
-    if(settings_.useEndEffectorsTrackingTask)
-    {
-      weightedTask += std::move(weights_.weightEndEffectorsTrackingTask * formulateEndEffectorsTrackingTask());
-    }
-    if(settings_.useContactForceTrackingTask)
-    {
-      weightedTask += std::move(weights_.weightContactForceTrackingTask * formulateContactForceTrackingTask());
+      tasks.push_back(std::sqrt(weights_.weightBaseTrackingTask) * formulateBaseTrackingTask());
     }
 
-    return weightedTask;
+    if(settings_.useEndEffectorsTrackingTask)
+    {
+      tasks.push_back(std::sqrt(weights_.weightEndEffectorsTrackingTask) * formulateEndEffectorsTrackingTask());
+    }
+
+    if(settings_.useContactForceTrackingTask)
+    {
+      tasks.push_back(std::sqrt(weights_.weightContactForceTrackingTask) * formulateContactForceTrackingTask());
+    }
+
+    return Task::stack({tasks.begin(), tasks.end()}, numberOfDecisionVariables_);
   }
 
   /******************************************************************************************************/
@@ -116,26 +158,34 @@ namespace legged_whole_body_control
   /******************************************************************************************************/
   Task WeightedWbc::formulateConstraints()
   {
-    Task constraints;
+    std::vector<Task> tasks;
+    tasks.reserve(MAX_TASK_NUMBER);
+
+    std::vector<std::reference_wrapper<const Task>> constraints;
+    constraints.reserve(MAX_TASK_NUMBER);
 
     if(settings_.useDynamicsTask)
     {
-      constraints += formulateDynamicsTask();
-    }
-    if(settings_.useTorqueLimitsTask)
-    {
-      constraints += formulateTorqueLimitsTask();
-    }
-    if(settings_.useKinematicContactTask)
-    {
-      constraints += formulateKinematicContactTask();
-    }
-    if(settings_.useFrictionConeTask)
-    {
-      constraints += formulateFrictionConeTask();
+      constraints.emplace_back(tasks.emplace_back(formulateDynamicsTask()));
     }
 
-    return constraints;
+    if(settings_.useTorqueLimitsTask)
+    {
+      // Constant task, not copied
+      constraints.emplace_back(torqueLimitsTask_);
+    }
+
+    if(settings_.useKinematicContactTask)
+    {
+      constraints.emplace_back(tasks.emplace_back(formulateKinematicContactTask()));
+    }
+
+    if(settings_.useFrictionConeTask)
+    {
+      constraints.emplace_back(tasks.emplace_back(formulateFrictionConeTask()));
+    }
+
+    return Task::stack(constraints, numberOfDecisionVariables_);
   }
 
   WeightedWbc::Weights loadWeightedWbcSettings(const std::string& filename,
