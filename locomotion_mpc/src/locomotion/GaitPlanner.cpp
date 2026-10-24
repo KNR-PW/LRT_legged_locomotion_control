@@ -258,7 +258,7 @@ namespace legged_locomotion_mpc
     }
 
     std::vector<std::vector<scalar_t>> GaitPlanner::getPhasesAtTimes(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       const size_t referenceSize = times.size();
       std::vector<std::vector<scalar_t>> phasesTrajectory;
@@ -277,7 +277,7 @@ namespace legged_locomotion_mpc
     }
 
     std::vector<contact_flags_t> GaitPlanner::getContactFlagsAtTimes(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       const size_t referenceSize = times.size();
       std::vector<contact_flags_t> contactFlagsTrajectory;

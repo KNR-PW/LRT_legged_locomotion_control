@@ -139,7 +139,7 @@ namespace legged_locomotion_mpc
         ocs2::scalar_t currentBaseVerticalVelocity_ = 0.0;
         floating_base_model::FloatingBaseModelInfo modelInfo_;
         StaticSettings settings_;
-        const terrain_model::TerrainModel* terrainModel_;
+        const terrain_model::TerrainModel* terrainModel_ = nullptr;
     };
 
     /**

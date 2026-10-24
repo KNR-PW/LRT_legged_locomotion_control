@@ -102,7 +102,9 @@ namespace legged_locomotion_mpc
           "Update the terrain before planning base trajectory");
       }
 
-      const size_t referenceSize = (finalTime - initTime) / settings_.deltaTime + 1;
+      // At least start and end point, also when horizon is shorter than delta time
+      const size_t referenceSize = std::max<size_t>(2,
+        (finalTime - initTime) / settings_.deltaTime + 1);
 
       targetTrajectories.timeTrajectory.reserve(referenceSize);
 

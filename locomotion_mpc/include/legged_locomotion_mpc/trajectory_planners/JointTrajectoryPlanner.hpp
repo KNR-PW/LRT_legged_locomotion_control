@@ -75,9 +75,14 @@ namespace legged_locomotion_mpc
           const std::vector<vector3_t>& endEffectorPositions, 
           const std::vector<vector3_t>& endEffectorNormals);
 
+        /**
+         * @param [in] previousJointVelocities: returned when solver does not return
+         * joint velocities
+         */
         ocs2::vector_t computeJointVelocities(const ocs2::vector_t& actualJointPositions,
           const vector6_t& basePose, const vector6_t& baseVelocity,
-          const std::vector<vector3_t>& endEffectorVelocities);
+          const std::vector<vector3_t>& endEffectorVelocities,
+          const ocs2::vector_t& previousJointVelocities);
     
       private:
   

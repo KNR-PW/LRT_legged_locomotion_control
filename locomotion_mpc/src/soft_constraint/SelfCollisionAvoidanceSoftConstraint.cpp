@@ -254,14 +254,21 @@ namespace legged_locomotion_mpc
 
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
 
+      // Second sphere positions in world computed once, not for every first sphere
+      sphereWorldPositions_.resize(secondRadiuses.size());
+      for(size_t k = 0; k < secondRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = secondFramePosition
+          + secondRotationMatrix * secondSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < firstRadiuses.size(); ++j)
       {
-        const vector3_t firstSpherePosition = firstFramePosition 
+        const vector3_t firstSpherePosition = firstFramePosition
           + firstRotationMatrix * firstSphereRelativePositions[j];
         for(size_t k = 0; k < secondRadiuses.size(); ++k)
         {
-          const vector3_t secondSpherePosition = secondFramePosition 
-            + secondRotationMatrix * secondSphereRelativePositions[k];
+          const vector3_t& secondSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (firstSpherePosition - secondSpherePosition).norm() 
             - firstRadiuses[j] - secondRadiuses[k];
           if(distance < minDistance) minDistance = distance;
@@ -347,14 +354,21 @@ namespace legged_locomotion_mpc
 
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
 
+      // Collision link sphere positions in world computed once, not for every frame sphere
+      sphereWorldPositions_.resize(collisionRadiuses.size());
+      for(size_t k = 0; k < collisionRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = collisionPosition
+          + collisionRotationMatrix * collisionSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < frameRadiuses.size(); ++j)
       {
-        const vector3_t frameSpherePosition = framePosition 
+        const vector3_t frameSpherePosition = framePosition
           + frameRotationMatrix * frameSphereRelativePositions[j];
         for(size_t k = 0; k < collisionRadiuses.size(); ++k)
         {
-          const vector3_t collisionSpherePosition = collisionPosition 
-            + collisionRotationMatrix * collisionSphereRelativePositions[k];
+          const vector3_t& collisionSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (frameSpherePosition - collisionSpherePosition).norm() 
             - frameRadiuses[j] - collisionRadiuses[k];
           if(distance < minDistance) minDistance = distance;
@@ -399,14 +413,21 @@ namespace legged_locomotion_mpc
 
       scalar_t minDistance = std::numeric_limits<scalar_t>::max();
 
+      // Second sphere positions in world computed once, not for every first sphere
+      sphereWorldPositions_.resize(secondRadiuses.size());
+      for(size_t k = 0; k < secondRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = secondPosition
+          + secondRotationMatrix * secondSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < firstRadiuses.size(); ++j)
       {
-        const vector3_t firstSpherePosition = firstPosition 
+        const vector3_t firstSpherePosition = firstPosition
           + firstRotationMatrix * firstSphereRelativePositions[j];
         for(size_t k = 0; k < secondRadiuses.size(); ++k)
         {
-          const vector3_t secondSpherePosition = secondPosition 
-            + secondRotationMatrix * secondSphereRelativePositions[k];
+          const vector3_t& secondSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (firstSpherePosition - secondSpherePosition).norm() 
             - firstRadiuses[j] - secondRadiuses[k];
           if(distance < minDistance) minDistance = distance;
@@ -478,11 +499,8 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         distance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose()
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
 
     // 3 DoF - 6 DoF
@@ -531,7 +549,6 @@ namespace legged_locomotion_mpc
         + rotationMatrix * sphereRelativePositions[minIndex];
       const vector3_t pointDifference = firstFramePosition - minSpherePosition;
       const vector3_t normal = pointDifference.normalized();
-      const scalar_t pointDistance = pointDifference.norm();
       const scalar_t sphereDistance = minDistance - firstRadius 
         + endEffector36DoFPairRelaxations_[i];
 
@@ -559,11 +576,8 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         sphereDistance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose()
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
 
     // 6 DoF - 6 DoF
@@ -606,14 +620,21 @@ namespace legged_locomotion_mpc
       size_t minFirstIndex = 0;
       size_t minSecondIndex = 0;
 
+      // Second sphere positions in world computed once, not for every first sphere
+      sphereWorldPositions_.resize(secondRadiuses.size());
+      for(size_t k = 0; k < secondRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = secondFramePosition
+          + secondRotationMatrix * secondSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < firstRadiuses.size(); ++j)
       {
-        const vector3_t firstSpherePosition = firstFramePosition 
+        const vector3_t firstSpherePosition = firstFramePosition
           + firstRotationMatrix * firstSphereRelativePositions[j];
         for(size_t k = 0; k < secondRadiuses.size(); ++k)
         {
-          const vector3_t secondSpherePosition = secondFramePosition 
-            + secondRotationMatrix * secondSphereRelativePositions[k];
+          const vector3_t& secondSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (firstSpherePosition - secondSpherePosition).norm() 
             - firstRadiuses[j] - secondRadiuses[k];
           if(distance < minDistance)
@@ -633,7 +654,6 @@ namespace legged_locomotion_mpc
 
       const vector3_t pointDifference = minFirstSpherePosition - minSecondSpherePosition;
       const vector3_t normal = pointDifference.normalized();
-      const scalar_t pointDistance = pointDifference.norm();
       const scalar_t sphereDistance = minDistance + endEffector66DoFPairRelaxations_[i];
 
       cost.f += selfAvoidancePenaltyPtr_->getValue(0.0, sphereDistance);
@@ -665,11 +685,8 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         sphereDistance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose()
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
 
     // 3 DoF - Collision Link
@@ -719,7 +736,6 @@ namespace legged_locomotion_mpc
         + collisionRotationMatrix * sphereRelativePositions[minIndex];
       const vector3_t pointDifference = framePosition - minSpherePosition;
       const vector3_t normal = pointDifference.normalized();
-      const scalar_t pointDistance = pointDifference.norm();
       const scalar_t sphereDistance = minDistance - frameRadius 
         + endEffector3DoFLinkRelaxations_[i];
 
@@ -747,11 +763,8 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         sphereDistance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose()
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
 
     // 6 DoF - Collision Link
@@ -791,14 +804,21 @@ namespace legged_locomotion_mpc
       size_t minFrameIndex = 0;
       size_t minCollisionIndex = 0;
 
+      // Collision link sphere positions in world computed once, not for every frame sphere
+      sphereWorldPositions_.resize(collisionRadiuses.size());
+      for(size_t k = 0; k < collisionRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = collisionPosition
+          + collisionRotationMatrix * collisionSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < frameRadiuses.size(); ++j)
       {
-        const vector3_t frameSpherePosition = framePosition 
+        const vector3_t frameSpherePosition = framePosition
           + frameRotationMatrix * frameSphereRelativePositions[j];
         for(size_t k = 0; k < collisionRadiuses.size(); ++k)
         {
-          const vector3_t collisionSpherePosition = collisionPosition 
-            + collisionRotationMatrix * collisionSphereRelativePositions[k];
+          const vector3_t& collisionSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (frameSpherePosition - collisionSpherePosition).norm() 
             - frameRadiuses[j] - collisionRadiuses[k];
           if(distance < minDistance)
@@ -817,7 +837,6 @@ namespace legged_locomotion_mpc
 
       const vector3_t pointDifference = minFrameSpherePosition - minCollisionSpherePosition;
       const vector3_t normal = pointDifference.normalized();
-      const scalar_t pointDistance = pointDifference.norm();
       const scalar_t sphereDistance = minDistance + endEffector6DoFLinkRelaxations_[i];
 
       cost.f += selfAvoidancePenaltyPtr_->getValue(0.0, sphereDistance);
@@ -830,9 +849,9 @@ namespace legged_locomotion_mpc
         frameEulerAngles, frameSphereRelativePositions[minFrameIndex]);
       framePositionDerivatives += frameRotationVectorGradient * frameOrientationDerivatives;
 
-      matrix_t collisionPositionDerivatives = leggedPrecomputation.getEndEffectorPositionDerivatives(
+      matrix_t collisionPositionDerivatives = leggedPrecomputation.getCollisionLinkPositionDerivatives(
         collisionIndex).dfdx;
-      const auto& collisionOrientationDerivatives = leggedPrecomputation.getEndEffectorOrientationDerivatives(
+      const auto& collisionOrientationDerivatives = leggedPrecomputation.getCollisionLinkOrientationDerivatives(
         collisionIndex).dfdx;
       const matrix3_t collisionRotationVectorGradient = leggedPrecomputation.getRotationTimesVectorGradient(
         collisionEulerAngles, collisionSphereRelativePositions[minCollisionIndex]);
@@ -849,11 +868,8 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         sphereDistance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose()
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
 
     // Collision Link - Collision Link
@@ -893,14 +909,21 @@ namespace legged_locomotion_mpc
       size_t minFirstIndex = 0;
       size_t minSecondIndex = 0;
 
+      // Second sphere positions in world computed once, not for every first sphere
+      sphereWorldPositions_.resize(secondRadiuses.size());
+      for(size_t k = 0; k < secondRadiuses.size(); ++k)
+      {
+        sphereWorldPositions_[k] = secondPosition
+          + secondRotationMatrix * secondSphereRelativePositions[k];
+      }
+
       for(size_t j = 0; j < firstRadiuses.size(); ++j)
       {
-        const vector3_t firstSpherePosition = firstPosition 
+        const vector3_t firstSpherePosition = firstPosition
           + firstRotationMatrix * firstSphereRelativePositions[j];
         for(size_t k = 0; k < secondRadiuses.size(); ++k)
         {
-          const vector3_t secondSpherePosition = secondPosition 
-            + secondRotationMatrix * secondSphereRelativePositions[k];
+          const vector3_t& secondSpherePosition = sphereWorldPositions_[k];
           const scalar_t distance = (firstSpherePosition - secondSpherePosition).norm() 
             - firstRadiuses[j] - secondRadiuses[k];
           if(distance < minDistance)
@@ -920,7 +943,6 @@ namespace legged_locomotion_mpc
 
       const vector3_t pointDifference = minFirstSpherePosition - minSecondSpherePosition;
       const vector3_t normal = pointDifference.normalized();
-      const scalar_t pointDistance = pointDifference.norm();
       const scalar_t sphereDistance = minDistance + collisionLinkPairRelaxations_[i];
 
       cost.f += selfAvoidancePenaltyPtr_->getValue(0.0, sphereDistance);
@@ -952,23 +974,12 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = selfAvoidancePenaltyPtr_->getSecondDerivative(0.0, 
         sphereDistance);
 
-      const matrix3_t distanceSecondGradient = getDistanceSecondGradient(normal, pointDistance);
-
-      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose() 
-        + penaltyDerivative * positionDifferenceGradient.transpose() 
-          * distanceSecondGradient * positionDifferenceGradient;
+      // Gauss-Newton approximation (exact Hessian of barrier on distance is indefinite)
+      cost.dfdxx += penaltySecondDerivative * dDistancedx * dDistancedx.transpose();
     }
     return cost;
   }
 
-  matrix3_t SelfCollisionAvoidanceSoftConstraint::getDistanceSecondGradient(
-    const vector3_t& normal, scalar_t distance) const
-  {
-    // Hessian of the euclidean norm: (I - n * n^T) / distance
-    matrix3_t temp = - normal * normal.transpose();
-    temp.diagonal().array() += 1.0;
-    return temp / distance;
-  }
 
   SelfCollisionAvoidanceSoftConstraint::SelfCollisionAvoidanceSoftConstraint(
     const SelfCollisionAvoidanceSoftConstraint& rhs):

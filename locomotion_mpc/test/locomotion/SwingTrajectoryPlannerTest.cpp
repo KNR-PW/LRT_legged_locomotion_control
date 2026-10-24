@@ -537,8 +537,6 @@ TEST(SwingTrajectoryPlannerTest, Troting)
 
       if(!flags[i])
       {
-        EXPECT_TRUE(velocities[i].x() > 0.0);
-        EXPECT_TRUE(velocities[i].y() > 0.0);
         EXPECT_NEAR((surfaceNormals[i] - vector3_t{0.0, 0.0, 1.0}).norm(), 0.0, 1e-6);
       }
 
@@ -548,8 +546,11 @@ TEST(SwingTrajectoryPlannerTest, Troting)
         EXPECT_NEAR(nextPositions[i].y(), positions[i].y(), 1e-6);
       }
 
-      if(!flags[i] && !nextFlags[i]) 
+      // Not at touchdown, there tangential velocity is exactly 0 (sign is only rounding)
+      if(!flags[i] && !nextFlags[i])
       {
+        EXPECT_TRUE(velocities[i].x() > 0.0);
+        EXPECT_TRUE(velocities[i].y() > 0.0);
         EXPECT_TRUE(nextPositions[i].x() > positions[i].x());
         EXPECT_TRUE(nextPositions[i].y() > positions[i].y());
       }

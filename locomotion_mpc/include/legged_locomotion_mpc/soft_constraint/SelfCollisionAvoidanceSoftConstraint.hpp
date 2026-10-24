@@ -111,13 +111,9 @@ namespace legged_locomotion_mpc
       const collision::PinocchioCollisionInterface& collisionInterface_;
       
       std::unique_ptr<ocs2::RelaxedBarrierPenalty> selfAvoidancePenaltyPtr_;
-      
-      /**
-       * Get second derivative of distance between points with respect to 
-       * difference of those points: d(d(distance(p1, p2)))/d(p1 - p2)^2
-       */
-      matrix3_t getDistanceSecondGradient(const vector3_t& normal, 
-        ocs2::scalar_t distance) const;
+
+      // Buffer for sphere positions in world frame (every solver thread has own clone)
+      mutable std::vector<vector3_t> sphereWorldPositions_;
   };
 
   /**
@@ -130,7 +126,7 @@ namespace legged_locomotion_mpc
   SelfCollisionAvoidanceSoftConstraint::Settings loadSelfCollisionAvoidanceSoftConstraintSettings(
     const std::string& filename,
     const std::string& fieldName = "self_collison_avoidance_soft_constraint_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

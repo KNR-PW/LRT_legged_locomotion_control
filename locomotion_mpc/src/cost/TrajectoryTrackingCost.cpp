@@ -43,11 +43,10 @@ namespace legged_locomotion_mpc
     using namespace floating_base_model;
 
     TrajectoryTrackingCost::TrajectoryTrackingCost(FloatingBaseModelInfo info,
-      const LeggedReferenceManager& referenceManager,
       BaseWeights baseWeights, JointWeights jointWeights,
       EndEffectorWeights endEffectorWeights, const std::string& modelFolder,
       bool recompileLibraries, bool verbose):
-      info_(std::move(info)), referenceManager_(referenceManager),
+      info_(std::move(info)),
       baseWeights_(std::move(baseWeights)), jointWeights_(std::move(jointWeights)),
       endEffectorWeights_(std::move(endEffectorWeights)) 
     {
@@ -216,8 +215,6 @@ namespace legged_locomotion_mpc
 
       const size_t endEffectorNum = info_.numThreeDofContacts + info_.numSixDofContacts;
 
-      const auto& endEffectorTargets = referenceManager_.getEndEffectorTrajectoryPoint(time);
-
       for(size_t i = 0; i < endEffectorNum; ++i)
       {
         // End effectors current data
@@ -227,8 +224,10 @@ namespace legged_locomotion_mpc
           access_helper_functions::getContactForces(input, i, info_);
 
         // End effectors target data
-        const vector3_t& endEffectorTargetPositon = endEffectorTargets.positions[i];
-        const vector3_t& endEffectorTargetVelocity = endEffectorTargets.velocities[i];
+        const vector3_t& endEffectorTargetPositon =
+          leggedPrecomputation.getReferenceEndEffectorPosition(i);
+        const vector3_t& endEffectorTargetVelocity =
+          leggedPrecomputation.getReferenceEndEffectorLinearVelocity(i);
 
         // In order to get true contact forces, not interpolated ones (when contact is changed for example)
         const auto& endEffectorTargetWrench = 
@@ -380,8 +379,6 @@ namespace legged_locomotion_mpc
 
       const size_t endEffectorNum = info_.numThreeDofContacts + info_.numSixDofContacts;
 
-      const auto& endEffectorTargets = referenceManager_.getEndEffectorTrajectoryPoint(time);
-
       const size_t forceIndexOffset = 3 * info_.numThreeDofContacts 
           + 6 * info_.numSixDofContacts;
 
@@ -398,8 +395,10 @@ namespace legged_locomotion_mpc
           access_helper_functions::getContactForces(input, i, info_);
 
         // End effectors target data
-        const vector3_t& endEffectorTargetPositon = endEffectorTargets.positions[i];
-        const vector3_t& endEffectorTargetVelocity = endEffectorTargets.velocities[i];
+        const vector3_t& endEffectorTargetPositon =
+          leggedPrecomputation.getReferenceEndEffectorPosition(i);
+        const vector3_t& endEffectorTargetVelocity =
+          leggedPrecomputation.getReferenceEndEffectorLinearVelocity(i);
 
         // In order to get true contact forces, not interpolated ones (when contact is changed for example)
         const auto& endEffectorTargetWrench = 
@@ -529,7 +528,7 @@ namespace legged_locomotion_mpc
     }
 
     TrajectoryTrackingCost::TrajectoryTrackingCost(const TrajectoryTrackingCost& rhs):
-      info_(rhs.info_), referenceManager_(rhs.referenceManager_), 
+      info_(rhs.info_),
       baseWeights_(rhs.baseWeights_), jointWeights_(rhs.jointWeights_),
       endEffectorWeights_(rhs.endEffectorWeights_), 
       log3AdInterfacePtr_(new CppAdInterface(*rhs.log3AdInterfacePtr_)) {}
