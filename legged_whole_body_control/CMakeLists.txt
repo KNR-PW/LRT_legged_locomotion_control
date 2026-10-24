@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(legged_whole_body_control LANGUAGES CXX)
 
+# Eigen/Pinocchio code is many times slower without optimizations; colcon does not set a build type
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
