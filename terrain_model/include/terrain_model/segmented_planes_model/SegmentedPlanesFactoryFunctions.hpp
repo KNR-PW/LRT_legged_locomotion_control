@@ -30,12 +30,11 @@
 namespace terrain_model
 {
   /**
-   * Calculates terrain plane based on queried position, rotation in world frame
-   * and its height (distance) from terrain plane
-   * @param [in] position: 3D position in world frame
-   * @param [in] eulerAngles: 3D rotation defined by euler angles terrain -> world
-   * @param [in] height: distance from terrain plane
-   * @return terrain plane
+   * Runs plane decomposition pipeline on elevation map
+   * @param [in] gridMap: elevation map, it is moved into the result
+   * @param [in] pipelineConfig: configuration of the plane decomposition pipeline
+   * @param [in] elevationLayerName: name of the elevation layer
+   * @return planar terrain (planar regions and processed grid map)
    */
   convex_plane_decomposition::PlanarTerrain computePlanrTerrain(
     grid_map::GridMap&& gridMap,

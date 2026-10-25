@@ -70,6 +70,28 @@ TEST(TestPlanarFactoryFunctions, _3positions)
 
 
 
+TEST(TestPlanarFactoryFunctions, collinearPositions)
+{
+  const std::vector<vector3_t> threePositions{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, {2.0, 2.0, 2.0}};
+  EXPECT_THROW(computeTerrainPlane(threePositions), std::invalid_argument);
+
+  const std::vector<vector3_t> fourPositions{{0.0, 0.0, 0.0}, {1.0, 0.0, 0.1},
+    {2.0, 0.0, 0.2}, {3.0, 0.0, 0.0}};
+  EXPECT_THROW(computeTerrainPlane(fourPositions), std::invalid_argument);
+}
+
+TEST(TestPlanarFactoryFunctions, sameXYPositions)
+{
+  // First two points have the same XY position
+  const std::vector<vector3_t> positions{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.2},
+    {1.0, 0.0, 0.1}, {0.0, 1.0, 0.1}};
+  const TerrainPlane plane = computeTerrainPlane(positions);
+  const matrix3_t rotation = plane.getOrientationToTerrain();
+  EXPECT_TRUE(rotation.allFinite());
+  EXPECT_TRUE((rotation * rotation.transpose()).isApprox(matrix3_t::Identity(), tolerance));
+  EXPECT_NEAR(rotation.determinant(), 1.0, tolerance);
+}
+
 TEST(TestPlanarFactoryFunctions, _4positions)
 {
   for(size_t i = 0; i < numTests; ++i)

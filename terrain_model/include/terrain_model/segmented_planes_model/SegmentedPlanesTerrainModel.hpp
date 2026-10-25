@@ -14,7 +14,12 @@
 
 namespace terrain_model
 {
-  class SegmentedPlanesTerrainModel : public TerrainModel 
+  /**
+   * Terrain model made of segmented planar regions. Outside of the grid map (and when
+   * there are no planar regions) terrain is flat ground at the height of the nearest map
+   * edge, taken from the ground layer (see SegmentedPlanesGridMapUtils.hpp).
+   */
+  class SegmentedPlanesTerrainModel : public TerrainModel
   {
     public:
 
@@ -29,6 +34,10 @@ namespace terrain_model
       ~SegmentedPlanesTerrainModel() override = default;
 
       SegmentedPlanesTerrainModel* clone() const override;
+
+      // Keep overloads without penalty function from the interface visible
+      using TerrainModel::getLocalTerrainAtPositionInWorldAlongGravity;
+      using TerrainModel::getConvexTerrainAtPositionInWorld;
 
       TerrainPlane getLocalTerrainAtPositionInWorldAlongGravity(
         const vector3_t& positionInWorld,
@@ -61,7 +70,12 @@ namespace terrain_model
 
       std::pair<Eigen::Vector3d, Eigen::Vector3d> getSignedDistanceRange(
         const grid_map::GridMap& gridMap, const std::string& elevationLayer);
-      
+
+      /** Horizontal plane at the height of the closest grid map cell */
+      TerrainPlane getFlatGroundPlane(const vector3_t& positionInWorld) const;
+
+      bool isOutsideGridMap(const vector3_t& positionInWorld) const;
+
       convex_plane_decomposition::PlanarTerrain planarTerrain_;
       std::unique_ptr<SegmentedPlanesSignedDistanceField> signedDistanceField_;
       const grid_map::Matrix* const elevationData_;

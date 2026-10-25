@@ -48,7 +48,8 @@ add_library(${PROJECT_NAME}
   src/segmented_planes_model/SegmentedPlanesSignedDistanceField.cpp
   src/segmented_planes_model/SegmentedPlanesTerrainModel.cpp
   src/segmented_planes_model/SegmentedPlanesFactoryFunctions.cpp
-  
+  src/segmented_planes_model/SegmentedPlanesGridMapUtils.cpp
+
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -100,17 +101,29 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
   ament_add_gtest(test_${PROJECT_NAME}_terrain test/testTerrainPlane.cpp)
-  ament_target_dependencies(test_${PROJECT_NAME}_terrain ${dependencies})
+  ament_target_dependencies(test_${PROJECT_NAME}_terrain ${THIS_PACKAGE_DEPENDS})
   target_link_libraries(test_${PROJECT_NAME}_terrain ${PROJECT_NAME})
 
 
   ament_add_gtest(test_${PROJECT_NAME}_convexTerrain test/testConvexTerrain.cpp)
-  ament_target_dependencies(test_${PROJECT_NAME}_convexTerrain ${dependencies})
+  ament_target_dependencies(test_${PROJECT_NAME}_convexTerrain ${THIS_PACKAGE_DEPENDS})
   target_link_libraries(test_${PROJECT_NAME}_convexTerrain ${PROJECT_NAME})
 
   ament_add_gtest(test_${PROJECT_NAME}_planarFactory test/testPlanarFactoryFunctions.cpp)
-  ament_target_dependencies(test_${PROJECT_NAME}_planarFactory ${dependencies})
+  ament_target_dependencies(test_${PROJECT_NAME}_planarFactory ${THIS_PACKAGE_DEPENDS})
   target_link_libraries(test_${PROJECT_NAME}_planarFactory ${PROJECT_NAME})
+
+  ament_add_gtest(test_${PROJECT_NAME}_planarTerrainModel test/testPlanarTerrainModel.cpp)
+  ament_target_dependencies(test_${PROJECT_NAME}_planarTerrainModel ${THIS_PACKAGE_DEPENDS})
+  target_link_libraries(test_${PROJECT_NAME}_planarTerrainModel ${PROJECT_NAME})
+
+  ament_add_gtest(test_${PROJECT_NAME}_segmentedPlanesGridMapUtils test/testSegmentedPlanesGridMapUtils.cpp)
+  ament_target_dependencies(test_${PROJECT_NAME}_segmentedPlanesGridMapUtils ${THIS_PACKAGE_DEPENDS})
+  target_link_libraries(test_${PROJECT_NAME}_segmentedPlanesGridMapUtils ${PROJECT_NAME})
+
+  ament_add_gtest(test_${PROJECT_NAME}_segmentedPlanesSignedDistanceField test/testSegmentedPlanesSignedDistanceField.cpp)
+  ament_target_dependencies(test_${PROJECT_NAME}_segmentedPlanesSignedDistanceField ${THIS_PACKAGE_DEPENDS})
+  target_link_libraries(test_${PROJECT_NAME}_segmentedPlanesSignedDistanceField ${PROJECT_NAME})
 
 endif()
 

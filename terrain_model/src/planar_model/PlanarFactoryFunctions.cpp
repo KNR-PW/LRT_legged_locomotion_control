@@ -1,6 +1,10 @@
 
 #include <terrain_model/planar_model/PlanarFactoryFunctions.hpp>
 
+#include <stdexcept>
+
+#include <Eigen/QR>
+
 #include <ocs2_robotic_tools/common/RotationTransforms.h>
 
 namespace terrain_model
@@ -27,10 +31,11 @@ namespace terrain_model
     size_t pointNum = positions.size();
     matrix3_t rotationMatrix;
     vector3_t meanPosition = vector3_t::Zero();
+    const scalar_t tolerance = 1e-9;
 
     if(pointNum < 3)
     {
-      throw std::invalid_argument("There should be more than 3 points for creating plane using"
+      throw std::invalid_argument("At least 3 points are needed for creating plane using "
         "fit method");
     }
     else if (pointNum == 3)
@@ -40,6 +45,10 @@ namespace terrain_model
       vector3_t vectorOnPlane2 = positions[2] - positions[0];
 
       vector3_t normalToPlane = (vectorOnPlane1).cross(vectorOnPlane2);
+      if(!(normalToPlane.norm() > tolerance))
+      {
+        throw std::invalid_argument("Points for creating plane can not be collinear");
+      }
 
       for(const auto& position: positions)
       {
@@ -77,24 +86,35 @@ namespace terrain_model
         A.block<1, 2>(i, 0) = positions[i].block<2, 1>(0, 0).transpose();
         b(i) = positions[i].z();
       }
-      const matrix3_t AtA = A.transpose().lazyProduct(A);
-      const vector3_t Atb = A.transpose().lazyProduct(b);
-      const vector3_t result = AtA.inverse() * Atb;
+      // Least squares fit of z = a * x + b * y + c
+      const Eigen::ColPivHouseholderQR<ocs2::matrix_t> leastSquares(A);
+      if(leastSquares.rank() < 3)
+      {
+        throw std::invalid_argument("Points for creating plane can not be collinear in XY plane");
+      }
+      const vector3_t result = leastSquares.solve(b);
       vector3_t normalToPlane{-result.x(), -result.y(), 1};
 
       normalToPlane.normalize();
 
       /** Get random vector on plane from plane equation */
-      vector3_t pointOnPlane1{positions[0].x(), positions[0].y(), 
+      vector3_t pointOnPlane1{positions[0].x(), positions[0].y(),
         result.x() * positions[0].x() + result.y() * positions[0].y() + result.z()};
 
-      vector3_t pointOnPlane2{positions[1].x(), positions[1].y(), 
+      vector3_t pointOnPlane2{positions[1].x(), positions[1].y(),
         result.x() * positions[1].x() + result.y() * positions[1].y() + result.z()};
-      
-      vector3_t vectorOnPlane = pointOnPlane1 - pointOnPlane2;
-      vectorOnPlane.normalize();
 
-      rotationMatrix;
+      vector3_t vectorOnPlane = pointOnPlane1 - pointOnPlane2;
+      if(vectorOnPlane.norm() > tolerance)
+      {
+        vectorOnPlane.normalize();
+      }
+      else
+      {
+        // First two points have the same XY position, take any vector on plane
+        vectorOnPlane = TerrainPlane::getTangentialBasisFromSurfaceNormal(normalToPlane).row(0).transpose();
+      }
+
       rotationMatrix.col(0) = vectorOnPlane;
       rotationMatrix.col(1) = normalToPlane.cross(vectorOnPlane);
       rotationMatrix.col(2) = normalToPlane;
