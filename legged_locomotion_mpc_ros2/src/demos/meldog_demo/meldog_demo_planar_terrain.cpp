@@ -43,10 +43,10 @@ int main(int argc, char* argv[])
 
   const scalar_t initTime = 0.0;
 
-  vector3_t terrainEulerZyx{0.0, 0.0, 0.0};
+  const vector3_t terrainEulerZyx{0.0, 0.0, 0.0};
   const matrix3_t terrainRotation = getRotationMatrixFromZyxEulerAngles(terrainEulerZyx); 
 
-  TerrainPlane terrainPlane(vector3_t::Zero(), terrainRotation.transpose());
+  const TerrainPlane terrainPlane(vector3_t::Zero(), terrainRotation.transpose());
 
   const auto modelSettings = loadModelSettings(modelFilePath);
 
@@ -64,14 +64,8 @@ int main(int argc, char* argv[])
   initialBasePosition.z() += initialBaseHeight / terrainPlane.getSurfaceNormalInWorld().z();
 
   vector_t initialState = vector_t::Zero(STATE_DIM);
-
-  initialBasePosition << -0.03873, -7.06745e-06,     0.381081;
-  terrainEulerZyx << -2.43615e-05,  -0.00692686, -3.71088e-06;
   initialState.block<3,1>(6, 0) = initialBasePosition;
   initialState.block<3,1>(9, 0) = terrainEulerZyx;
-
-  initialState.block<3, 1>(0, 0) << 1.25506e-06, -1.00304e-09, -1.21623e-06;
-  initialState.block<3, 1>(3, 0) << 2.40969e-09,   3.5196e-06, -3.56193e-09;
   // access_helper_functions::getJointPositions(initialState, modelInfo) << 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512, 0, -0.62359877559, 1.0471975512;
   // access_helper_functions::getJointPositions(initialState, modelInfo) << 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326, 1e-6, -0.785398163, 1.570796326;
   access_helper_functions::getJointPositions(initialState, modelInfo) << -0.00524164,   -0.806134,     1.60278, -0.00769328,   -0.864448,     1.62701, -0.00523977,   -0.806203,     1.60276, -0.00769448,    -0.86441,       1.627;
@@ -145,8 +139,6 @@ int main(int argc, char* argv[])
 
   auto& rollout = loopShapingInterface.getRollout();
 
-  auto& weightCompenator = leggedInterface.weightCompensator();
-
   std::unique_ptr<MPC_BASE> mpcPtr = std::make_unique<GaussNewtonDDP_MPC>(mpcSettings, 
     ddpSettings, rollout, optimalProblem, initializer);
 
@@ -161,9 +153,6 @@ int main(int argc, char* argv[])
   MPC_MRT_Interface mpcInterface(*mpcPtr);
 
   const auto& dynamics = optimalProblem.dynamicsPtr;
-
-  const size_t standingMode = ((0x01 << (NUM_THREE_DOF_CONTACTS)) - 1);
-  const contact_flags_t standingFlags(standingMode);
 
   // ====== Execute the scenario ========
   SystemObservation observation;
@@ -190,7 +179,6 @@ int main(int argc, char* argv[])
   std::vector<PerformanceIndex> performances;
 
   std::vector<SystemObservation> observations;
-  std::vector<contact_flags_t> contactFlags;
 
   std::vector<scalar_array_t> optimizedTimeTrajectories;
   std::vector<vector_array_t> optimizedStateTrajectories;
@@ -240,21 +228,18 @@ int main(int argc, char* argv[])
 
     //   break;
 
-      vector3_t currentTerrainPosition = observation.state.block<3, 1>(6, 0);
-      currentTerrainPosition.z() = 0.0;
+      // Same plane anchored under the robot, so visualized grid map follows the robot.
+      // MPC uses the same plane, so reference manager terrain is not updated.
+      const vector2_t currentBasePositionXY = observation.state.block<2, 1>(6, 0);
+      const vector3_t currentTerrainPosition =
+        terrainPlane.projectPositionInWorldOntoPlaneAlongGravity(currentBasePositionXY);
 
-      terrainPlane = TerrainPlane(currentTerrainPosition, terrainRotation.transpose());
+      const TerrainPlane currentTerrainPlane(currentTerrainPosition,
+        terrainRotation.transpose());
 
-      terrainModel = 
-        std::make_unique<PlanarTerrainModel>(terrainPlane, modelSettings.worldLinkName);
+      terrainModels.push_back(std::make_unique<PlanarTerrainModel>(currentTerrainPlane,
+        modelSettings.worldLinkName));
 
-      auto terrainModelCopy = 
-        std::make_unique<PlanarTerrainModel>(terrainPlane, modelSettings.worldLinkName);
-
-      terrainModels.push_back(std::move(terrainModelCopy));
-
-      referenceManager.updateTerrainModel(std::move(terrainModel));
-      
       if(observation.time > firstGaitTime && firstChange)
       {
         firstChange = false;
@@ -287,8 +272,6 @@ int main(int argc, char* argv[])
         disturbanceModule.updateDistrubance(observation.time, vector6_t::Zero());
       }
 
-      const auto& lastTrajectoryState = referenceManager.getTargetTrajectories().stateTrajectory.back();
-
       mpcInterface.advanceMpc();
       mpcInterface.updatePolicy();
 
@@ -301,6 +284,8 @@ int main(int argc, char* argv[])
       mpcInterface.evaluatePolicy(observation.time, observation.state, tmp,
         observation.input, observation.mode);
 
+      // Contact mode at current time for visualization
+      observations.back().mode = observation.mode;
       
       observation.input = LinearInterpolation::interpolate(
         observation.time, mpcInterface.getPolicy().timeTrajectory_,
@@ -346,9 +331,6 @@ int main(int argc, char* argv[])
       observation.time = finalTime;
       observation.state = stateTrajectory.back();
       observation.input = inputTrajectory.back();
-
-      const auto targetState = referenceManager.getTargetTrajectories().getDesiredState(finalTime);
-      const auto targetInput = referenceManager.getTargetTrajectories().getDesiredInput(finalTime);
     } 
     catch (std::exception& e) 
     {
@@ -356,6 +338,12 @@ int main(int argc, char* argv[])
       std::cout << e.what() << "\n";
       break;
     }
+  }
+  
+  if(observations.size() < 2)
+  {
+    std::cerr << "Not enough MPC data to visualize!" << std::endl;
+    return 1;
   }
   
   rclcpp::init(argc, argv);
@@ -368,11 +356,11 @@ int main(int argc, char* argv[])
   const auto leggedVisualizer = std::make_shared<LeggedVisualizer>(visualizerSettings, 
     modelSettings, modelInfo, robotModel, forwardKinematics, torqueApproximator);
 
-  while(true)
+  while(rclcpp::ok())
   {
     scalar_t visualizationTime = initTime;
     size_t visualizationIndex = 0;
-    while(visualizationTime < observations.back().time)
+    while(rclcpp::ok() && visualizationTime < observations.back().time)
     {
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);

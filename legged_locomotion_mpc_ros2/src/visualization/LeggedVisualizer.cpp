@@ -104,9 +104,10 @@ namespace legged_locomotion_mpc_ros2
     currentStatePublisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       currentStateTopic, 1);
     
+    // Latched, terrain can be published rarely and still reach late subscribers
     const std::string gridMapTopic = topicPrefix + "elevation";
     gridMapPublisher_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
-      gridMapTopic, 1);
+      gridMapTopic, rclcpp::QoS(1).transient_local());
   }
 
   /******************************************************************************************************/
@@ -118,7 +119,8 @@ namespace legged_locomotion_mpc_ros2
     const auto& state = currentObservation.state;
     const auto& input = currentObservation.input;
 
-    const auto currentFlags = locomotion::contactFlags2ModeNumber(currentObservation.mode);
+    const contact_flags_t currentFlags = locomotion::modeNumber2ContactFlags(
+      currentObservation.mode);
 
     if(state.size() != modelInfo_.stateDim || input.size() != modelInfo_.inputDim)
     {
@@ -174,8 +176,8 @@ namespace legged_locomotion_mpc_ros2
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void LeggedVisualizer::publishTargetTrajectory(const rclcpp::Time& timeStamp, 
-    const TargetTrajectories targetTrajectory)
+  void LeggedVisualizer::publishTargetTrajectory(const rclcpp::Time& timeStamp,
+    const TargetTrajectories& targetTrajectory)
   {
     const auto& timeTrajectory = targetTrajectory.timeTrajectory;
     const auto& stateTrajectory = targetTrajectory.stateTrajectory;
@@ -251,11 +253,13 @@ namespace legged_locomotion_mpc_ros2
     // Publish
     desiredBasePositionPublisher_->publish(basePathMessage);
 
+    const size_t colorMapSize = visualizationSettings_.endEffectorColorMap.size();
+
     for(size_t j = 0; j < endEffectorNumber; ++j) 
     {
       auto endEffectorPathMessage = getLineMsg(
         std::move(desiredEndEffectorPositionMessages[j]),
-        visualizationSettings_.endEffectorColorMap[j % endEffectorNumber], 
+        visualizationSettings_.endEffectorColorMap[j % colorMapSize],
         visualizationSettings_.trajectoryLineWidth);
       endEffectorPathMessage.header = headerMessage;
       endEffectorPathMessage.id = 0;
@@ -345,11 +349,13 @@ namespace legged_locomotion_mpc_ros2
     // Publish
     optimizedBasePositionPublisher_->publish(basePathMessage);
 
+    const size_t colorMapSize = visualizationSettings_.endEffectorColorMap.size();
+
     for(size_t j = 0; j < endEffectorNumber; ++j) 
     {
       auto endEffectorPathMessage = getLineMsg(
         std::move(optimizedEndEffectorPositionMessages[j]),
-        visualizationSettings_.endEffectorColorMap[j % endEffectorNumber], 
+        visualizationSettings_.endEffectorColorMap[j % colorMapSize],
         visualizationSettings_.trajectoryLineWidth);
       endEffectorPathMessage.header = headerMessage;
       endEffectorPathMessage.id = 0;

@@ -20,6 +20,10 @@
 #ifndef __LEGGED_MPC_CONTROLLER_LEGGED_LOCOMOTION_MPC_ROS2__
 #define __LEGGED_MPC_CONTROLLER_LEGGED_LOCOMOTION_MPC_ROS2__
 
+#include <atomic>
+#include <mutex>
+#include <thread>
+
 #include <ocs2_core/Types.h>
 #include <ocs2_core/reference/ModeSchedule.h>
 #include <ocs2_core/reference/TargetTrajectories.h>
@@ -66,6 +70,8 @@ namespace legged_locomotion_mpc_ros2
 
       LeggedLocomotionMpcControllerNode();
 
+      ~LeggedLocomotionMpcControllerNode() override;
+
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
         on_configure(const rclcpp_lifecycle::State& state) override;
 
@@ -94,50 +100,71 @@ namespace legged_locomotion_mpc_ros2
 
       void sendJointTrajectory();
 
+      void setTrajectoryPoint(size_t pointIndex, const ocs2::vector_t& state,
+        const ocs2::vector_t& input);
+
+      bool waitForInitialState();
+
       void setupMpc();
 
       void runMpc();
       
+      void stopMpcThread();
+
       void updateCurrentObservation();
+
+      void updateBaseTransform();
+
+      void updateBaseTwist();
+
+      void updateJointStates();
+
+      void updateContacts();
+
+      bool isStateFresh(const rclcpp::Time& currentTime) const;
 
       // Helper data
       ModelSettings modelSettings_;
       floating_base_model::FloatingBaseModelInfo modelInfo_;
+      ocs2::scalar_t minimumSteppingFrequency_ = 0.0;
 
-      size_t endEffectorNum_;
+      size_t endEffectorNum_ = 0;
       std::vector<std::string> jointNames_;
       std::unordered_map<std::string, size_t> jointNameIndexMap_;
       std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       
       // Data from observation
-      vector6_t baseTransformEstimation_;
-      vector6_t baseTwistEstimation_;
-      ocs2::vector_t jointPositionEstimation_;
-      ocs2::vector_t jointVelocityEstimation_;
       contact_flags_t contactFlags_;
+      bool newContactFlags_ = false;
+
+      // Terrain for next MPC setup, guarded by terrainMutex_
       std::unique_ptr<terrain_model::TerrainModel> terrainModelPtr_;
       
       // Interface and other helper objects
       std::unique_ptr<LeggedInterface> leggedInterfacePtr_;
-      LeggedReferenceManager* referenceManagerPtr_;
+      LeggedReferenceManager* referenceManagerPtr_ = nullptr;
       
       // MPC and MRT
       std::unique_ptr<ocs2::MPC_BASE> mpcPtr_;
       std::unique_ptr<ocs2::MPC_MRT_Interface> mpcMrtPtr_;
 
-      // Rollout for getting future optimal trajectory
-      std::unique_ptr<ocs2::RolloutBase> rolloutPtr_;
-
       // MPC thread
       std::thread mpcThread_;
-      std::atomic_bool controllerRunning_;
+      std::atomic_bool controllerRunning_{false};
+
+      // Set by MPC thread on error, deactivation is done by MRT timer
+      std::atomic_bool mpcFailed_{false};
 
       // MPC loop duration (1 / mpcFreuency)
       rclcpp::Duration mpcDuration_ = rclcpp::Duration(0, 0);
 
       // Timer for MRT
-      ocs2::scalar_t mrtDurationSeconds_;
+      ocs2::scalar_t mrtDurationSeconds_ = 0.0;
       rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
+
+      // Terrain processing is slow, separate group so it does not block MRT timer
+      rclcpp::CallbackGroup::SharedPtr terrainCallbackGroup_;
+      std::mutex terrainMutex_;
 
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
@@ -156,16 +183,28 @@ namespace legged_locomotion_mpc_ros2
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
         trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
-      // Last time robot state messages was recived
+      // Preallocated in on_configure, only point values change in MRT loop
+      trajectory_msgs::msg::JointTrajectory jointTrajectory_;
+
+      // Stamps of last robot state messages
       rclcpp::Time lastJointStateTime_;
       rclcpp::Time lastBaseTransformTime_;
       rclcpp::Time lastBaseTwistTime_;
-      rclcpp::Time lastContactFlagsTime_;
+
+      // Robot state messages received since activation started
+      bool jointStateReceived_ = false;
+      bool baseTransformReceived_ = false;
+      bool baseTwistReceived_ = false;
 
       ocs2::SystemObservation currentObservation_;
       
-      // Maximum duration between robot state messages
-      rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);
+      // Maximum age of robot state messages
+      rclcpp::Duration stateTimeout_ = rclcpp::Duration(0, 0);
+
+      // Maximum duration between base velocity commands
+      rclcpp::Duration velocityTimeout_ = rclcpp::Duration(0, 0);
+      rclcpp::Time lastCommandTime_;
+      bool commandActive_ = false;
       
       // Benchmark timers
       ocs2::benchmark::RepeatedTimer mpcBenchmarkTimer_;

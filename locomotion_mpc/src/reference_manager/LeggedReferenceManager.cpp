@@ -87,7 +87,8 @@ namespace legged_locomotion_mpc
     {
       newTrajectories_ = std::async(std::launch::async, [this, initTime, finalTime]()
       {return generateNewTargetTrajectories(initTime, finalTime);});
-      newTrajectories_.wait();
+      // Rethrows exception from reference generation, same as in not threaded mode
+      newTrajectories_.get();
     }
     else
     {
@@ -195,9 +196,16 @@ namespace legged_locomotion_mpc
   {
     if(settings_.threaded)
     {
-      if(newTrajectories_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+      // Future is not valid after its result was taken (also when generation threw)
+      if(newTrajectories_.valid())
       {
-        return;
+        if(newTrajectories_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        {
+          return;
+        }
+
+        // Rethrows exception from reference generation, so it is not silently lost
+        newTrajectories_.get();
       }
 
       ReferenceManager::preSolverRun(initTime, finalTime, initState);
@@ -368,7 +376,7 @@ namespace legged_locomotion_mpc
 
   LeggedReferenceManager::~LeggedReferenceManager()
   {
-    if(settings_.threaded) newTrajectories_.wait();
+    if(settings_.threaded && newTrajectories_.valid()) newTrajectories_.wait();
   }
 
   LeggedReferenceManager::Settings loadLeggedReferenceManagerSettings(

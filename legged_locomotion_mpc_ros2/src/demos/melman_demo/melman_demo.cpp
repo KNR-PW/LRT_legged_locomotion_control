@@ -73,6 +73,8 @@ int main(int argc, char* argv[])
 
   LeggedInterface& leggedInterface = loopShapingInterface.getLeggedInterface();
 
+  const auto loopshapeDefinition = *loopShapingInterface.getLoopshapingDefinition();
+
   auto& referenceManager = leggedInterface.getLeggedReferenceManager();
 
   /* STANDING TROT */
@@ -104,7 +106,7 @@ int main(int argc, char* argv[])
 
   const scalar_t firstMoveTime = 2.0;
   const scalar_t secondMoveTime = 20.0;
-  const scalar_t endTime = 15.0;
+  const scalar_t endTime = 25.0;
 
   // DDP
 
@@ -117,8 +119,6 @@ int main(int argc, char* argv[])
 
   auto& rollout = loopShapingInterface.getRollout();
 
-  auto& weightCompenator = leggedInterface.weightCompensator();
-
   // std::unique_ptr<MPC_BASE> mpcPtr = std::make_unique<GaussNewtonDDP_MPC>(mpcSettings, 
   //   ddpSettings, rollout, optimalProblem, initializer);
 
@@ -126,13 +126,11 @@ int main(int argc, char* argv[])
     optimalProblem, initializer);
 
   mpcPtr->getSolverPtr()->setReferenceManager(loopShapingInterface.getReferenceManagerPtr());
+  mpcPtr->getSolverPtr()->addSynchronizedModule(loopShapingInterface.getSynchronizedModules());
 
   std::unique_ptr<RolloutBase> rolloutPtr(rollout.clone());
 
   MPC_MRT_Interface mpcInterface(*mpcPtr);
-
-  const size_t standingMode = ((0x01 << (NUM_SIX_DOF_CONTACTS)) - 1);
-  const contact_flags_t standingFlags(standingMode);
 
   /// ====== Execute the scenario ========
   SystemObservation observation;
@@ -160,7 +158,6 @@ int main(int argc, char* argv[])
   std::vector<PerformanceIndex> performances;
 
   std::vector<ocs2::SystemObservation> observations;
-  std::vector<contact_flags_t> contactFlags;
 
   std::vector<ocs2::scalar_array_t> optimizedTimeTrajectories;
   std::vector<ocs2::vector_array_t> optimizedStateTrajectories;
@@ -168,11 +165,18 @@ int main(int argc, char* argv[])
   while(observation.time < endTime) 
   {
     std::cout << "Time: " << observation.time << "\n";
-    observations.push_back(observation);
     try 
     {
       // run MPC at current observation
       mpcInterface.setCurrentObservation(observation);
+
+      // Visualizer uses system state and input (without loopshaping filter)
+      SystemObservation systemObservation;
+      systemObservation.time = observation.time;
+      systemObservation.state = observation.state.head(STATE_DIM);
+      systemObservation.input = loopshapeDefinition.getSystemInput(observation.state, observation.input);
+
+      observations.push_back(systemObservation);
      
       if(observation.time > firstGaitTime && firstChange)
       {
@@ -190,8 +194,6 @@ int main(int argc, char* argv[])
         referenceManager.updateCommand(secondCommand);
       }
 
-      const auto& lastTrajectoryState = referenceManager.getTargetTrajectories().stateTrajectory.back();
-
       mpcInterface.advanceMpc();
       mpcInterface.updatePolicy();
 
@@ -202,13 +204,22 @@ int main(int argc, char* argv[])
       mpcInterface.evaluatePolicy(observation.time, observation.state, tmp,
         observation.input, observation.mode);
 
+      // Contact mode at current time for visualization
+      observations.back().mode = observation.mode;
       
       observation.input = LinearInterpolation::interpolate(
         observation.time, mpcInterface.getPolicy().timeTrajectory_,
         mpcInterface.getPolicy().inputTrajectory_);
 
       optimizedTimeTrajectories.push_back(mpcInterface.getPolicy().timeTrajectory_);
-      optimizedStateTrajectories.push_back(mpcInterface.getPolicy().stateTrajectory_);
+
+      vector_array_t systemStateTrajectory;
+      systemStateTrajectory.reserve(mpcInterface.getPolicy().stateTrajectory_.size());
+      for(const auto& state: mpcInterface.getPolicy().stateTrajectory_)
+      {
+        systemStateTrajectory.push_back(state.head(STATE_DIM));
+      }
+      optimizedStateTrajectories.push_back(systemStateTrajectory);
 
       optimalTrajectory.timeTrajectory.push_back(observation.time);
       optimalTrajectory.stateTrajectory.push_back(observation.state);
@@ -239,9 +250,6 @@ int main(int argc, char* argv[])
       observation.time = finalTime;
       observation.state = stateTrajectory.back();
       observation.input = inputTrajectory.back();
-
-      const auto targetState = referenceManager.getTargetTrajectories().getDesiredState(finalTime);
-      const auto targetInput = referenceManager.getTargetTrajectories().getDesiredInput(finalTime);
     } 
     catch (std::exception& e) 
     {
@@ -249,6 +257,12 @@ int main(int argc, char* argv[])
       std::cout << e.what() << "\n";
       break;
     }
+  }
+
+  if(observations.size() < 2)
+  {
+    std::cerr << "Not enough MPC data to visualize!" << std::endl;
+    return 1;
   }
 
   rclcpp::init(argc, argv);
@@ -262,11 +276,11 @@ int main(int argc, char* argv[])
   const auto leggedVisualizer = std::make_shared<LeggedVisualizer>(visualizerSettings, 
     modelSettings, modelInfo, robotModel, forwardKinematics, torqueApproximator);
 
-  while(true)
+  while(rclcpp::ok())
   {
     scalar_t visualizationTime = initTime;
     size_t visualizationIndex = 0;
-    while(visualizationTime < observations.back().time)
+    while(rclcpp::ok() && visualizationTime < observations.back().time)
     {
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);

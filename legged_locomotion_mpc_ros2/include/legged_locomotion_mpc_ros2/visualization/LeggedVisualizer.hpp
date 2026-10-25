@@ -101,8 +101,8 @@ namespace legged_locomotion_mpc_ros2
       void publishObservation(const rclcpp::Time& timeStamp, 
         const ocs2::SystemObservation& currentObservation);
 
-      void publishTargetTrajectory(const rclcpp::Time& timeStamp, 
-        const ocs2::TargetTrajectories targetTrajectory);
+      void publishTargetTrajectory(const rclcpp::Time& timeStamp,
+        const ocs2::TargetTrajectories& targetTrajectory);
 
       void publishOptimizedTrajectory(const rclcpp::Time& timeStamp, 
         const ocs2::scalar_array_t& optimizedTimeTrajectory,
