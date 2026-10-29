@@ -16,10 +16,10 @@ namespace terrain_model
 {
 
   /**
-   * Terrain defined as plane with x-y bundy points
+   * Terrain defined as plane with x-y boundary points
    * - The terrain frame is located at positionInWorld.
    * - The surface normal points in positive z direction in the terrain frame.
-   * - Boundry points are defined in the terrain frame
+   * - Boundary points are defined in the terrain frame
    */
   class ConvexTerrain
   {
@@ -36,28 +36,28 @@ namespace terrain_model
       ConvexTerrain(TerrainPlane plane, std::vector<vector2_t> boundary); 
 
       /**
-       * Get terrain plain
+       * Get terrain plane
        */
       const TerrainPlane& getTerrainPlane() const;  
 
       /**
-       * Get terrain boundy points
+       * Get terrain boundary points
        */
-      const std::vector<vector2_t>& getBoundryPoints() const; 
+      const std::vector<vector2_t>& getBoundaryPoints() const; 
 
       /**
-       * Get boundry point with given input index (wrap around safe)
+       * Get boundary point with given input index (wrap around safe)
        * @param [in] currentPointIndex: index of queried point
        * @return Queried point
        */
-      const vector2_t& getBoundryPoint(size_t currentPointIndex) const; 
+      const vector2_t& getBoundaryPoint(size_t currentPointIndex) const; 
 
       /**
-       * Get next boundry point with given input index (wrap around safe)
+       * Get next boundary point with given input index (wrap around safe)
        * @param [in] currentPointIndex: index of queried point
        * @return Queried point next after queried index
        */
-      const vector2_t& getNextBoundryPoint(size_t currentPointIndex) const; 
+      const vector2_t& getNextBoundaryPoint(size_t currentPointIndex) const; 
 
       /**
        * Projects a 2D point into boundary of a 2D convex polygon.

@@ -43,6 +43,16 @@ namespace terrain_model
     const vector2_t& positionXYInWorld);
 
   /**
+   * Same as above, but with ground layer data given directly (no layer lookup by name)
+   * @param [in] gridMap: grid map, used for its geometry
+   * @param [in] groundData: data of the ground layer of gridMap
+   * @param [in] positionXYInWorld: 2D query position in world frame
+   * @return ground height in world frame, 0.0 if ground layer value is not finite
+   */
+  ocs2::scalar_t getGroundHeightAtClosestCell(const grid_map::GridMap& gridMap,
+    const grid_map::Matrix& groundData, const vector2_t& positionXYInWorld);
+
+  /**
    * Clip line between two points to the part that is inside of the grid map
    * @param [in] gridMap: grid map
    * @param [in] start: 2D start of the line in world frame

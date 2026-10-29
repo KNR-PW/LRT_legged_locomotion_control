@@ -22,12 +22,12 @@ TEST(TestPlanarFactoryFunctions, positionAndRotation)
   
     const scalar_t height = ((double) std::rand()) / RAND_MAX;
 
-    const vector3_t truePositon = position - height * surfaceNormal;
+    const vector3_t truePosition = position - height * surfaceNormal;
 
     const TerrainPlane newPlane = computeTerrainPlane(position, 
       eulerXYZ, height);
   
-    EXPECT_TRUE(newPlane.getPosition() == truePositon);
+    EXPECT_TRUE(newPlane.getPosition() == truePosition);
     EXPECT_TRUE(newPlane.getOrientationToTerrain() == truePlane.getOrientationToTerrain());
   }
 }

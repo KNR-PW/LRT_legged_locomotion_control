@@ -53,7 +53,7 @@ namespace terrain_model
 
       const SignedDistanceField* getSignedDistanceField() const override;
 
-      vector3_t getSmoothedPositon(const vector2_t& positionXYInWorld) const override;
+      vector3_t getSmoothedPosition(const vector2_t& positionXYInWorld) const override;
 
       const grid_map::GridMap& getGridMapTerrain() const override;
 

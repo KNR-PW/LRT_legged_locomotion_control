@@ -36,7 +36,7 @@ namespace terrain_model
    * @param [in] elevationLayerName: name of the elevation layer
    * @return planar terrain (planar regions and processed grid map)
    */
-  convex_plane_decomposition::PlanarTerrain computePlanrTerrain(
+  convex_plane_decomposition::PlanarTerrain computePlanarTerrain(
     grid_map::GridMap&& gridMap,
     const convex_plane_decomposition::PlaneDecompositionPipeline::Config& pipelineConfig,
     const std::string& elevationLayerName = terrain_model::elevationLayerName);

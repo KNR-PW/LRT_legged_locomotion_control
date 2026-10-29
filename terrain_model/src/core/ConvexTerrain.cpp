@@ -27,7 +27,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const std::vector<vector2_t>& ConvexTerrain::getBoundryPoints() const
+	const std::vector<vector2_t>& ConvexTerrain::getBoundaryPoints() const
   {
     return boundary_;
   }
@@ -35,7 +35,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const vector2_t& ConvexTerrain::getBoundryPoint(size_t currentPointIndex) const
+	const vector2_t& ConvexTerrain::getBoundaryPoint(size_t currentPointIndex) const
   {
   	return boundary_[currentPointIndex % boundary_.size()]; // wrap around
   }
@@ -43,7 +43,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const vector2_t& ConvexTerrain::getNextBoundryPoint(size_t currentPointIndex) const
+	const vector2_t& ConvexTerrain::getNextBoundaryPoint(size_t currentPointIndex) const
   {
   	return boundary_[(currentPointIndex + 1) % boundary_.size()]; // next point with wrap around
   }
@@ -71,8 +71,8 @@ namespace terrain_model
     bool hasPointOnRightSide = false;
     for (size_t i = 0; i < boundary_.size(); i++)
     {
-        const auto& p1 = getBoundryPoint(i);
-        const auto& p2 = getNextBoundryPoint(i);
+        const auto& p1 = getBoundaryPoint(i);
+        const auto& p2 = getNextBoundaryPoint(i);
         const vector2_t p12 = p2 - p1;
         const vector2_t p1Query = queryPoint - p1;
         const scalar_t edgeSquaredNorm = p12.squaredNorm();

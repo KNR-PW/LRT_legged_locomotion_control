@@ -69,7 +69,7 @@ namespace terrain_model
        * Return vector with the same X and Y values but new "smoothed" height 
        * value in world frame.
        */
-      virtual vector3_t getSmoothedPositon(const vector2_t& positionXYInWorld) const = 0;
+      virtual vector3_t getSmoothedPosition(const vector2_t& positionXYInWorld) const = 0;
         
       /**
        * Get const reference of GridMap representation of terrain model.

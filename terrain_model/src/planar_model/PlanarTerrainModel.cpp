@@ -107,10 +107,10 @@ namespace terrain_model
     penaltyFunction) const
   {
     // As planar terrain is safe everywhere, convex terrain will be big triangle lmao 
-    std::vector<vector2_t> boundryPoints = {{-100, -100}, {100, -100}, {0, 100}};
+    std::vector<vector2_t> boundaryPoints = {{-100, -100}, {100, -100}, {0, 100}};
     const vector3_t positionOnTerrain = terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(positionInWorld);
     TerrainPlane newPlane(positionOnTerrain, terrainPlane_.getOrientationToTerrain());
-    return ConvexTerrain(newPlane, boundryPoints);
+    return ConvexTerrain(newPlane, boundaryPoints);
   }
 
   /******************************************************************************************************/
@@ -129,7 +129,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  vector3_t PlanarTerrainModel::getSmoothedPositon(const vector2_t& positionXYInWorld) const
+  vector3_t PlanarTerrainModel::getSmoothedPosition(const vector2_t& positionXYInWorld) const
   {
     return terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(positionXYInWorld);
   }

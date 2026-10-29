@@ -3,7 +3,7 @@
 
 #include <stdexcept>
 
-#include <Eigen/QR>
+#include <Eigen/LU>
 
 #include <ocs2_robotic_tools/common/RotationTransforms.h>
 
@@ -78,21 +78,31 @@ namespace terrain_model
     }
     else
     {
-      ocs2::matrix_t A = ocs2::matrix_t::Ones(pointNum, 3);
-      ocs2::vector_t b(pointNum);
-
-      for(size_t i = 0; i < pointNum; ++i)
+      for(const auto& position: positions)
       {
-        A.block<1, 2>(i, 0) = positions[i].block<2, 1>(0, 0).transpose();
-        b(i) = positions[i].z();
+        meanPosition += position;
       }
-      // Least squares fit of z = a * x + b * y + c
-      const Eigen::ColPivHouseholderQR<ocs2::matrix_t> leastSquares(A);
-      if(leastSquares.rank() < 3)
+      meanPosition /= pointNum;
+
+      // Least squares fit of z = a * x + b * y + c, in coordinates centered at the mean position
+      // it is a fixed size 2x2 problem for slopes a and b, the fitted plane goes through the mean
+      Eigen::Matrix<scalar_t, 2, 2> covarianceXY = Eigen::Matrix<scalar_t, 2, 2>::Zero();
+      vector2_t covarianceXYZ = vector2_t::Zero();
+      for(const auto& position: positions)
+      {
+        const vector3_t centeredPosition = position - meanPosition;
+        covarianceXY.noalias() += centeredPosition.head<2>() * centeredPosition.head<2>().transpose();
+        covarianceXYZ += centeredPosition.head<2>() * centeredPosition.z();
+      }
+
+      const scalar_t traceXY = covarianceXY.trace();
+      if(!(covarianceXY.determinant() > tolerance * traceXY * traceXY))
       {
         throw std::invalid_argument("Points for creating plane can not be collinear in XY plane");
       }
-      const vector3_t result = leastSquares.solve(b);
+      const vector2_t slopes = covarianceXY.inverse() * covarianceXYZ;
+      const vector3_t result{slopes.x(), slopes.y(),
+        meanPosition.z() - slopes.dot(meanPosition.head<2>())};
       vector3_t normalToPlane{-result.x(), -result.y(), 1};
 
       normalToPlane.normalize();
@@ -118,12 +128,6 @@ namespace terrain_model
       rotationMatrix.col(0) = vectorOnPlane;
       rotationMatrix.col(1) = normalToPlane.cross(vectorOnPlane);
       rotationMatrix.col(2) = normalToPlane;
-
-      for(const auto& position: positions)
-      {
-        meanPosition += position;
-      }
-      meanPosition /= positions.size();
     }
     return TerrainPlane(meanPosition, rotationMatrix.transpose());
   }

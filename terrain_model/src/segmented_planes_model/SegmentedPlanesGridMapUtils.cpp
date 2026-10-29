@@ -15,13 +15,26 @@ namespace terrain_model
   scalar_t getGroundHeightAtClosestCell(const grid_map::GridMap& gridMap,
     const vector2_t& positionXYInWorld)
   {
+    return getGroundHeightAtClosestCell(gridMap, gridMap.get(groundLayerName), positionXYInWorld);
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  scalar_t getGroundHeightAtClosestCell(const grid_map::GridMap& gridMap,
+    const grid_map::Matrix& groundData, const vector2_t& positionXYInWorld)
+  {
     // Half of the cell margin keeps clamped position inside of the edge cell
     const grid_map::Position clampedPosition = grid_map::lookup::projectToMapWithMargin(
       gridMap, positionXYInWorld, 0.5 * gridMap.getResolution());
 
-    const scalar_t height = gridMap.atPosition(groundLayerName, clampedPosition,
-      grid_map::InterpolationMethods::INTER_NEAREST);
+    grid_map::Index index;
+    if(!gridMap.getIndex(clampedPosition, index))
+    {
+      return 0.0;
+    }
 
+    const scalar_t height = groundData(index(0), index(1));
     return std::isfinite(height) ? height : 0.0;
   }
 
