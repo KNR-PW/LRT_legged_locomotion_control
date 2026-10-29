@@ -246,8 +246,11 @@ private:
   vector3_t magnetic_field_;
   Eigen::LDLT<ocs2::matrix_t> ldlt_;
 
-  ocs2::matrix_t StateTransitionMatrix(const vector3_t& w, const vector3_t& a, ocs2::scalar_t dt);
-  ocs2::matrix_t DiscreteNoiseMatrix(const ocs2::matrix_t& Phi, ocs2::scalar_t dt);
+  ocs2::matrix_t StateTransitionMatrix(const vector3_t& w, const vector3_t& a, ocs2::scalar_t dt,
+                                       const matrix3_t& G0, const matrix3_t& G1, const matrix3_t& G2);
+  ocs2::matrix_t NoiseMatrix() const;
+  void CorrectCovariance(const ocs2::matrix_t& Z, const ocs2::matrix_t& H, const ocs2::matrix_t& N,
+                         ocs2::matrix_t& P, ocs2::vector_t& delta);
 
   // Corrects state using invariant observation models
   void CorrectRightInvariant(const Observation& obs);

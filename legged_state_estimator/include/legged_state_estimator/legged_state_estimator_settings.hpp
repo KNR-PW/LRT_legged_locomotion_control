@@ -55,13 +55,16 @@ namespace legged_state_estimator
       ///
       std::string world_frame;
 
-      /// 
-      /// @brief Name of the base frame specified in the URDF file.
+      ///
+      /// @brief Name of the base frame specified in the URDF file. Estimates are
+      /// given for this frame. It must be connected to the URDF root link only by
+      /// fixed joints. If empty, the URDF root link is used.
       ///
       std::string base_frame;
 
-      /// 
-      /// @brief Name of the IMU frame specified in the URDF file.
+      ///
+      /// @brief Name of the IMU frame specified in the URDF file. It must be
+      /// connected to the base frame only by fixed joints.
       ///
       std::string imu_frame;
 
@@ -73,7 +76,7 @@ namespace legged_state_estimator
       ///
       /// @brief Flag if contact estimator is used, or contact flags are given by external system
       ///
-      bool use_contact_estimator;
+      bool use_contact_estimator = false;
 
       /// 
       /// @brief Contact estimator settings. 
@@ -91,53 +94,60 @@ namespace legged_state_estimator
       ///
       bool dynamic_contact_estimation = false;
 
-      /// 
-      /// @brief Noise (covariance) on contact position. (Possibly is not used in 
-      /// InEKF. Contact covariance in noise_params are more important).
       ///
-      ocs2::scalar_t contact_position_noise;
+      /// @brief Noise (standard deviation) on contact position measured by leg
+      /// kinematics. Its square is added to the contact force covariance from
+      /// the contact estimator.
+      ///
+      ocs2::scalar_t contact_position_noise = 0.0;
 
-      /// 
-      /// @brief Noise (covariance) on contact rotation. Only used with surface 
+      ///
+      /// @brief Noise (standard deviation) on contact rotation. Only used with surface
       /// contacts.
       ///
-      ocs2::scalar_t contact_rotation_noise;
+      ocs2::scalar_t contact_rotation_noise = 0.0;
 
-      /// 
-      /// @brief Time step of estimation. 
       ///
-      ocs2::scalar_t sampling_time;
-
-      /// 
-      /// @brief Cutoff frequency of LPF for gyro sensor. 
+      /// @brief Time step of estimation. Must be positive (zero default is
+      /// rejected by the estimator).
       ///
-      ocs2::scalar_t lpf_gyro_cutoff_frequency;
+      ocs2::scalar_t sampling_time = 0.0;
 
-      /// 
+      ///
+      /// @brief Cutoff frequency of LPF for gyro sensor.
+      ///
+      ocs2::scalar_t lpf_gyro_cutoff_frequency = 0.0;
+
+      ///
       /// @brief Cutoff frequency of LPF for gyro acceleration that is computed by
-      /// finite difference approximation. 
+      /// finite difference approximation. Must be positive (zero default is
+      /// rejected by the filter).
       ///
-      ocs2::scalar_t lpf_gyro_accel_cutoff_frequency;
+      ocs2::scalar_t lpf_gyro_accel_cutoff_frequency = 0.0;
 
-      /// 
-      /// @brief Cutoff frequency of LPF for linear acceleration measurement from IMU. 
       ///
-      ocs2::scalar_t lpf_lin_accel_cutoff_frequency;
+      /// @brief Cutoff frequency of LPF for linear acceleration measurement from IMU.
+      /// Must be positive (zero default is rejected by the filter).
+      ///
+      ocs2::scalar_t lpf_lin_accel_cutoff_frequency = 0.0;
 
-      /// 
-      /// @brief Cutoff frequency of LPF for joint velocities. 
       ///
-      ocs2::scalar_t lpf_dqJ_cutoff_frequency;
+      /// @brief Cutoff frequency of LPF for joint velocities. Must be positive
+      /// (zero default is rejected by the filter).
+      ///
+      ocs2::scalar_t lpf_dqJ_cutoff_frequency = 0.0;
 
-      /// 
-      /// @brief Cutoff frequency of LPF for joint accelerations. 
       ///
-      ocs2::scalar_t lpf_ddqJ_cutoff_frequency;
+      /// @brief Cutoff frequency of LPF for joint accelerations. Must be positive
+      /// (zero default is rejected by the filter).
+      ///
+      ocs2::scalar_t lpf_ddqJ_cutoff_frequency = 0.0;
 
-      /// 
-      /// @brief Cutoff frequency of LPF for joint torques. 
       ///
-      ocs2::scalar_t lpf_tauJ_cutoff_frequency;
+      /// @brief Cutoff frequency of LPF for joint torques. Must be positive
+      /// (zero default is rejected by the filter).
+      ///
+      ocs2::scalar_t lpf_tauJ_cutoff_frequency = 0.0;
   };
 
   /**

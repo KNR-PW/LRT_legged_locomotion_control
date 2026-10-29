@@ -22,28 +22,38 @@ namespace legged_state_estimator
       contact_state_(),
       num_contacts_(robot_model.numContacts()) 
   {
-    if(settings.beta0.size() > MAX_LEG_NUMBER) 
+    if(settings.beta0.size() != num_contacts_)
     {
       throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta0.size() must be smaller than " + MAX_LEG_NUMBER);
+        "[ContactEstimator] invalid argment: settings.beta0.size() is " + std::to_string(settings.beta0.size())
+        + ", but must be equal to number of contacts: " + std::to_string(num_contacts_));
     }
 
-    if(settings.beta0.size() < 2) 
+    if(settings.beta1.size() != num_contacts_)
     {
       throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta0.size() must be greater than 1");
+        "[ContactEstimator] invalid argment: settings.beta1.size() is " + std::to_string(settings.beta1.size())
+        + ", but must be equal to number of contacts: " + std::to_string(num_contacts_));
     }
 
-    if(settings.beta1.size() > MAX_LEG_NUMBER) 
+    // Contact force estimation assumes that contact i is moved only by joints 3*i, 3*i+1, 3*i+2
+    for(int  i = 0;  i < num_contacts_; ++i)
     {
-      throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta1.size() must be smaller than " + MAX_LEG_NUMBER);
-    }
-
-    if(settings.beta1.size() < 2) 
-    {
-      throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta1.size() must be greater than 1");
+      const std::vector<int> joint_indices = robot_model.getContactJointVelocityIndices(i);
+      const std::vector<int> expected_indices{6 + 3 * i, 6 + 3 * i + 1, 6 + 3 * i + 2};
+      if(joint_indices != expected_indices)
+      {
+        std::string actual_indices;
+        for(const int index : joint_indices)
+        {
+          actual_indices += " " + std::to_string(index - 6);
+        }
+        throw std::invalid_argument(
+          "[ContactEstimator] invalid robot model: contact " + std::to_string(i)
+          + " must be moved by exactly joints " + std::to_string(3 * i) + " " + std::to_string(3 * i + 1)
+          + " " + std::to_string(3 * i + 2) + ", but is moved by joints" + actual_indices
+          + ". Check that the order of contact frames matches the order of legs in the URDF.");
+      }
     }
 
     if(settings.contact_probability_threshold <= 0) 

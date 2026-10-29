@@ -63,15 +63,29 @@ namespace legged_state_estimator
         const std::vector<int>& contact_frames);
 
       ///
-      /// @brief Constructs a robot model. Builds the Pinocchio robot model and data 
-      /// from URDF. 
+      /// @brief Constructs a robot model. Builds the Pinocchio robot model and data
+      /// from URDF. Base frame is the URDF root link.
       /// @param[in] urdf_path Path to the URDF file.
       /// @param[in] imu_frames Name of the IMU frame.
-      /// @param[in] contact_frames Collection of the names of frames that can have 
-      /// contacts with the environments. 
+      /// @param[in] contact_frames Collection of the names of frames that can have
+      /// contacts with the environments.
       ///
-      RobotModel(const std::string& urdf_path, const std::string& imu_frame, 
+      RobotModel(const std::string& urdf_path, const std::string& imu_frame,
         const std::vector<std::string>& contact_frames);
+
+      ///
+      /// @brief Constructs a robot model. Builds the Pinocchio robot model and data
+      /// from URDF.
+      /// @param[in] urdf_path Path to the URDF file.
+      /// @param[in] base_frame Name of the base frame. It must be connected to
+      /// the URDF root link only by fixed joints. If empty, the URDF root link is used.
+      /// @param[in] imu_frames Name of the IMU frame. It must be connected to
+      /// the base frame only by fixed joints.
+      /// @param[in] contact_frames Collection of the names of frames that can have
+      /// contacts with the environments.
+      ///
+      RobotModel(const std::string& urdf_path, const std::string& base_frame,
+        const std::string& imu_frame, const std::vector<std::string>& contact_frames);
 
       ///
       /// @brief Constructs a robot model from the Pinocchio robot model.
@@ -84,14 +98,29 @@ namespace legged_state_estimator
         const std::vector<int>& contact_frames);
 
       ///
-      /// @brief Constructs a robot model from the Pinocchio robot model.
+      /// @brief Constructs a robot model from the Pinocchio robot model. Base
+      /// frame is the frame of the root (free-flyer) joint.
       /// @param[in] pin_model Pinocchio robot model.
       /// @param[in] imu_frames Name of the IMU frame.
-      /// @param[in] contact_frames Collection of the names of frames that can have 
-      /// contacts with the environments. 
+      /// @param[in] contact_frames Collection of the names of frames that can have
+      /// contacts with the environments.
       ///
-      RobotModel(const pinocchio::Model& pin_model, const std::string& imu_frame, 
+      RobotModel(const pinocchio::Model& pin_model, const std::string& imu_frame,
         const std::vector<std::string>& contact_frames);
+
+      ///
+      /// @brief Constructs a robot model from the Pinocchio robot model.
+      /// @param[in] pin_model Pinocchio robot model.
+      /// @param[in] base_frame Name of the base frame. It must be connected to
+      /// the root (free-flyer) joint only by fixed joints. If empty, the frame of
+      /// the root joint is used.
+      /// @param[in] imu_frames Name of the IMU frame. It must be connected to
+      /// the base frame only by fixed joints.
+      /// @param[in] contact_frames Collection of the names of frames that can have
+      /// contacts with the environments.
+      ///
+      RobotModel(const pinocchio::Model& pin_model, const std::string& base_frame,
+        const std::string& imu_frame, const std::vector<std::string>& contact_frames);
 
       ///
       /// @brief Default constructor. 
@@ -111,11 +140,14 @@ namespace legged_state_estimator
       ///
       /// @brief Updates leg kinemarics.
       /// @param[in] qJ Joint positions. Size must be RobotModel::nJ().
-      /// @param[in] rf Reference frame of the kinematics. Default is 
+      /// @param[in] rf Reference frame of the kinematics. Default is
       /// pinocchio::LOCAL_WORLD_ALIGNED.
+      /// @param[in] compute_jacobians If false, only frame placements are
+      /// updated (contact Jacobians are not). Default is true.
       ///
       void updateLegKinematics(const ocs2::vector_t& qJ,
-        const pinocchio::ReferenceFrame rf=pinocchio::LOCAL_WORLD_ALIGNED);
+        const pinocchio::ReferenceFrame rf=pinocchio::LOCAL_WORLD_ALIGNED,
+        const bool compute_jacobians=true);
 
       ///
       /// @brief Updates leg kinemarics.
@@ -132,12 +164,15 @@ namespace legged_state_estimator
       /// @param[in] base_pos Base position. 
       /// @param[in] base_quat Base orientation expressed by quaternion (x, y, z, w). 
       /// @param[in] qJ Joint positions. Size must be RobotModel::nJ().
-      /// @param[in] rf Reference frame of the kinematics. Default is 
+      /// @param[in] rf Reference frame of the kinematics. Default is
       /// pinocchio::LOCAL_WORLD_ALIGNED.
+      /// @param[in] compute_jacobians If false, only frame placements are
+      /// updated (contact Jacobians are not). Default is true.
       ///
-      void updateKinematics(const vector3_t& base_pos, 
-        const vector4_t& base_quat, const ocs2::vector_t& qJ, 
-        const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED);
+      void updateKinematics(const vector3_t& base_pos,
+        const vector4_t& base_quat, const ocs2::vector_t& qJ,
+        const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED,
+        const bool compute_jacobians = true);
 
       ///
       /// @brief Updates kinemarics.
@@ -159,11 +194,14 @@ namespace legged_state_estimator
         const pinocchio::ReferenceFrame rf = pinocchio::LOCAL_WORLD_ALIGNED);
 
       ///
-      /// @brief Updates leg dynamics.
+      /// @brief Updates leg dynamics (base at rest).
       /// @param[in] qJ Joint positions. Size must be RobotModel::nJ().
       /// @param[in] dqJ Joint velocities. Size must be RobotModel::nJ().
+      /// @param[in] base_quat Base orientation expressed by quaternion (x, y, z, w),
+      /// defines gravity direction relative to the base. Default is identity.
       ///
-      void updateLegDynamics(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ);
+      void updateLegDynamics(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
+        const vector4_t& base_quat = vector4_t(0, 0, 0, 1));
 
       ///
       /// @brief Updates dynamics.
@@ -188,15 +226,44 @@ namespace legged_state_estimator
         const ocs2::vector_t& dqJ, const ocs2::vector_t& ddqJ);
 
       ///
-      /// @return const reference to the base position.
+      /// @return const reference to the base frame position.
       ///
       const vector3_t& getBasePosition() const;
 
       ///
-      /// @return const reference to the base orientation expressed by a rotation 
+      /// @return const reference to the base frame orientation expressed by a rotation
       /// matrix.
       ///
       const matrix3_t& getBaseRotation() const;
+
+      ///
+      /// @return const reference to the IMU frame position.
+      ///
+      const vector3_t& getImuPosition() const;
+
+      ///
+      /// @return const reference to the IMU frame orientation expressed by a rotation
+      /// matrix.
+      ///
+      const matrix3_t& getImuRotation() const;
+
+      ///
+      /// @return const reference to the (constant) IMU frame placement expressed in
+      /// the base frame.
+      ///
+      const pinocchio::SE3& getImuPlacementInBase() const;
+
+      ///
+      /// @return const reference to the (constant) IMU frame placement expressed in
+      /// the root (free-flyer) joint frame.
+      ///
+      const pinocchio::SE3& getImuPlacementInRoot() const;
+
+      ///
+      /// @return const reference to the (constant) base frame placement expressed in
+      /// the root (free-flyer) joint frame.
+      ///
+      const pinocchio::SE3& getBasePlacementInRoot() const;
 
       ///
       /// @return const reference to the contact position. 
@@ -240,6 +307,13 @@ namespace legged_state_estimator
       const std::vector<int>& getContactFrames() const;
 
       ///
+      /// @return Indices in the generalized velocity of the joints between the
+      /// base and the contact frame (floating base joint excluded), ordered
+      /// from the base to the contact.
+      ///
+      std::vector<int> getContactJointVelocityIndices(const int contact_id) const;
+
+      ///
       /// @return Dimension of the configuration.
       ///
       int nq() const;
@@ -264,12 +338,20 @@ namespace legged_state_estimator
       static pinocchio::Model buildFloatingBaseModel(const std::string& urdf_path);
 
     private:
+      ///
+      /// @brief Sets the base frame, checks that IMU and base frames are rigidly
+      /// attached to the floating base and computes the IMU placement in the base frame.
+      ///
+      void initializeBaseFrame(const std::string& base_frame);
+
       pinocchio::Model model_;
       pinocchio::Data data_;
       ocs2::vector_t q_, v_, a_, tau_;
       std::vector<ocs2::matrix_t> jac_6d_;
       int imu_frame_;
       std::vector<int> contact_frames_;
+      int base_frame_;
+      pinocchio::SE3 imu_placement_in_base_;
 
   };
 } // namespace legged_state_estimator

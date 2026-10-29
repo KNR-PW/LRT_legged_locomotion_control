@@ -27,7 +27,7 @@ TEST(ModelSettingsTest, loader)
   EXPECT_TRUE(settings.world_frame == "world_link");
   EXPECT_TRUE(settings.base_frame == "base_link");
   EXPECT_TRUE(settings.imu_frame == "imu_link");
-  EXPECT_TRUE(settings.use_contact_estimator == false);
+  EXPECT_TRUE(settings.use_contact_estimator == true);
   EXPECT_TRUE(settings.contact_frames == true_contact_frames);
   EXPECT_TRUE(settings.contact_estimator_settings.beta0 == true_beta0);
   EXPECT_TRUE(settings.contact_estimator_settings.beta1 == true_beta1);
@@ -42,6 +42,7 @@ TEST(ModelSettingsTest, loader)
   EXPECT_TRUE(settings.contact_position_noise == 0.01);
   EXPECT_TRUE(settings.contact_rotation_noise == 0.01);
   EXPECT_TRUE(settings.sampling_time == 0.01);
+  EXPECT_TRUE(settings.lpf_gyro_cutoff_frequency       == 250);
   EXPECT_TRUE(settings.lpf_gyro_accel_cutoff_frequency == 250);
   EXPECT_TRUE(settings.lpf_lin_accel_cutoff_frequency  == 250);
   EXPECT_TRUE(settings.lpf_dqJ_cutoff_frequency        == 10);

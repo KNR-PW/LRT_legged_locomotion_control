@@ -61,7 +61,7 @@ namespace legged_state_estimator
       /// is set to Eigen::Dynamic.
       ///
       LowPassFilter(const SCALAR_T sampling_time, const SCALAR_T cutoff_frequency,
-          const int dynamic_size = 0): estimate_(), alpha_(SCALAR_T(0.0)) 
+          const int dynamic_size = 0): estimate_(), alpha_(SCALAR_T(0.0)), tau_(SCALAR_T(0.0))
       {
         if(sampling_time <= 0) 
         {
@@ -81,8 +81,8 @@ namespace legged_state_estimator
             "[LowPassFilter] invalid argment: dynamic_size must be positive");
         }
         
-        const SCALAR_T tau = SCALAR_T(1.0) / (SCALAR_T(2.0) * M_PI * cutoff_frequency);
-        alpha_ = tau / (tau + sampling_time);
+        tau_ = SCALAR_T(1.0) / (SCALAR_T(2.0) * M_PI * cutoff_frequency);
+        alpha_ = tau_ / (tau_ + sampling_time);
         if(dim == Eigen::Dynamic) 
         {
           estimate_.resize(dynamic_size);
@@ -93,7 +93,7 @@ namespace legged_state_estimator
       ///
       /// @brief Default constructor. 
       ///
-      LowPassFilter(): estimate_(), alpha_(SCALAR_T(0.0)) { }
+      LowPassFilter(): estimate_(), alpha_(SCALAR_T(0.0)), tau_(SCALAR_T(0.0)) { }
 
       ///
       /// @brief Default destructor. 
@@ -133,6 +133,18 @@ namespace legged_state_estimator
       }
 
       ///
+      /// @brief Updates the estimate using the actual time since the previous update.
+      /// @param[in] observation Observation.
+      /// @param[in] sampling_time Time since the previous update. Must be positive.
+      ///
+      void update(const Vector& observation, const SCALAR_T sampling_time)
+      {
+        const SCALAR_T alpha = tau_ / (tau_ + sampling_time);
+        estimate_.array() *= alpha;
+        estimate_.noalias() += (SCALAR_T(1.0) - alpha) * observation;
+      }
+
+      ///
       /// @brief Gets the estimate.
       /// @return const reference to the estimate.
       ///
@@ -144,6 +156,7 @@ namespace legged_state_estimator
     private:
       Vector estimate_;
       SCALAR_T alpha_;
+      SCALAR_T tau_;
   };
 } // namespace legged_state_estimator 
 
