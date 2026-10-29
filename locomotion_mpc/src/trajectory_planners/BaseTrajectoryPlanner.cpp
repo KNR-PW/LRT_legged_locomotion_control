@@ -280,10 +280,10 @@ namespace legged_locomotion_mpc
       rhOffsetGlobal += baseXYPositionInWorld;
 
       // Get position with smoothed terrain height
-      const vector3_t lfVerticalProjection = terrainModel_->getSmoothedPositon(lfOffsetGlobal);
-      const vector3_t rfVerticalProjection = terrainModel_->getSmoothedPositon(rfOffsetGlobal);
-      const vector3_t lhVerticalProjection = terrainModel_->getSmoothedPositon(lhOffsetGlobal);
-      const vector3_t rhVerticalProjection = terrainModel_->getSmoothedPositon(rhOffsetGlobal);
+      const vector3_t lfVerticalProjection = terrainModel_->getSmoothedPosition(lfOffsetGlobal);
+      const vector3_t rfVerticalProjection = terrainModel_->getSmoothedPosition(rfOffsetGlobal);
+      const vector3_t lhVerticalProjection = terrainModel_->getSmoothedPosition(lhOffsetGlobal);
+      const vector3_t rhVerticalProjection = terrainModel_->getSmoothedPosition(rhOffsetGlobal);
 
       const TerrainPlane basePlane = computeTerrainPlane({lfVerticalProjection, 
         rfVerticalProjection, lhVerticalProjection, rhVerticalProjection});

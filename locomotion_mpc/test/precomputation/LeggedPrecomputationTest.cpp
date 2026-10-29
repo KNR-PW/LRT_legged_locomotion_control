@@ -172,7 +172,7 @@ TEST(LeggedPrecomputationTest, getEndEffector)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -392,7 +392,7 @@ TEST(LeggedPrecomputationTest, getCollisionLinks)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight/ slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -613,7 +613,7 @@ TEST(LeggedPrecomputationTest, getTorque)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight/ slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -822,7 +822,7 @@ TEST(LeggedPrecomputationTest, getReference)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight/ slopyTerrain.getSurfaceNormalInWorld().z();
   

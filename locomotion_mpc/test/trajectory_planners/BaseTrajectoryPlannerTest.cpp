@@ -90,7 +90,7 @@ TEST(BaseTrajectoryPlannerTest, translationOnFlatTerrain)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -220,7 +220,7 @@ TEST(BaseTrajectoryPlannerTest, rotationOnFlatTerrain)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -350,7 +350,7 @@ TEST(BaseTrajectoryPlannerTest, translationAndrotationOnSlopyTerrain)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   

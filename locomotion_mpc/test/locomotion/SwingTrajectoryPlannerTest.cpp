@@ -153,7 +153,7 @@ TEST(SwingTrajectoryPlannerTest, standingInPlace)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -320,7 +320,7 @@ TEST(SwingTrajectoryPlannerTest, TrotInPlace)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -486,7 +486,7 @@ TEST(SwingTrajectoryPlannerTest, Troting)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   

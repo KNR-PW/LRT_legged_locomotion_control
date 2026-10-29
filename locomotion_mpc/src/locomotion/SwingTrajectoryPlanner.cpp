@@ -531,9 +531,9 @@ namespace legged_locomotion_mpc
       // Nominal foothold is equal to current foothold for end effectors in contact
       if(startsWithStancePhase(contactTimings)) 
       {
-        std::vector<vector2_t> emptyBoundry;
+        std::vector<vector2_t> emptyBoundary;
         const auto plane = lastContacts_[endEffectorIndex].second;
-        ConvexTerrain convexTerrain(plane, emptyBoundry);
+        ConvexTerrain convexTerrain(plane, emptyBoundary);
         nominalFootholdTerrain.push_back(convexTerrain);
         ++heuristicFootholdIt; // Skip this heuristic. Use lastContact directly
       }
@@ -583,10 +583,10 @@ namespace legged_locomotion_mpc
             else 
             {
               // After the horizon -> we are only interested in the position and orientation
-              std::vector<vector2_t> emptyBoundry;
+              std::vector<vector2_t> emptyBoundary;
               const auto plane = terrainModel.getLocalTerrainAtPositionInWorldAlongGravity(
                 referenceFootholdPositionInWorld);
-              ConvexTerrain convexTerrain(plane, emptyBoundry);
+              ConvexTerrain convexTerrain(plane, emptyBoundary);
               nominalFootholdTerrain.push_back(convexTerrain);
               ++heuristicFootholdIt;
             }
