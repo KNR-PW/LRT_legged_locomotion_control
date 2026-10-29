@@ -47,7 +47,8 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
 
@@ -81,6 +82,12 @@ namespace legged_locomotion_mpc_ros2
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
         on_deactivate(const rclcpp_lifecycle::State& state) override;
 
+      rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+        on_shutdown(const rclcpp_lifecycle::State& state) override;
+
+      rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+        on_error(const rclcpp_lifecycle::State& state) override;
+
     private:
 
       void updateCommand(
@@ -113,9 +120,7 @@ namespace legged_locomotion_mpc_ros2
 
       void updateCurrentObservation();
 
-      void updateBaseTransform();
-
-      void updateBaseTwist();
+      void updateOdometry();
 
       void updateJointStates();
 
@@ -168,8 +173,7 @@ namespace legged_locomotion_mpc_ros2
 
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr baseTransformSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
+      rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometrySubscriber_;
       rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
       rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr terrainSubscriber_;
       
@@ -188,18 +192,30 @@ namespace legged_locomotion_mpc_ros2
 
       // Stamps of last robot state messages
       rclcpp::Time lastJointStateTime_;
-      rclcpp::Time lastBaseTransformTime_;
-      rclcpp::Time lastBaseTwistTime_;
+      rclcpp::Time lastOdometryTime_;
 
       // Robot state messages received since activation started
       bool jointStateReceived_ = false;
-      bool baseTransformReceived_ = false;
-      bool baseTwistReceived_ = false;
+      bool odometryReceived_ = false;
+
+      // Reused by every MRT tick, take() overwrites them without new allocations
+      sensor_msgs::msg::JointState jointStateMessage_;
+      nav_msgs::msg::Odometry odometryMessage_;
+      contact_msgs::msg::Contacts contactsMessage_;
+      ocs2::vector_t jointPositionsBuffer_;
+      std::vector<bool> jointUpdatedBuffer_;
+      std::vector<bool> contactUpdatedBuffer_;
 
       ocs2::SystemObservation currentObservation_;
-      
+
+      // MPC time is relative to this ROS time, absolute ROS time in double is too coarse
+      rclcpp::Time mpcStartTime_;
+
       // Maximum age of robot state messages
       rclcpp::Duration stateTimeout_ = rclcpp::Duration(0, 0);
+
+      // Maximum age of MPC policy used by MRT [s]
+      ocs2::scalar_t policyTimeout_ = 0.0;
 
       // Maximum duration between base velocity commands
       rclcpp::Duration velocityTimeout_ = rclcpp::Duration(0, 0);
@@ -210,8 +226,9 @@ namespace legged_locomotion_mpc_ros2
       ocs2::benchmark::RepeatedTimer mpcBenchmarkTimer_;
       ocs2::benchmark::RepeatedTimer mrtBenchmarkTimer_;
 
-      // Decomposition pipeline for segmented terrain model
-      std::unique_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipelinePtr_;
+      // Decomposition pipeline for segmented terrain model, pointer guarded by terrainMutex_.
+      // Shared, so terrain callback can use it without holding terrainMutex_
+      std::shared_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipelinePtr_;
   };  
 } // namespace legged_locomotion_mpc_ros2
 

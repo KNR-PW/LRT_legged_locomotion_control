@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
   gridMap.get(terrain_model::elevationLayerName).array() -=
       gridMap.atPosition(terrain_model::elevationLayerName, {0., 0.});
 
-  auto planarTerrain = computePlanrTerrain(std::move(gridMap), perceptionConfig);
+  auto planarTerrain = computePlanarTerrain(std::move(gridMap), perceptionConfig);
 
   std::unique_ptr<TerrainModel> terrainModel =
     std::make_unique<SegmentedPlanesTerrainModel>(std::move(planarTerrain), 
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
   const vector2_t initPositionXY{0.0, 0.0};
 
   vector3_t initialBasePosition(initPositionXY.x(), initPositionXY.y(),
-    terrainModel->getSmoothedPositon(initPositionXY).z());
+    terrainModel->getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight;
 

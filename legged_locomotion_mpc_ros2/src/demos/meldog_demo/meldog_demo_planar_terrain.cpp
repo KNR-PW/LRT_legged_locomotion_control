@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
   const vector2_t initPositionXY{0.0, 0.0};
 
   vector3_t initialBasePosition(initPositionXY.x(), initPositionXY.y(),
-    terrainModel->getSmoothedPositon(initPositionXY).z());
+    terrainModel->getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / terrainPlane.getSurfaceNormalInWorld().z();
 
@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
   secondCommand.baseVerticalVelocity = 0.0;
   secondCommand.yawRate = -0.0;
 
-  vector6_t disturbance;
+  vector6_t disturbance = vector6_t::Zero();
   disturbance(0) = 10.0;
   disturbance(1) = -10.0;
   disturbance(2) = 10.0;
@@ -183,7 +183,8 @@ int main(int argc, char* argv[])
   std::vector<scalar_array_t> optimizedTimeTrajectories;
   std::vector<vector_array_t> optimizedStateTrajectories;
 
-  std::vector<std::unique_ptr<PlanarTerrainModel>> terrainModels;
+  // Only plane positions are stored, terrain models are made during visualization
+  std::vector<vector3_t> terrainPositions;
 
   std::vector<TargetTrajectories> targetTrajectories;
 
@@ -231,14 +232,8 @@ int main(int argc, char* argv[])
       // Same plane anchored under the robot, so visualized grid map follows the robot.
       // MPC uses the same plane, so reference manager terrain is not updated.
       const vector2_t currentBasePositionXY = observation.state.block<2, 1>(6, 0);
-      const vector3_t currentTerrainPosition =
-        terrainPlane.projectPositionInWorldOntoPlaneAlongGravity(currentBasePositionXY);
-
-      const TerrainPlane currentTerrainPlane(currentTerrainPosition,
-        terrainRotation.transpose());
-
-      terrainModels.push_back(std::make_unique<PlanarTerrainModel>(currentTerrainPlane,
-        modelSettings.worldLinkName));
+      terrainPositions.push_back(
+        terrainPlane.projectPositionInWorldOntoPlaneAlongGravity(currentBasePositionXY));
 
       if(observation.time > firstGaitTime && firstChange)
       {
@@ -356,6 +351,12 @@ int main(int argc, char* argv[])
   const auto leggedVisualizer = std::make_shared<LeggedVisualizer>(visualizerSettings, 
     modelSettings, modelInfo, robotModel, forwardKinematics, torqueApproximator);
 
+  // Grid map of terrain is expensive to make and send, it is republished only
+  // when terrain plane moved more than this distance [m]
+  const scalar_t terrainRepublishDistance = 0.1;
+  bool terrainPublished = false;
+  vector3_t publishedTerrainPosition = vector3_t::Zero();
+
   while(rclcpp::ok())
   {
     scalar_t visualizationTime = initTime;
@@ -364,7 +365,18 @@ int main(int argc, char* argv[])
     {
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);
-      leggedVisualizer->publishTerrainModel(*terrainModels[visualizationIndex]);
+
+      const vector3_t& terrainPosition = terrainPositions[visualizationIndex];
+      if(!terrainPublished ||
+        (terrainPosition - publishedTerrainPosition).norm() > terrainRepublishDistance)
+      {
+        const TerrainPlane currentTerrainPlane(terrainPosition, terrainRotation.transpose());
+        leggedVisualizer->publishTerrainModel(PlanarTerrainModel(currentTerrainPlane,
+          modelSettings.worldLinkName));
+        publishedTerrainPosition = terrainPosition;
+        terrainPublished = true;
+      }
+
       leggedVisualizer->publishTargetTrajectory(currentTimeStamp, targetTrajectories[visualizationIndex]);
       if(visualizationIndex < optimizedTimeTrajectories.size())
       {

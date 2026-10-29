@@ -24,6 +24,8 @@
 
 #include <tf2_eigen/tf2_eigen.hpp>
 
+#include <lifecycle_msgs/msg/state.hpp>
+
 #include <floating_base_model/PinocchioFloatingBaseDynamics.hpp>
 
 namespace legged_locomotion_mpc_ros2
@@ -49,12 +51,15 @@ namespace legged_locomotion_mpc_ros2
     // Maximum duration between base velocity commands [s], robot stops after that
     this->declare_parameter("velocity_timeout", 0.1);
 
+    // Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
+    this->declare_parameter("policy_timeout", 0.5);
+
     // Same clock type as node clock, times from different clocks can not be compared
     const rclcpp::Time zeroTime(0, 0, this->get_clock()->get_clock_type());
     lastJointStateTime_ = zeroTime;
-    lastBaseTransformTime_ = zeroTime;
-    lastBaseTwistTime_ = zeroTime;
+    lastOdometryTime_ = zeroTime;
     lastCommandTime_ = zeroTime;
+    mpcStartTime_ = zeroTime;
 
     RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller started in unconfigured state!");
   }
@@ -92,16 +97,18 @@ namespace legged_locomotion_mpc_ros2
 
     const scalar_t stateTimeout = this->get_parameter("state_timeout").as_double();
     const scalar_t velocityTimeout = this->get_parameter("velocity_timeout").as_double();
+    const scalar_t policyTimeout = this->get_parameter("policy_timeout").as_double();
 
-    if(!(stateTimeout > 0.0) || !(velocityTimeout > 0.0))
+    if(!(stateTimeout > 0.0) || !(velocityTimeout > 0.0) || !(policyTimeout > 0.0))
     {
       RCLCPP_ERROR(this->get_logger(),
-        "Parameters state_timeout and velocity_timeout have to be positive!");
+        "Parameters state_timeout, velocity_timeout and policy_timeout have to be positive!");
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
     stateTimeout_ = rclcpp::Duration::from_seconds(stateTimeout);
     velocityTimeout_ = rclcpp::Duration::from_seconds(velocityTimeout);
+    policyTimeout_ = policyTimeout;
 
     contactFrameNameIndexMap_.clear();
 
@@ -126,6 +133,12 @@ namespace legged_locomotion_mpc_ros2
     // Resize current observation
     currentObservation_.state = vector_t::Zero(modelInfo_.stateDim);
     currentObservation_.input = vector_t::Zero(modelInfo_.inputDim);
+
+    // Buffers for joint states and contacts in MRT loop
+    jointPositionsBuffer_ = vector_t::Zero(modelInfo_.actuatedDofNum);
+    jointUpdatedBuffer_.assign(modelInfo_.actuatedDofNum, false);
+    contactUpdatedBuffer_.assign(modelSettings_.endEffectorThreeDofNames.size()
+      + modelSettings_.endEffectorSixDofNames.size(), false);
 
     const auto model = interface.getModel();
 
@@ -155,7 +168,7 @@ namespace legged_locomotion_mpc_ros2
     {
       // Terrain callback might be running in parallel (reconfiguration)
       std::lock_guard<std::mutex> lock(terrainMutex_);
-      decompositionPipelinePtr_ = std::make_unique<
+      decompositionPipelinePtr_ = std::make_shared<
         convex_plane_decomposition::PlaneDecompositionPipeline>(config);
     }
 
@@ -183,17 +196,11 @@ namespace legged_locomotion_mpc_ros2
       jointSatesTopic, qos, 
       [](const sensor_msgs::msg::JointState::ConstSharedPtr) {}, subscription_options);
     
-    // Base pose subscriber
-    const std::string baseTransformTopic = "/base_transform";
-    baseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
-      baseTransformTopic, qos, 
-      [](const geometry_msgs::msg::TransformStamped::ConstSharedPtr) {}, subscription_options);
-
-    // Base twist subscriber
-    const std::string baseTwistTopic = "/base_twist";
-    baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
-      baseTwistTopic, qos, 
-      [](const geometry_msgs::msg::TwistStamped::ConstSharedPtr) {}, subscription_options); 
+    // Base pose and twist subscriber
+    const std::string odometryTopic = "/odom";
+    odometrySubscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      odometryTopic, qos,
+      [](const nav_msgs::msg::Odometry::ConstSharedPtr) {}, subscription_options);
     
     // Contact flags subscriber
     const std::string contactFlagsTopic = "/contacts";
@@ -231,10 +238,11 @@ namespace legged_locomotion_mpc_ros2
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedLocomotionMpcControllerNode::updateExternalWrench, this, std::placeholders::_1));
     
-    // Joint trajectory publisher
+    // Joint trajectory publisher, only newest trajectory matters. Volatile, so subscriber
+    // started later does not get old trajectory (system default is transient local for Fast DDS)
     const std::string jointTrajectoryTopic = "/joint_trajectory";
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-      jointTrajectoryTopic, SystemDefaultsQoS());
+      jointTrajectoryTopic, QoS(1).reliable().durability_volatile());
 
     /**
      * Create timer for joint trajectory commands
@@ -281,7 +289,7 @@ namespace legged_locomotion_mpc_ros2
     if(!waitForInitialState())
     {
       RCLCPP_ERROR(this->get_logger(),
-        "No recent base transform, base twist or joint states, activation aborted!");
+        "No recent odometry or joint states, activation aborted!");
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
     }
 
@@ -353,12 +361,45 @@ namespace legged_locomotion_mpc_ros2
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
   }
 
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+    LeggedLocomotionMpcControllerNode::on_shutdown(const State& state)
+  {
+    // Shutdown from active state does not call on_deactivate, controller would keep running
+    if(state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
+    {
+      on_deactivate(state);
+    }
+
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+  }
+
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+    LeggedLocomotionMpcControllerNode::on_error(const State& state)
+  {
+    // Error can happen in any transition, controller can not keep running after it
+    stopMpcThread();
+    mpcFailed_ = false;
+
+    if(jointTrajectoryPublisher_ && jointTrajectoryPublisher_->is_activated())
+    {
+      jointTrajectoryPublisher_->on_deactivate();
+    }
+
+    RCLCPP_ERROR(this->get_logger(), "Error in transition from %s state, controller stopped!",
+      state.label().c_str());
+
+    // Same as default on_error, node goes back to unconfigured state
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+  }
+
   bool LeggedLocomotionMpcControllerNode::waitForInitialState()
   {
     // Robot state has to be received during this activation
     jointStateReceived_ = false;
-    baseTransformReceived_ = false;
-    baseTwistReceived_ = false;
+    odometryReceived_ = false;
+
+    // MPC time starts at activation, states stamped before it get time 0
+    mpcStartTime_ = this->get_clock()->now();
     currentObservation_.time = 0.0;
 
     // Steady clock, so waiting also ends when ROS time is not running
@@ -501,95 +542,100 @@ namespace legged_locomotion_mpc_ros2
 
   bool LeggedLocomotionMpcControllerNode::isStateFresh(const rclcpp::Time& currentTime) const
   {
-    return jointStateReceived_ && baseTransformReceived_ && baseTwistReceived_ &&
+    return jointStateReceived_ && odometryReceived_ &&
       (currentTime - lastJointStateTime_) <= stateTimeout_ &&
-      (currentTime - lastBaseTransformTime_) <= stateTimeout_ &&
-      (currentTime - lastBaseTwistTime_) <= stateTimeout_;
+      (currentTime - lastOdometryTime_) <= stateTimeout_;
   }
 
   void LeggedLocomotionMpcControllerNode::updateCurrentObservation()
   {
     // Every message is handled separately, invalid one does not block others
-    updateBaseTransform();
-    updateBaseTwist();
+    updateOdometry();
     updateJointStates();
     updateContacts();
 
-    // Observation time can not go backwards
-    const scalar_t newestStateTime = std::max(std::max(lastJointStateTime_.seconds(),
-      lastBaseTwistTime_.seconds()), lastBaseTransformTime_.seconds());
+    const rclcpp::Time newestStateTime = std::max(lastJointStateTime_, lastOdometryTime_);
 
-    currentObservation_.time = std::max(currentObservation_.time, newestStateTime);
+    // Relative to MPC start, absolute ROS time (~1.7e9 s) in double has only ~2.4e-7 s resolution.
+    // Observation time can not go backwards
+    currentObservation_.time = std::max(currentObservation_.time,
+      (newestStateTime - mpcStartTime_).seconds());
   }
 
-  void LeggedLocomotionMpcControllerNode::updateBaseTransform()
+  void LeggedLocomotionMpcControllerNode::updateOdometry()
   {
     rclcpp::MessageInfo msgInfo;
 
-    geometry_msgs::msg::TransformStamped baseTransform;
-    if(!baseTransformSubscriber_->take(baseTransform, msgInfo)) return;
+    auto& odometry = odometryMessage_;
+    if(!odometrySubscriber_->take(odometry, msgInfo)) return;
 
-    // Check if message has good base link in header
-    if(baseTransform.header.frame_id != modelSettings_.worldLinkName ||
-       baseTransform.child_frame_id != modelSettings_.baseLinkName)
+    // Pose is expressed in header frame (world), twist in child frame (base)
+    if(odometry.header.frame_id != modelSettings_.worldLinkName ||
+       odometry.child_frame_id != modelSettings_.baseLinkName)
     {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-        "Base transform has wrong base or world frame ID!");
+        "Odometry has wrong base or world frame ID!");
       return;
     }
 
-    lastBaseTransformTime_ = baseTransform.header.stamp;
-    baseTransformReceived_ = true;
+    const auto& basePose = odometry.pose.pose;
+    const auto& baseTwist = odometry.twist.twist;
 
-    vector6_t currentBaseTransform;
+    vector6_t currentBasePose;
 
-    currentBaseTransform(0) = baseTransform.transform.translation.x;
-    currentBaseTransform(1) = baseTransform.transform.translation.y;
-    currentBaseTransform(2) = baseTransform.transform.translation.z;
+    currentBasePose(0) = basePose.position.x;
+    currentBasePose(1) = basePose.position.y;
+    currentBasePose(2) = basePose.position.z;
 
     Eigen::Quaterniond quaterion;
 
-    tf2::fromMsg(baseTransform.transform.rotation, quaterion);
-
-    const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
-
-    const vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
-      rotationMatrix);
-
-    currentBaseTransform(3) = eulerAngles(0);
-    currentBaseTransform(4) = eulerAngles(1);
-    currentBaseTransform(5) = eulerAngles(2);
-
-    access_helper_functions::getBasePose(
-      currentObservation_.state, modelInfo_) = currentBaseTransform;
-  }
-
-  void LeggedLocomotionMpcControllerNode::updateBaseTwist()
-  {
-    rclcpp::MessageInfo msgInfo;
-
-    geometry_msgs::msg::TwistStamped baseTwist;
-    if(!baseTwistSubscriber_->take(baseTwist, msgInfo)) return;
-
-    // Check if message has good base link in header
-    if(baseTwist.header.frame_id != modelSettings_.baseLinkName)
-    {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-        "Base twist has wrong base frame ID!");
-      return;
-    }
-
-    lastBaseTwistTime_ = baseTwist.header.stamp;
-    baseTwistReceived_ = true;
+    tf2::fromMsg(basePose.orientation, quaterion);
 
     vector6_t currentBaseTwist;
 
-    currentBaseTwist(0) = baseTwist.twist.linear.x;
-    currentBaseTwist(1) = baseTwist.twist.linear.y;
-    currentBaseTwist(2) = baseTwist.twist.linear.z;
-    currentBaseTwist(3) = baseTwist.twist.angular.x;
-    currentBaseTwist(4) = baseTwist.twist.angular.y;
-    currentBaseTwist(5) = baseTwist.twist.angular.z;
+    currentBaseTwist(0) = baseTwist.linear.x;
+    currentBaseTwist(1) = baseTwist.linear.y;
+    currentBaseTwist(2) = baseTwist.linear.z;
+    currentBaseTwist(3) = baseTwist.angular.x;
+    currentBaseTwist(4) = baseTwist.angular.y;
+    currentBaseTwist(5) = baseTwist.angular.z;
+
+    if(!currentBasePose.head<3>().allFinite() || !quaterion.coeffs().allFinite() ||
+       !currentBaseTwist.allFinite())
+    {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored odometry with non-finite values");
+      return;
+    }
+
+    const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
+
+    vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
+      rotationMatrix);
+
+    // Angles from rotation matrix are wrapped, keep them continuous with previous
+    // observation (e.g. yaw crossing +-pi would jump by 2 pi)
+    if(odometryReceived_)
+    {
+      const vector6_t previousBasePose = access_helper_functions::getBasePose(
+        currentObservation_.state, modelInfo_);
+
+      for(size_t i = 0; i < 3; ++i)
+      {
+        const scalar_t previousAngle = previousBasePose(3 + i);
+        eulerAngles(i) = previousAngle + std::remainder(eulerAngles(i) - previousAngle, 2.0 * M_PI);
+      }
+    }
+
+    currentBasePose(3) = eulerAngles(0);
+    currentBasePose(4) = eulerAngles(1);
+    currentBasePose(5) = eulerAngles(2);
+
+    lastOdometryTime_ = odometry.header.stamp;
+    odometryReceived_ = true;
+
+    access_helper_functions::getBasePose(
+      currentObservation_.state, modelInfo_) = currentBasePose;
 
     access_helper_functions::getBaseVelocity(
       currentObservation_.state, modelInfo_) = currentBaseTwist;
@@ -599,7 +645,7 @@ namespace legged_locomotion_mpc_ros2
   {
     rclcpp::MessageInfo msgInfo;
 
-    sensor_msgs::msg::JointState jointStates;
+    auto& jointStates = jointStateMessage_;
     if(!jointStateSubscriber_->take(jointStates, msgInfo)) return;
 
     // Check if message has same amount of data (joint velocities are not used)
@@ -611,8 +657,10 @@ namespace legged_locomotion_mpc_ros2
       return;
     }
 
-    vector_t jointPositions = vector_t(modelInfo_.actuatedDofNum);
-    std::vector<bool> jointUpdated(modelInfo_.actuatedDofNum, false);
+    // Preallocated in on_configure
+    auto& jointPositions = jointPositionsBuffer_;
+    auto& jointUpdated = jointUpdatedBuffer_;
+    std::fill(jointUpdated.begin(), jointUpdated.end(), false);
 
     for(size_t i = 0; i < jointStates.name.size(); ++i)
     {
@@ -631,6 +679,13 @@ namespace legged_locomotion_mpc_ros2
       jointUpdated[jointIndexIt->second] = true;
     }
 
+    if(!jointPositions.allFinite())
+    {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored JointState message with non-finite positions");
+      return;
+    }
+
     lastJointStateTime_ = jointStates.header.stamp;
     jointStateReceived_ = true;
 
@@ -642,7 +697,7 @@ namespace legged_locomotion_mpc_ros2
   {
     rclcpp::MessageInfo msgInfo;
 
-    contact_msgs::msg::Contacts contacts;
+    auto& contacts = contactsMessage_;
     if(!contactsSubscriber_->take(contacts, msgInfo)) return;
 
     if(contacts.contacts.size() != endEffectorNum_)
@@ -653,7 +708,10 @@ namespace legged_locomotion_mpc_ros2
     }
 
     contact_flags_t newContactFlags;
-    std::vector<bool> contactUpdated(endEffectorNum_, false);
+
+    // Preallocated in on_configure
+    auto& contactUpdated = contactUpdatedBuffer_;
+    std::fill(contactUpdated.begin(), contactUpdated.end(), false);
 
     for(const auto& currentContactMessage: contacts.contacts)
     {
@@ -717,8 +775,17 @@ namespace legged_locomotion_mpc_ros2
     // Check if message has good base link in header
     if(baseTwist->header.frame_id != modelSettings_.baseLinkName)
     {
-      RCLCPP_ERROR(this->get_logger(), 
+      RCLCPP_ERROR(this->get_logger(),
         "Base command has wrong base frame ID!");
+      return;
+    }
+
+    // NaN would pass through velocity limits of base planner
+    if(!std::isfinite(baseTwist->twist.linear.x) || !std::isfinite(baseTwist->twist.linear.y) ||
+       !std::isfinite(baseTwist->twist.linear.z) || !std::isfinite(baseTwist->twist.angular.z))
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Ignored base command with non-finite values");
       return;
     }
 
@@ -838,20 +905,34 @@ namespace legged_locomotion_mpc_ros2
     baseWrench(4) = externalWrench->wrench.torque.y;
     baseWrench(5) = externalWrench->wrench.torque.z;
 
+    // Non-finite values would break MPC
+    if(!baseWrench.allFinite())
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Ignored base external wrench with non-finite values");
+      return;
+    }
+
     if(leggedInterfacePtr_ && controllerRunning_)
     {
+      // Same time base as observation
       leggedInterfacePtr_->disturbanceModule().updateDistrubance(
-        currentTime.seconds(), baseWrench);
+        (currentTime - mpcStartTime_).seconds(), baseWrench);
     }
   }
 
   void LeggedLocomotionMpcControllerNode::updateSegmentedTerrain(
     grid_map_msgs::msg::GridMap::UniquePtr gridMap)
   {
-    // Runs in own callback group, in parallel to activation and deactivation
-    std::lock_guard<std::mutex> lock(terrainMutex_);
+    // Runs in own callback group, in parallel to activation and deactivation.
+    // Decomposition is slow, so terrainMutex_ is only held to get pipeline and hand over terrain
+    std::shared_ptr<convex_plane_decomposition::PlaneDecompositionPipeline> decompositionPipeline;
+    {
+      std::lock_guard<std::mutex> lock(terrainMutex_);
+      decompositionPipeline = decompositionPipelinePtr_;
+    }
 
-    if(!decompositionPipelinePtr_) return;
+    if(!decompositionPipeline) return;
 
     // Terrain is not transformed, it has to be already in the world frame
     if(gridMap->header.frame_id != modelSettings_.worldLinkName)
@@ -884,10 +965,10 @@ namespace legged_locomotion_mpc_ros2
     std::unique_ptr<terrain_model::SegmentedPlanesTerrainModel> terrainModel;
     try
     {
-      decompositionPipelinePtr_->update(std::move(elevationMap),
+      decompositionPipeline->update(std::move(elevationMap),
         terrain_model::elevationLayerName);
 
-      auto planarTerrain = decompositionPipelinePtr_->movePlanarTerrain();
+      auto planarTerrain = decompositionPipeline->movePlanarTerrain();
 
       if(planarTerrain.planarRegions.empty())
       {
@@ -905,6 +986,8 @@ namespace legged_locomotion_mpc_ros2
         "Ignored elevation map, plane decomposition failed: %s", e.what());
       return;
     }
+
+    std::lock_guard<std::mutex> lock(terrainMutex_);
 
     if(referenceManagerPtr_ && controllerRunning_)
     {
@@ -927,7 +1010,9 @@ namespace legged_locomotion_mpc_ros2
       return;
     }
 
-    if(mpcMrtPtr_ && controllerRunning_)
+    if(!mpcMrtPtr_ || !controllerRunning_) return;
+
+    try
     {
       mrtBenchmarkTimer_.startTimer();
 
@@ -964,6 +1049,17 @@ namespace legged_locomotion_mpc_ros2
 
       mpcMrtPtr_->updatePolicy();
 
+      const auto& policy = mpcMrtPtr_->getPolicy();
+
+      // MPC thread can stall without exception, old policy can not be used for long
+      if(currentObservation_.time - policy.timeTrajectory_.front() > policyTimeout_)
+      {
+        RCLCPP_ERROR(this->get_logger(),
+          "MPC policy is older than policy_timeout, MPC loop deactivation!");
+        this->deactivate();
+        return;
+      }
+
       const auto& currentState = currentObservation_.state;
 
       size_t plannedMode = 0;  
@@ -978,16 +1074,18 @@ namespace legged_locomotion_mpc_ros2
 
       // Get optimal state and input at time: currentObservation_.time + mrtDuration_
       scalar_t nextTime = currentObservation_.time + mrtDurationSeconds_;
-      const auto& policy = mpcMrtPtr_->getPolicy();
       const auto& timeTrajectory = policy.timeTrajectory_;
       const auto& stateTrajectory = policy.stateTrajectory_;
 
-      const auto nextState = LinearInterpolation::interpolate(nextTime, 
+      const auto nextState = LinearInterpolation::interpolate(nextTime,
         timeTrajectory, stateTrajectory);
 
-      // Same controller as for the first point (with feedback for DDP)
+      // Same controller as for the first point (with feedback), current deviation from
+      // optimal state is propagated to the next point, otherwise feedback would treat
+      // planned motion between points as tracking error
+      const vector_t nextFeedbackState = nextState + (currentState - optimizedState);
       const vector_t nextInput = policy.controllerPtr_->computeInput(nextTime,
-        currentState);
+        nextFeedbackState);
 
       setTrajectoryPoint(0, optimizedState, optimizedInput);
       setTrajectoryPoint(1, nextState, nextInput);
@@ -999,6 +1097,12 @@ namespace legged_locomotion_mpc_ros2
       {
         jointTrajectoryPublisher_->publish(jointTrajectory_);
       }
+    }
+    catch(const std::exception& e)
+    {
+      // Exception would leave the executor and terminate the whole process
+      RCLCPP_ERROR(this->get_logger(), "MRT loop error: %s, MPC loop deactivation!", e.what());
+      this->deactivate();
     }
   }
 

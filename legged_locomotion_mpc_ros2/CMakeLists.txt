@@ -28,6 +28,7 @@ set(THIS_PACKAGE_DEPENDS
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  nav_msgs
   trajectory_msgs
 
   legged_locomotion_mpc
