@@ -36,7 +36,16 @@ namespace legged_state_estimator
       base_rot_estimate_(matrix3_t::Identity()),
       imu_raw_(vector6_t::Zero()),
       base_quat_estimate_(Eigen::Quaterniond::Identity().coeffs()),
-      filters_initialized_(false)
+      imu_filters_initialized_(false),
+      joint_filters_initialized_(false),
+      imu_measurement_available_(false),
+      joint_measurement_available_(false),
+      estimate_time_available_(false),
+      estimate_time_(0.0),
+      last_imu_time_(0.0),
+      last_joint_time_(0.0),
+      contacts_available_(false),
+      last_contacts_time_(0.0)
   {
     if(settings.sampling_time <= 0.0) 
     {
@@ -81,6 +90,11 @@ namespace legged_state_estimator
     initial_state.setVelocity(base_lin_vel_world);
     initial_state.setGyroscopeBias(imu_gyro_bias);
     initial_state.setAccelerometerBias(imu_lin_accel_bias);
+
+    // Contact points of previous estimation are not in the new state, filter would still index them.
+    // clear() also resets noise parameters, so they are set again
+    inekf_.clear();
+    inekf_.setNoiseParams(settings_.inekf_noise_params);
     inekf_.setState(initial_state);
 
     lpf_gyro_accel_world_.reset();
@@ -88,8 +102,25 @@ namespace legged_state_estimator
     lpf_dqJ_.reset();
     lpf_ddqJ_.reset();
     lpf_tauJ_.reset();
-    // Filters are started from the first measurements in the next update
-    filters_initialized_ = false;
+    // Filters are started from the first measurements in the next update,
+    // propagation needs a new IMU measurement and estimate time comes from the first measurement
+    imu_filters_initialized_ = false;
+    joint_filters_initialized_ = false;
+    imu_measurement_available_ = false;
+    joint_measurement_available_ = false;
+    estimate_time_available_ = false;
+    // Contact states were cleared with the filter
+    contacts_available_ = false;
+
+    if(contact_estimator_ptr_)
+    {
+      contact_estimator_ptr_->reset();
+    }
+
+    // Estimates are for the initial state right away (angular velocity is assumed to be zero),
+    // IMU measurement is set again before it is used
+    imu_raw_.setZero();
+    restoreEstimates();
   }
 
   /******************************************************************************************************/
@@ -157,7 +188,12 @@ namespace legged_state_estimator
 
     checkUpdateArguments(qJ, dqJ, tauJ, dt);
 
-    processMeasurements(imu_gyro_raw, imu_lin_accel_raw, qJ, dqJ, tauJ, dt);
+    // New IMU measurement is used for the whole time step
+    setImuMeasurement(imu_gyro_raw, imu_lin_accel_raw);
+    inekf_.Propagate(imu_raw_, dt);
+    processImuMeasurement(dt);
+
+    processJointMeasurements(qJ, dqJ, tauJ, dt);
 
     if(contact_estimator_ptr_)
     {
@@ -165,7 +201,8 @@ namespace legged_state_estimator
       inekf_.setContacts(contact_estimator_ptr_->getContactState());
     }
 
-    correctAndRestoreEstimates(imu_gyro_raw);
+    correctKinematics();
+    restoreEstimates();
   }
 
   /******************************************************************************************************/
@@ -195,11 +232,178 @@ namespace legged_state_estimator
 
     checkUpdateArguments(qJ, dqJ, tauJ, dt);
 
-    processMeasurements(imu_gyro_raw, imu_lin_accel_raw, qJ, dqJ, tauJ, dt);
+    // New IMU measurement is used for the whole time step
+    setImuMeasurement(imu_gyro_raw, imu_lin_accel_raw);
+    inekf_.Propagate(imu_raw_, dt);
+    processImuMeasurement(dt);
+
+    processJointMeasurements(qJ, dqJ, tauJ, dt);
 
     inekf_.setContacts(contacts);
 
-    correctAndRestoreEstimates(imu_gyro_raw);
+    correctKinematics();
+    restoreEstimates();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::updateImu(const vector3_t& imu_gyro_raw,
+    const vector3_t& imu_lin_accel_raw, const scalar_t time)
+  {
+    if(imu_measurement_available_ && !(time > last_imu_time_))
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: IMU measurement times must increase, got "
+        + std::to_string(time) + " after " + std::to_string(last_imu_time_));
+    }
+
+    // First measurement after init() only starts the filters, time step is not used
+    const scalar_t dt = imu_measurement_available_ ? time - last_imu_time_ : settings_.sampling_time;
+
+    if(imu_measurement_available_)
+    {
+      // Previous measurement is held until the new one
+      propagateTo(time);
+      setImuMeasurement(imu_gyro_raw, imu_lin_accel_raw);
+    }
+    else
+    {
+      // Nothing to hold yet, new measurement is also used up to its time
+      setImuMeasurement(imu_gyro_raw, imu_lin_accel_raw);
+      propagateTo(time);
+    }
+
+    processImuMeasurement(dt);
+    last_imu_time_ = time;
+
+    // Angular velocity estimate comes from the newest gyro measurement
+    restoreEstimates();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::updateContacts(const std::vector<std::pair<int,bool>>& contacts,
+    const scalar_t time)
+  {
+    if(settings_.use_contact_estimator)
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] updateContacts() used, but use_contact_estimator is set to true");
+    }
+
+    // Contact stamps are often not set, so equal times are accepted, only older ones are rejected
+    if(contacts_available_ && time < last_contacts_time_)
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: contact states older than previous ones, got "
+        + std::to_string(time) + " after " + std::to_string(last_contacts_time_));
+    }
+
+    // Unknown contact would be ignored by the filter, duplicated one would make the state ambiguous
+    std::vector<bool> contact_seen(robot_model_.numContacts(), false);
+    for(const auto& [contact_id, in_contact]: contacts)
+    {
+      if(contact_id < 0 || contact_id >= robot_model_.numContacts() || contact_seen[contact_id])
+      {
+        throw std::invalid_argument(
+          "[LeggedStateEstimator] invalid argment: unknown or duplicated contact id " + std::to_string(contact_id));
+      }
+      contact_seen[contact_id] = true;
+    }
+
+    // Contact states are used by the following corrections
+    inekf_.setContacts(contacts);
+    last_contacts_time_ = time;
+    contacts_available_ = true;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::correct(const vector_t& qJ, const vector_t& dqJ,
+    const vector_t& tauJ, const scalar_t time)
+  {
+    if(!settings_.use_contact_estimator && !contacts_available_)
+    {
+      throw std::logic_error(
+        "[LeggedStateEstimator] correct() needs contact states, call updateContacts() after init() first");
+    }
+
+    const scalar_t dt = prepareCorrection(qJ, dqJ, tauJ, time);
+
+    processJointMeasurements(qJ, dqJ, tauJ, dt);
+
+    // Contact estimator gives contact states, otherwise last ones from updateContacts() are used
+    if(contact_estimator_ptr_)
+    {
+      contact_estimator_ptr_->update(robot_model_, lpf_tauJ_.getEstimate());
+      inekf_.setContacts(contact_estimator_ptr_->getContactState());
+    }
+
+    correctKinematics();
+    restoreEstimates();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  scalar_t LeggedStateEstimator::getEstimateTime() const
+  {
+    return estimate_time_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  scalar_t LeggedStateEstimator::prepareCorrection(const vector_t& qJ, const vector_t& dqJ,
+    const vector_t& tauJ, const scalar_t time)
+  {
+    if(joint_measurement_available_ && !(time > last_joint_time_))
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: joint measurement times must increase, got "
+        + std::to_string(time) + " after " + std::to_string(last_joint_time_));
+    }
+
+    // First measurement after init() only starts the filters, time step is not used
+    const scalar_t dt = joint_measurement_available_ ? time - last_joint_time_ : settings_.sampling_time;
+
+    checkUpdateArguments(qJ, dqJ, tauJ, dt);
+
+    // Last IMU measurement is held until the joint measurement
+    propagateTo(time);
+
+    last_joint_time_ = time;
+    joint_measurement_available_ = true;
+
+    return dt;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::propagateTo(const scalar_t time)
+  {
+    // First measurement after init() sets the time of the estimate
+    if(!estimate_time_available_)
+    {
+      estimate_time_ = time;
+      estimate_time_available_ = true;
+      return;
+    }
+
+    // Estimate is never propagated back in time, older measurement is used at the estimate time.
+    // Without IMU measurement there is nothing to propagate with, estimate is kept
+    if(time > estimate_time_)
+    {
+      if(imu_measurement_available_)
+      {
+        inekf_.Propagate(imu_raw_, time - estimate_time_);
+      }
+      estimate_time_ = time;
+    }
   }
 
   /******************************************************************************************************/
@@ -236,34 +440,35 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void LeggedStateEstimator::processMeasurements(const vector3_t& imu_gyro_raw, 
-    const vector3_t& imu_lin_accel_raw, const vector_t& qJ, 
-    const vector_t& dqJ, const vector_t& tauJ, const scalar_t dt)
+  void LeggedStateEstimator::setImuMeasurement(const vector3_t& imu_gyro_raw,
+    const vector3_t& imu_lin_accel_raw)
   {
-    // Process IMU measurements in InEKF
     imu_raw_.template head<3>() = imu_gyro_raw;
     imu_raw_.template tail<3>() = imu_lin_accel_raw;
-    inekf_.Propagate(imu_raw_, dt);
+    imu_measurement_available_ = true;
+  }
 
-    // Bias corrected IMU measurements expressed with the propagated (current) state
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::processImuMeasurement(const scalar_t dt)
+  {
+    // Bias corrected IMU measurements expressed with the current state
     const InEKFState& state = inekf_.getState();
     const matrix3_t rotation = state.getRotation();
-    const vector3_t imu_gyro_local = imu_gyro_raw - state.getGyroscopeBias();
+    const vector3_t imu_gyro_local = imu_raw_.template head<3>() - state.getGyroscopeBias();
     imu_gyro_raw_world_.noalias() = rotation * imu_gyro_local;
     // Accelerometer measures specific force, gravity is added to get the acceleration
-    imu_lin_accel_raw_world_.noalias() = rotation * (imu_lin_accel_raw - state.getAccelerometerBias());
+    imu_lin_accel_raw_world_.noalias() = rotation * (imu_raw_.template tail<3>() - state.getAccelerometerBias());
     imu_lin_accel_raw_world_.coeffRef(2) += MINUS_GRAVITY_VALUE;
 
     // Start filters from the first measurements instead of zero
-    if(!filters_initialized_)
+    if(!imu_filters_initialized_)
     {
       lpf_lin_accel_world_.reset(imu_lin_accel_raw_world_);
       lpf_gyro_accel_world_.reset();
       imu_gyro_raw_world_prev_ = imu_gyro_raw_world_;
-      lpf_dqJ_.reset(dqJ);
-      lpf_ddqJ_.reset();
-      lpf_tauJ_.reset(tauJ);
-      filters_initialized_ = true;
+      imu_filters_initialized_ = true;
     }
 
     // Process IMU measurements in LPFs (linear acceleration)
@@ -278,6 +483,22 @@ namespace legged_state_estimator
       imu_gyro_accel_local_.noalias() = rotation.transpose() * lpf_gyro_accel_world_.getEstimate();
     }
     imu_gyro_raw_world_prev_ = imu_gyro_raw_world_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::processJointMeasurements(const vector_t& qJ, 
+    const vector_t& dqJ, const vector_t& tauJ, const scalar_t dt)
+  {
+    // Start filters from the first measurements instead of zero
+    if(!joint_filters_initialized_)
+    {
+      lpf_dqJ_.reset(dqJ);
+      lpf_ddqJ_.reset();
+      lpf_tauJ_.reset(tauJ);
+      joint_filters_initialized_ = true;
+    }
 
     // Process joint measurements in LPFs
     if(settings_.dynamic_contact_estimation)
@@ -296,15 +517,19 @@ namespace legged_state_estimator
 
     // Kinematics and dynamics use the estimated floating base orientation: gravity points in world -z
     // and contact Jacobians (so also contact forces) are expressed in the world frame
+    const InEKFState& state = inekf_.getState();
+    const matrix3_t rotation = state.getRotation();
     const pinocchio::SE3& imu_in_root = robot_model_.getImuPlacementInRoot();
     const matrix3_t root_rotation = rotation * imu_in_root.rotation().transpose();
     const vector4_t root_quat = Eigen::Quaterniond(root_rotation).coeffs();
     robot_model_.updateKinematics(vector3_t::Zero(), root_quat, qJ);
     if(settings_.dynamic_contact_estimation)
     {
-      // Floating base (root joint) state from the IMU state, IMU is rigidly attached at root_to_imu
+      // Floating base (root joint) state from the IMU state, IMU is rigidly attached at root_to_imu.
+      // Angular velocity uses the current orientation, last IMU measurement can be older than the state
       const vector3_t root_to_imu = root_rotation * imu_in_root.translation();
-      const vector3_t& ang_vel_world = imu_gyro_raw_world_;
+      const vector3_t imu_gyro_local = imu_raw_.template head<3>() - state.getGyroscopeBias();
+      const vector3_t ang_vel_world = rotation * imu_gyro_local;
       const vector3_t& ang_accel_world = lpf_gyro_accel_world_.getEstimate();
       const vector3_t root_lin_vel_world = state.getVelocity() - ang_vel_world.cross(root_to_imu);
       const vector3_t root_lin_accel_world = lpf_lin_accel_world_.getEstimate() - ang_accel_world.cross(root_to_imu)
@@ -328,7 +553,7 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void LeggedStateEstimator::correctAndRestoreEstimates(const vector3_t& imu_gyro_raw)
+  void LeggedStateEstimator::correctKinematics()
   {
     // Contact positions must be expressed in the IMU frame (frame of the InEKF state)
     const matrix3_t imu_rotation_transposed = robot_model_.getImuRotation().transpose();
@@ -350,13 +575,19 @@ namespace legged_state_estimator
 
     // Process kinematics measurements in InEKF
     inekf_.CorrectKinematics(leg_kinematics_);
+  }
 
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::restoreEstimates()
+  {
     // Restore estimates, InEKF estimates the IMU state which is converted to the base frame
     const InEKFState& state = inekf_.getState();
     const pinocchio::SE3& imu_in_base = robot_model_.getImuPlacementInBase();
     imu_gyro_bias_estimate_ = state.getGyroscopeBias();
     imu_lin_acc_bias_estimate_ = state.getAccelerometerBias();
-    const vector3_t imu_ang_vel_local = imu_gyro_raw - imu_gyro_bias_estimate_;
+    const vector3_t imu_ang_vel_local = imu_raw_.template head<3>() - imu_gyro_bias_estimate_;
 
     base_rot_estimate_.noalias() = state.getRotation() * imu_in_base.rotation().transpose();
     base_quat_estimate_ = Eigen::Quaterniond(base_rot_estimate_).coeffs();

@@ -171,6 +171,53 @@ namespace legged_state_estimator
       const ocs2::scalar_t dt);
 
     ///
+    /// @brief Processes an IMU measurement, when IMU and joint measurements are
+    /// processed separately (updateImu() and correct() instead of update(),
+    /// do not mix them). The estimate is propagated to the measurement time
+    /// with the previous IMU measurement held constant, then the new measurement
+    /// is held until the next measurement. Times are in seconds, relative to
+    /// any start time (absolute ROS time in double resolves only ~0.24 us).
+    /// @param[in] imu_gyro_raw Raw measurement of the base angular velocity
+    /// expressed in the body local coordinate from IMU gyro sensor.
+    /// @param[in] imu_lin_accel_raw Raw measurement of the base linear
+    /// acceleration expressed in the body local coordinate from IMU accelerometer.
+    /// @param[in] time Measurement time [s]. Must increase between IMU measurements.
+    ///
+    void updateImu(const vector3_t& imu_gyro_raw,
+      const vector3_t& imu_lin_accel_raw, const ocs2::scalar_t time);
+
+    ///
+    /// @brief Sets contact states from external sensors (use_contact_estimator
+    /// is false), used by the following correct() calls.
+    /// @param[in] contacts Contact states (contact id from 0 to number of contacts - 1,
+    /// in contact). Ids must be valid and unique, contacts that are not given keep their state.
+    /// @param[in] time Measurement time [s]. Must not be older than the previous contact states.
+    ///
+    void updateContacts(const std::vector<std::pair<int,bool>>& contacts,
+      const ocs2::scalar_t time);
+
+    ///
+    /// @brief Corrects the state estimation with joint measurements. Contact
+    /// states come from the contact estimator or from the last updateContacts()
+    /// call (required after init() when use_contact_estimator is false).
+    /// The estimate is first propagated to the measurement time with the last
+    /// IMU measurement held constant. Measurement older than the estimate is
+    /// used at the estimate time.
+    /// @param[in] qJ Raw measurement of the joint positions.
+    /// @param[in] dqJ Raw measurement of the joint velocities.
+    /// @param[in] tauJ Raw measurement of the joint torques.
+    /// @param[in] time Measurement time [s]. Must increase between joint measurements.
+    ///
+    void correct(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
+      const ocs2::vector_t& tauJ, const ocs2::scalar_t time);
+
+    ///
+    /// @return Time of the state estimate [s]: newest measurement time given
+    /// to updateImu() or correct() since init().
+    ///
+    ocs2::scalar_t getEstimateTime() const;
+
+    ///
     /// @return const reference to the base position estimate.
     ///
     const vector3_t& getBasePositionEstimate() const;
@@ -274,12 +321,22 @@ namespace legged_state_estimator
     void checkUpdateArguments(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
       const ocs2::vector_t& tauJ, const ocs2::scalar_t dt) const;
 
-    void processMeasurements(const vector3_t& imu_gyro_raw,
-      const vector3_t& imu_lin_accel_raw,
-      const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
+    void setImuMeasurement(const vector3_t& imu_gyro_raw,
+      const vector3_t& imu_lin_accel_raw);
+
+    ocs2::scalar_t prepareCorrection(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
+      const ocs2::vector_t& tauJ, const ocs2::scalar_t time);
+
+    void propagateTo(const ocs2::scalar_t time);
+
+    void processImuMeasurement(const ocs2::scalar_t dt);
+
+    void processJointMeasurements(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
       const ocs2::vector_t& tauJ, const ocs2::scalar_t dt);
 
-    void correctAndRestoreEstimates(const vector3_t& imu_gyro_raw);
+    void correctKinematics();
+
+    void restoreEstimates();
 
     LeggedStateEstimatorSettings settings_;
 
@@ -322,7 +379,16 @@ namespace legged_state_estimator
     vector3_t imu_gyro_bias_estimate_;
     vector3_t imu_lin_acc_bias_estimate_;
 
-    bool filters_initialized_;
+    bool imu_filters_initialized_;
+    bool joint_filters_initialized_;
+    bool imu_measurement_available_;
+    bool joint_measurement_available_;
+    bool estimate_time_available_;
+    ocs2::scalar_t estimate_time_;
+    ocs2::scalar_t last_imu_time_;
+    ocs2::scalar_t last_joint_time_;
+    bool contacts_available_;
+    ocs2::scalar_t last_contacts_time_;
 
     std::vector<vector3_t> ground_normals_;
   };

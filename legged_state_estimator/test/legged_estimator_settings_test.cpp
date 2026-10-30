@@ -42,7 +42,6 @@ TEST(ModelSettingsTest, loader)
   EXPECT_TRUE(settings.contact_position_noise == 0.01);
   EXPECT_TRUE(settings.contact_rotation_noise == 0.01);
   EXPECT_TRUE(settings.sampling_time == 0.01);
-  EXPECT_TRUE(settings.lpf_gyro_cutoff_frequency       == 250);
   EXPECT_TRUE(settings.lpf_gyro_accel_cutoff_frequency == 250);
   EXPECT_TRUE(settings.lpf_lin_accel_cutoff_frequency  == 250);
   EXPECT_TRUE(settings.lpf_dqJ_cutoff_frequency        == 10);

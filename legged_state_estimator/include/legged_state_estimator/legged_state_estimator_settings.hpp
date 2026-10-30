@@ -113,10 +113,6 @@ namespace legged_state_estimator
       ///
       ocs2::scalar_t sampling_time = 0.0;
 
-      ///
-      /// @brief Cutoff frequency of LPF for gyro sensor.
-      ///
-      ocs2::scalar_t lpf_gyro_cutoff_frequency = 0.0;
 
       ///
       /// @brief Cutoff frequency of LPF for gyro acceleration that is computed by

@@ -53,7 +53,6 @@ legged_state_estimator
 
   samplingTime 0.01
 
-  lpfGyroCutoffFrequency 250
   lpfGyroAccelCutoffFrequency 250
   lpfLinAccelCutoffFrequency 250
   lpfDqJCutoffFrequency 10

@@ -112,8 +112,6 @@ namespace legged_state_estimator
     loadData::loadPtreeValue(pt, settings.sampling_time, 
       fieldName + ".samplingTime", verbose);
 
-    loadData::loadPtreeValue(pt, settings.lpf_gyro_cutoff_frequency, 
-      fieldName + ".lpfGyroCutoffFrequency", verbose);
 
     loadData::loadPtreeValue(pt, settings.lpf_gyro_accel_cutoff_frequency, 
       fieldName + ".lpfGyroAccelCutoffFrequency", verbose);

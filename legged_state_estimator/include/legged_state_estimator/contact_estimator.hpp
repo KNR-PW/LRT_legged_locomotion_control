@@ -99,9 +99,15 @@ namespace legged_state_estimator
       ContactEstimator& operator=(ContactEstimator&&) noexcept = default;
       
       ///
-      /// @brief Resets the estimation.
+      /// @brief Resets the estimation to the state after construction.
       ///
       void reset();
+
+      ///
+      /// @brief Contact force covariance of a leg whose force could not be
+      /// estimated (singular leg Jacobian), the leg is not in contact then.
+      ///
+      static constexpr ocs2::scalar_t INVALID_CONTACT_FORCE_COVARIANCE = 1.0e12;
       
       ///
       /// @brief Updates the estimation.

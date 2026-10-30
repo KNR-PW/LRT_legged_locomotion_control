@@ -69,6 +69,28 @@ namespace legged_state_estimator
         "[RobotModel] invalid argument: IMU frame id " + std::to_string(imu_frame) + " does not exit!");
     }
     initializeBaseFrame("");
+
+    // Same checks as in the constructor with frame names
+    if(contact_frames.size() > MAX_LEG_NUMBER)
+    {
+      throw std::invalid_argument("[RobotModel] invalid argment: contact_frames.size() must not be bigger than "
+        + std::to_string(MAX_LEG_NUMBER));
+    }
+
+    if(contact_frames.size() < 2)
+    {
+      throw std::invalid_argument("[RobotModel] invalid argment: contact_frames.size() must not be smaller than "
+        + std::to_string(2));
+    }
+
+    for(const auto& e : contact_frames)
+    {
+      if(e < 0 || e >= model_.nframes)
+      {
+        throw std::invalid_argument(
+          "[RobotModel] invalid argument: contact frame id " + std::to_string(e) + " does not exit!");
+      }
+    }
   }
 
   /******************************************************************************************************/
@@ -404,6 +426,15 @@ namespace legged_state_estimator
   const std::vector<int>& RobotModel::getContactFrames() const
   {
     return contact_frames_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  std::vector<std::string> RobotModel::getJointNames() const
+  {
+    // Joint 0 is "universe", joint 1 is the free-flyer root joint (checked in initializeBaseFrame)
+    return std::vector<std::string>(model_.names.begin() + 2, model_.names.end());
   }
 
   /******************************************************************************************************/

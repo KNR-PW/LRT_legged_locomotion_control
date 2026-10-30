@@ -307,6 +307,12 @@ namespace legged_state_estimator
       const std::vector<int>& getContactFrames() const;
 
       ///
+      /// @return Names of the joints (floating base joint excluded), in the
+      /// order of the joint vectors (qJ, dqJ, tauJ).
+      ///
+      std::vector<std::string> getJointNames() const;
+
+      ///
       /// @return Indices in the generalized velocity of the joints between the
       /// base and the contact frame (floating base joint excluded), ordered
       /// from the base to the contact.
