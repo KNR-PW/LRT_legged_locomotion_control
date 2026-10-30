@@ -58,7 +58,7 @@ namespace floating_base_model
     const Eigen::Matrix<ocs2::ad_scalar_t, 6, 1>& disturbance) 
   {
     const auto& info = mappingCppAd.getFloatingBaseModelInfo();
-    assert(info.stateDim == state.rows());
+    assert(info.stateDim == static_cast<size_t>(state.rows()));
     
     const auto& model = pinocchioInterfaceCppAd.getModel();
     auto& data = pinocchioInterfaceCppAd.getData();
@@ -88,9 +88,8 @@ namespace floating_base_model
     model_helper_functions::computeSpatialForces(pinocchioInterfaceCppAd, info, input, fext);
     const Eigen::Matrix<ocs2::ad_scalar_t, 6, 1> tau = -model_helper_functions::computeFloatingBaseGeneralizedTorques(pinocchioInterfaceCppAd, q, v, fext) + disturbance;
     
-    auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
-
-    bodyVelocityDerivative.block<3,1>(0,0) += baseAngularVelocity.cross(baseLinearVelocity);
+    // Spatial acceleration of the base = exact time derivative of the body-frame base velocity in the state
+    const auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
 
     ocs2::ad_vector_t stateDerivative(info.stateDim);
     stateDerivative << bodyVelocityDerivative, basePositionDerivative, eulerAnglesDerivative, actuatedJointPositionDerivative;

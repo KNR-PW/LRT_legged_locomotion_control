@@ -19,6 +19,94 @@ namespace legged_state_estimator {
 using namespace std;
 
 void removeRowAndColumn(ocs2::matrix_t& M, int index);
+void removeRowsAndColumns(ocs2::matrix_t& M, int index, int n);
+
+namespace {
+
+// Coefficients of the bias terms of Phi_25 and Phi_35. The closed form loses all precision for small
+// theta*dt (catastrophic cancellation, divisions up to theta^7), so a Taylor series is used for theta*dt < 0.25.
+void biasCoefficients(const ocs2::scalar_t theta, const ocs2::scalar_t dt, ocs2::scalar_t k[12]) {
+  // Taylor coefficients of x^0, x^2, ..., x^10 (x = theta*dt), coefficient i is multiplied by dt^kDtPower[i]
+  static const ocs2::scalar_t kSeries[12][6] = {
+    {0.33333333333333331, -0.033333333333333333, 0.0011904761904761906, -2.2045855379188714e-05, 2.5052108385441718e-07, -1.9270852604185937e-09},
+    {0.125, -0.020833333333333332, 0.0015625000000000001, -7.027116402116402e-05, 2.1356922398589067e-06, -4.697270322270322e-08},
+    {0.033333333333333333, -0.0051587301587301586, 0.00033068783068783067, -1.2576158409491743e-05, 3.2696213251768808e-07, -6.2538504998822463e-09},
+    {0.125, -0.0069444444444444441, 0.00017361111111111112, -2.4801587301587302e-06, 2.296443268665491e-08, -1.4911969277048643e-10},
+    {0.050000000000000003, -0.0059523809523809521, 0.00034722222222222224, -1.2776575276575277e-05, 3.2856803690137022e-07, -6.2630270963604301e-09},
+    {0.013888888888888888, -0.0013888888888888889, 6.7791005291005293e-05, -2.1127278071722516e-06, 4.6823583529932736e-08, -7.8230484976516722e-10},
+    {-0.083333333333333329, 0.0055555555555555558, -0.00014880952380952382, 2.2045855379188711e-06, -2.08767569878681e-08, 1.376489471727567e-10},
+    {0.025000000000000001, -0.002976190476190476, 0.00017361111111111112, -6.3882876382876386e-06, 1.6428401845068511e-07, -3.131513548180215e-09},
+    {-0.0055555555555555558, 0.00064484126984126983, -3.3068783068783071e-05, 1.0480132007909786e-06, -2.3354438036977719e-08, 3.9086565624264039e-10},
+    {0.025000000000000001, -0.00099206349206349201, 1.9290123456790123e-05, -2.2546897546897547e-07, 1.7664948220503776e-09, -9.941312851365761e-12},
+    {0.0083333333333333332, -0.00074404761904761901, 3.4722222222222222e-05, -1.064714606381273e-06, 2.3469145492955017e-08, -3.9143919352252688e-10},
+    {0.001984126984126984, -0.00015432098765432098, 6.1628186628186631e-06, -1.6251752362863473e-07, 3.1215722353288491e-09, -4.6017932339127483e-11}};
+  static const int kDtPower[12] = {3,4,5,4,5,6,4,5,6,5,6,7};
+
+  const ocs2::scalar_t thetadt = theta*dt;
+  if(thetadt < 0.25) {
+    const ocs2::scalar_t thetadt2 = thetadt*thetadt;
+    for(int i=0; i<12; ++i) {
+      ocs2::scalar_t value = kSeries[i][5];
+      for(int j=4; j>=0; --j) {
+        value = value*thetadt2 + kSeries[i][j];
+      }
+      k[i] = value*std::pow(dt, kDtPower[i]);
+    }
+    return;
+  }
+
+  const ocs2::scalar_t theta2 = theta*theta;
+  const ocs2::scalar_t theta3 = theta2*theta;
+  const ocs2::scalar_t theta4 = theta3*theta;
+  const ocs2::scalar_t theta5 = theta4*theta;
+  const ocs2::scalar_t theta6 = theta5*theta;
+  const ocs2::scalar_t theta7 = theta6*theta;
+  const ocs2::scalar_t thetadt2 = thetadt*thetadt;
+  const ocs2::scalar_t thetadt3 = thetadt2*thetadt;
+  const ocs2::scalar_t sinthetadt = std::sin(thetadt);
+  const ocs2::scalar_t costhetadt = std::cos(thetadt);
+  const ocs2::scalar_t sin2thetadt = std::sin(2*thetadt);
+  const ocs2::scalar_t cos2thetadt = std::cos(2*thetadt);
+  const ocs2::scalar_t thetadtcosthetadt = thetadt*costhetadt;
+  const ocs2::scalar_t thetadtsinthetadt = thetadt*sinthetadt;
+  // Phi_25
+  k[0] = (sinthetadt-thetadtcosthetadt)/(theta3);
+  k[1] = (cos2thetadt-4*costhetadt+3)/(4*theta4);
+  k[2] = (4*sinthetadt+sin2thetadt-4*thetadtcosthetadt-2*thetadt)/(4*theta5);
+  k[3] = (thetadt2-2*thetadtsinthetadt-2*costhetadt+2)/(2*theta4);
+  k[4] = (6*thetadt-8*sinthetadt+sin2thetadt)/(4*theta5);
+  k[5] = (2*thetadt2-4*thetadtsinthetadt-cos2thetadt+1)/(4*theta6);
+  // Phi_35
+  k[6] = (thetadtsinthetadt+2*costhetadt-2)/(theta4);
+  k[7] = (6*thetadt-8*sinthetadt+sin2thetadt)/(8*theta5);
+  k[8] = (2*thetadt2+8*thetadtsinthetadt+16*costhetadt+cos2thetadt-17)/(8*theta6);
+  k[9] = (thetadt3+6*thetadt-12*sinthetadt+6*thetadtcosthetadt)/(6*theta5);
+  k[10] = (6*thetadt2+16*costhetadt-cos2thetadt-15)/(8*theta6);
+  k[11] = (4*thetadt3+6*thetadt-24*sinthetadt-3*sin2thetadt+24*thetadtcosthetadt)/(24*theta7);
+}
+
+// M <- Adjoint_SEK3(X) * M, applied to the first 3*dimX-6 rows of M (remaining rows are left as they are).
+// Uses the structure of the adjoint (R on the diagonal, skew(x_i)*R in the first block column) instead of a dense product.
+void adjointMultiplyRows(const ocs2::matrix_t& X, ocs2::matrix_t& M) {
+  const int K = X.cols()-3;
+  const matrix3_t R = X.block<3,3>(0,0);
+  const ocs2::matrix_t M0 = M.topRows(3);
+  for(int i=0; i<K; ++i) {
+    const matrix3_t skewXR = skew(X.block<3,1>(0,3+i)) * R;
+    M.middleRows(3+3*i,3) = (R * M.middleRows(3+3*i,3) + skewXR * M0).eval();
+  }
+  M.topRows(3).noalias() = R * M0;
+}
+
+// P <- Adj * P * Adj^T, where Adj = blockdiag(Adjoint_SEK3(X), I)
+void adjointTransform(const ocs2::matrix_t& X, ocs2::matrix_t& P) {
+  adjointMultiplyRows(X, P);
+  ocs2::matrix_t Pt = P.transpose();
+  adjointMultiplyRows(X, Pt);
+  P = Pt.transpose();
+}
+
+} // namespace
 
 // Default constructor
 InEKF::InEKF() 
@@ -112,13 +200,13 @@ void InEKF::setMagneticField(const vector3_t& true_magnetic_field) { magnetic_fi
 const vector3_t& InEKF::getMagneticField() const { return magnetic_field_; }
 
 // Compute Analytical state transition matrix
-ocs2::matrix_t InEKF::StateTransitionMatrix(const vector3_t& w, 
-                                             const vector3_t& a, 
-                                             const ocs2::scalar_t dt) {
+ocs2::matrix_t InEKF::StateTransitionMatrix(const vector3_t& w,
+                                             const vector3_t& a,
+                                             const ocs2::scalar_t dt,
+                                             const matrix3_t& G0,
+                                             const matrix3_t& G1,
+                                             const matrix3_t& G2) {
   const vector3_t phi = w*dt;
-  const matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
-  const matrix3_t G1 = Gamma_SO3(phi,1); // TODO: These are also needed for the mean propagation, we should not compute twice
-  const matrix3_t G2 = Gamma_SO3(phi,2);
   const matrix3_t G0t = G0.transpose();
   const matrix3_t G1t = G1.transpose();
   const matrix3_t G2t = G2.transpose();
@@ -127,48 +215,21 @@ ocs2::matrix_t InEKF::StateTransitionMatrix(const vector3_t& w,
   // Compute the complicated bias terms (derived for the left invariant case)
   const matrix3_t ax = skew(a);
   const matrix3_t wx = skew(w);
-  const matrix3_t wx2 = wx*wx;
   const ocs2::scalar_t dt2 = dt*dt;
   const ocs2::scalar_t dt3 = dt2*dt;
-  const ocs2::scalar_t theta = w.norm();
-  const ocs2::scalar_t theta2 = theta*theta;
-  const ocs2::scalar_t theta3 = theta2*theta;
-  const ocs2::scalar_t theta4 = theta3*theta;
-  const ocs2::scalar_t theta5 = theta4*theta;
-  const ocs2::scalar_t theta6 = theta5*theta;
-  const ocs2::scalar_t theta7 = theta6*theta;
-  const ocs2::scalar_t thetadt = theta*dt;
-  const ocs2::scalar_t thetadt2 = thetadt*thetadt;
-  const ocs2::scalar_t thetadt3 = thetadt2*thetadt;
-  const ocs2::scalar_t sinthetadt = std::sin(thetadt);
-  const ocs2::scalar_t costhetadt = std::cos(thetadt);
-  const ocs2::scalar_t sin2thetadt = std::sin(2*thetadt);
-  const ocs2::scalar_t cos2thetadt = std::cos(2*thetadt);
-  const ocs2::scalar_t thetadtcosthetadt = thetadt*costhetadt;
-  const ocs2::scalar_t thetadtsinthetadt = thetadt*sinthetadt;
+  ocs2::scalar_t k[12];
+  biasCoefficients(w.norm(), dt, k);
+  const matrix3_t wxax = wx*ax;
+  const matrix3_t wxaxwx = wxax*wx;
+  const matrix3_t wxaxwx2 = wxaxwx*wx;
+  const matrix3_t wx2ax = wx*wxax;
+  const matrix3_t wx2axwx = wx2ax*wx;
+  const matrix3_t wx2axwx2 = wx2axwx*wx;
 
-  matrix3_t Phi25L = G0t*(ax*G2t*dt2 
-      + ((sinthetadt-thetadtcosthetadt)/(theta3))*(wx*ax)
-      - ((cos2thetadt-4*costhetadt+3)/(4*theta4))*(wx*ax*wx)
-      + ((4*sinthetadt+sin2thetadt-4*thetadtcosthetadt-2*thetadt)/(4*theta5))*(wx*ax*wx2)
-      + ((thetadt2-2*thetadtsinthetadt-2*costhetadt+2)/(2*theta4))*(wx2*ax)
-      - ((6*thetadt-8*sinthetadt+sin2thetadt)/(4*theta5))*(wx2*ax*wx)
-      + ((2*thetadt2-4*thetadtsinthetadt-cos2thetadt+1)/(4*theta6))*(wx2*ax*wx2) );
-
-  matrix3_t Phi35L = G0t*(ax*G3t*dt3
-      - ((thetadtsinthetadt+2*costhetadt-2)/(theta4))*(wx*ax)
-      - ((6*thetadt-8*sinthetadt+sin2thetadt)/(8*theta5))*(wx*ax*wx)
-      - ((2*thetadt2+8*thetadtsinthetadt+16*costhetadt+cos2thetadt-17)/(8*theta6))*(wx*ax*wx2)
-      + ((thetadt3+6*thetadt-12*sinthetadt+6*thetadtcosthetadt)/(6*theta5))*(wx2*ax)
-      - ((6*thetadt2+16*costhetadt-cos2thetadt-15)/(8*theta6))*(wx2*ax*wx)
-      + ((4*thetadt3+6*thetadt-24*sinthetadt-3*sin2thetadt+24*thetadtcosthetadt)/(24*theta7))*(wx2*ax*wx2) );
-
-  // TODO: Get better approximation using taylor series when theta < tol
-  const ocs2::scalar_t tol =  1e-6;
-  if(theta < tol) {
-    Phi25L = (1.0/2.0)*ax*dt2;
-    Phi35L = (1.0/6.0)*ax*dt3;
-  }
+  const matrix3_t Phi25L = G0t*(ax*G2t*dt2 + k[0]*wxax - k[1]*wxaxwx + k[2]*wxaxwx2
+                                           + k[3]*wx2ax - k[4]*wx2axwx + k[5]*wx2axwx2);
+  const matrix3_t Phi35L = G0t*(ax*G3t*dt3 - k[6]*wxax - k[7]*wxaxwx - k[8]*wxaxwx2
+                                           + k[9]*wx2ax - k[10]*wx2axwx + k[11]*wx2axwx2);
 
   // Fill out analytical state transition matrices
   const int dimX = state_.dimX();
@@ -218,22 +279,14 @@ ocs2::matrix_t InEKF::StateTransitionMatrix(const vector3_t& w,
 }
 
 
-// Compute Discrete noise matrix
-ocs2::matrix_t InEKF::DiscreteNoiseMatrix(const ocs2::matrix_t& Phi, 
-                                           const ocs2::scalar_t dt){
-  const int dimX = state_.dimX();
+// Compute noise matrix G*Qc*G^T, which discretized and propagated gives Qd = Phi*G*Qc*G^T*Phi^T*dt
+ocs2::matrix_t InEKF::NoiseMatrix() const {
   const int dimTheta = state_.dimTheta();
-  const int dimP = state_.dimP();    
-  ocs2::matrix_t G = ocs2::matrix_t::Identity(dimP,dimP);
-  // Compute G using Adjoint of Xk if needed, otherwise identity (Assumes unpropagated state)
-  if((state_.getStateType() == StateType::WorldCentric && error_type_ == ErrorType::RightInvariant) || 
-      (state_.getStateType() == StateType::BodyCentric && error_type_ == ErrorType::LeftInvariant)) {
-    G.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(state_.getWorldX()); 
-  }
+  const int dimP = state_.dimP();
 
-  // Continuous noise covariance 
+  // Continuous noise covariance
   ocs2::matrix_t Qc = ocs2::matrix_t::Zero(dimP,dimP); // Landmark noise terms will remain zero
-  Qc.template block<3,3>(0,0) = noise_params_.getGyroscopeCov(); 
+  Qc.template block<3,3>(0,0) = noise_params_.getGyroscopeCov();
   Qc.template block<3,3>(3,3) = noise_params_.getAccelerometerCov();
   for(auto& e : estimated_contact_positions_) {
     Qc.template block<3,3>(3+3*(e.second-3),3+3*(e.second-3)) = noise_params_.getContactCov(); // Contact noise terms
@@ -242,10 +295,12 @@ ocs2::matrix_t InEKF::DiscreteNoiseMatrix(const ocs2::matrix_t& Phi,
   Qc.template block<3,3>(dimP-dimTheta,dimP-dimTheta) = noise_params_.getGyroscopeBiasCov();
   Qc.template block<3,3>(dimP-dimTheta+3,dimP-dimTheta+3) = noise_params_.getAccelerometerBiasCov();
 
-  // Noise Covariance Discretization
-  const ocs2::matrix_t PhiG = Phi * G;
-  ocs2::matrix_t Qd = PhiG * Qc * PhiG.transpose() * dt; // Approximated discretized noise matrix (TODO: compute analytical)
-  return Qd;
+  // G = blockdiag(Adjoint(Xk), I) if needed, otherwise identity (Assumes unpropagated state)
+  if((state_.getStateType() == StateType::WorldCentric && error_type_ == ErrorType::RightInvariant) ||
+      (state_.getStateType() == StateType::BodyCentric && error_type_ == ErrorType::LeftInvariant)) {
+    adjointTransform(state_.getWorldX(), Qc);
+  }
+  return Qc;
 }
 
 
@@ -257,16 +312,25 @@ void InEKF::Propagate(const vector3_t& imu_w, const vector3_t& imu_a, ocs2::scal
 
   // Get current state estimate and dimensions
   const auto& X = state_.getX();
-  const ocs2::matrix_t Xinv = state_.calcXinv();
   const auto& P = state_.getP();
   int dimX = state_.dimX();
   int dimP = state_.dimP();
   int dimTheta = state_.dimTheta();
 
+  // Integrals of the exponential map (used by both the covariance and the mean propagation)
+  const vector3_t phi = w*dt;
+  const matrix3_t G0 = Gamma_SO3(phi,0);
+  const matrix3_t G1 = Gamma_SO3(phi,1);
+  const matrix3_t G2 = Gamma_SO3(phi,2);
+
   //  ------------ Propagate Covariance --------------- //
-  const ocs2::matrix_t Phi = this->StateTransitionMatrix(w,a,dt);
-  const ocs2::matrix_t Qd = this->DiscreteNoiseMatrix(Phi, dt);
-  ocs2::matrix_t P_pred = Phi * P * Phi.transpose() + Qd;
+  // P_pred = Phi*P*Phi^T + Phi*G*Qc*G^T*Phi^T*dt = Phi*(P + G*Qc*G^T*dt)*Phi^T
+  const ocs2::matrix_t Phi = this->StateTransitionMatrix(w,a,dt,G0,G1,G2);
+  ocs2::matrix_t PQd = P;
+  PQd.noalias() += this->NoiseMatrix() * dt; // Approximated discretized noise (TODO: compute analytical)
+  const ocs2::matrix_t PhiPQd = Phi * PQd;
+  ocs2::matrix_t P_pred(dimP, dimP);
+  P_pred.noalias() = PhiPQd * Phi.transpose();
 
   // If we don't want to estimate bias, remove correlation
   if(!estimate_bias_) {
@@ -279,10 +343,6 @@ void InEKF::Propagate(const vector3_t& imu_w, const vector3_t& imu_a, ocs2::scal
   const auto& R = state_.getRotation();
   const auto& v = state_.getVelocity();
   const auto& p = state_.getPosition();
-  const vector3_t phi = w*dt;
-  const matrix3_t G0 = Gamma_SO3(phi,0); // Computation can be sped up by computing G0,G1,G2 all at once
-  const matrix3_t G1 = Gamma_SO3(phi,1);
-  const matrix3_t G2 = Gamma_SO3(phi,2);
 
   ocs2::matrix_t X_pred = X;
   if(state_.getStateType() == StateType::WorldCentric) {
@@ -311,49 +371,46 @@ void InEKF::Propagate(const Eigen::Matrix<ocs2::scalar_t,6,1>& imu, ocs2::scalar
 }
 
 
+// Compute Kalman gain, state correction vector and updated covariance
+void InEKF::CorrectCovariance(const ocs2::matrix_t& Z,
+                              const ocs2::matrix_t& H,
+                              const ocs2::matrix_t& N,
+                              ocs2::matrix_t& P,
+                              ocs2::vector_t& delta) {
+  const ocs2::matrix_t PHT = P * H.transpose();
+  ocs2::matrix_t S = N;
+  S.noalias() += H * PHT;
+  ldlt_.compute(S);
+  // K^T = S^-1 * (P*H^T)^T, without forming S^-1
+  const ocs2::matrix_t KT = ldlt_.solve(PHT.transpose());
+
+  // Compute state correction vector
+  delta.noalias() = KT.transpose() * Z;
+
+  // Update Covariance: P - K*S*K^T = P - K*(P*H^T)^T (equal to the Joseph form for the optimal gain)
+  P.noalias() -= PHT * KT;
+  P = (0.5*(P + P.transpose())).eval();
+}
+
+
 // Correct State: Right-Invariant Observation
-void InEKF::CorrectRightInvariant(const ocs2::matrix_t& Z, 
-                                  const ocs2::matrix_t& H, 
+void InEKF::CorrectRightInvariant(const ocs2::matrix_t& Z,
+                                  const ocs2::matrix_t& H,
                                   const ocs2::matrix_t& N) {
   // Get current state estimate
   const auto& X = state_.getX();
-  ocs2::vector_t Theta = state_.getTheta();
+  const auto& Theta = state_.getTheta();
   ocs2::matrix_t P = state_.getP();
-  const int dimX = state_.dimX();
   const int dimTheta = state_.dimTheta();
-  const int dimP = state_.dimP();
-
-  // Remove bias
-  Theta = Eigen::Matrix<ocs2::scalar_t,6,1>::Zero();
-  P.block<6,6>(dimP-dimTheta,dimP-dimTheta) = 0.0001*Eigen::Matrix<ocs2::scalar_t,6,6>::Identity();
-  P.block(0,dimP-dimTheta,dimP-dimTheta,dimTheta).setZero();
-  P.block(dimP-dimTheta,0,dimTheta,dimP-dimTheta).setZero();
-  // std::cout << "P:\n" << P << std::endl;
-  // std::cout << state_ << std::endl;
 
   // Map from left invariant to right invariant error temporarily
   if(error_type_==ErrorType::LeftInvariant) {
-    ocs2::matrix_t Adj = ocs2::matrix_t::Identity(dimP,dimP);
-    Adj.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(X); 
-    P.noalias() = (Adj * P * Adj.transpose()).eval(); 
+    adjointTransform(X, P);
   }
 
-  // Compute Kalman Gain
-  const ocs2::matrix_t PHT = P * H.transpose();
-  const ocs2::matrix_t S = H * PHT + N;
-  ocs2::matrix_t Sinv;
-  if(S.rows() <= 3) {
-    Sinv = S.inverse();
-  }
-  else {
-    ldlt_.compute(S);
-    const int dimS = S.rows();
-    Sinv = ldlt_.solve(ocs2::matrix_t::Identity(dimS, dimS));
-  }
-  const ocs2::matrix_t K = PHT * Sinv;
-
-  // Compute state correction vector
-  const ocs2::vector_t delta = K*Z;
+  // Compute Kalman Gain, state correction vector and new covariance
+  ocs2::vector_t delta;
+  this->CorrectCovariance(Z, H, N, P, delta);
   const ocs2::matrix_t dX = Exp_SEK3(delta.segment(0,delta.rows()-dimTheta));
   const ocs2::vector_t dTheta = delta.segment(delta.rows()-dimTheta, dimTheta);
 
@@ -361,60 +418,37 @@ void InEKF::CorrectRightInvariant(const ocs2::matrix_t& Z,
   const ocs2::matrix_t X_new = dX*X; // Right-Invariant Update
   const ocs2::vector_t Theta_new = Theta + dTheta;
 
-  // Set new state  
-  state_.setX(X_new); 
+  // Set new state
+  state_.setX(X_new);
   state_.setTheta(Theta_new);
-
-  // Update Covariance
-  const ocs2::matrix_t IKH = ocs2::matrix_t::Identity(dimP,dimP) - K*H;
-  ocs2::matrix_t P_new = IKH * P * IKH.transpose() + K*N*K.transpose(); // Joseph update form
 
   // Map from right invariant back to left invariant error
   if(error_type_==ErrorType::LeftInvariant) {
-    ocs2::matrix_t AdjInv = ocs2::matrix_t::Identity(dimP,dimP);
-    AdjInv.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(state_.calcXinv()); 
-    P_new = (AdjInv * P_new * AdjInv.transpose()).eval();
+    adjointTransform(state_.calcXinv(), P);
   }
   // Set new covariance
-  state_.setP(P_new); 
-}   
+  state_.setP(P);
+}
 
 
 // Correct State: Left-Invariant Observation
-void InEKF::CorrectLeftInvariant(const ocs2::matrix_t& Z, 
-                                 const ocs2::matrix_t& H, 
+void InEKF::CorrectLeftInvariant(const ocs2::matrix_t& Z,
+                                 const ocs2::matrix_t& H,
                                  const ocs2::matrix_t& N) {
   // Get current state estimate
   const auto& X = state_.getX();
   const auto& Theta = state_.getTheta();
   ocs2::matrix_t P = state_.getP();
-  int dimX = state_.dimX();
-  int dimTheta = state_.dimTheta();
-  int dimP = state_.dimP();
+  const int dimTheta = state_.dimTheta();
 
   // Map from right invariant to left invariant error temporarily
   if(error_type_==ErrorType::RightInvariant) {
-    ocs2::matrix_t AdjInv = ocs2::matrix_t::Identity(dimP,dimP);
-    AdjInv.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(state_.calcXinv()); 
-    P = (AdjInv * P * AdjInv.transpose()).eval();
+    adjointTransform(state_.calcXinv(), P);
   }
 
-  // Compute Kalman Gain
-  const ocs2::matrix_t PHT = P * H.transpose();
-  const ocs2::matrix_t S = H * PHT + N;
-  ocs2::matrix_t Sinv;
-  if(S.rows() <= 3) {
-    Sinv = S.inverse();
-  }
-  else {
-    ldlt_.compute(S);
-    const int dimS = S.rows();
-    Sinv = ldlt_.solve(ocs2::matrix_t::Identity(dimS, dimS));
-  }
-  const ocs2::matrix_t K = PHT * Sinv;
-
-  // Compute state correction vector
-  const ocs2::vector_t delta = K*Z;
+  // Compute Kalman Gain, state correction vector and new covariance
+  ocs2::vector_t delta;
+  this->CorrectCovariance(Z, H, N, P, delta);
   const ocs2::matrix_t dX = Exp_SEK3(delta.segment(0,delta.rows()-dimTheta));
   const ocs2::vector_t dTheta = delta.segment(delta.rows()-dimTheta, dimTheta);
 
@@ -423,39 +457,36 @@ void InEKF::CorrectLeftInvariant(const ocs2::matrix_t& Z,
   const ocs2::vector_t Theta_new = Theta + dTheta;
 
   // Set new state
-  state_.setX(X_new); 
+  state_.setX(X_new);
   state_.setTheta(Theta_new);
-
-  // Update Covariance
-  const ocs2::matrix_t IKH = ocs2::matrix_t::Identity(dimP,dimP) - K*H;
-  ocs2::matrix_t P_new = IKH * P * IKH.transpose() + K*N*K.transpose(); // Joseph update form
 
   // Map from left invariant back to right invariant error
   if(error_type_==ErrorType::RightInvariant) {
-    ocs2::matrix_t Adj = ocs2::matrix_t::Identity(dimP,dimP);
-    Adj.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(X_new); 
-    P_new = (Adj * P_new * Adj.transpose()).eval(); 
+    adjointTransform(X_new, P);
   }
 
   // Set new covariance
-  state_.setP(P_new); 
-}   
+  state_.setP(P);
+}
 
 // Correct state using kinematics measured between imu and contact point
 void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
-  ocs2::vector_t Z, Y, b;
-  ocs2::matrix_t H, N, PI;
-
   vector<pair<int,int> > remove_contacts;
   vectorKinematics new_contacts;
   vector<int> used_contact_ids;
 
+  // Stacked observation, allocated once for the maximum number of measurements and trimmed afterwards
+  const int max_rows = 3*measured_kinematics.size();
+  ocs2::vector_t Z(max_rows);
+  ocs2::matrix_t H = ocs2::matrix_t::Zero(max_rows, state_.dimP());
+  ocs2::matrix_t N = ocs2::matrix_t::Zero(max_rows, max_rows);
+  int num_rows = 0;
+
   for(vectorKinematicsIterator it=measured_kinematics.begin(); it!=measured_kinematics.end(); ++it) {
     // Detect and skip if an ID is not unique (this would cause singularity issues in InEKF::Correct)
-    if(find(used_contact_ids.begin(), used_contact_ids.end(), it->id) != used_contact_ids.end()) { 
-      cout << "Duplicate contact ID detected! Skipping measurement.\n";
-      continue; 
-    } 
+    if(find(used_contact_ids.begin(), used_contact_ids.end(), it->id) != used_contact_ids.end()) {
+      continue;
+    }
     else { 
       used_contact_ids.push_back(it->id); 
     }
@@ -480,32 +511,22 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
     } 
     else if(contact_indicated && found) {
       // If contact is indicated and id is found in estimated_contacts_, then correct using kinematics
-      const int dimX = state_.dimX();
       const int dimTheta = state_.dimTheta();
-      const int dimP = state_.dimP();
-      int startIndex;
+      const int startIndex = num_rows;
+      num_rows += 3;
       // Fill out H
-      startIndex = H.rows();
-      H.conservativeResize(startIndex+3, dimP);
-      H.block(startIndex,0,3,dimP).setZero();
       if(state_.getStateType() == StateType::WorldCentric) {
         H.template block<3,3>(startIndex,6) = -matrix3_t::Identity(); // -I
         H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = matrix3_t::Identity(); // I
-      } 
+      }
       else {
         H.template block<3,3>(startIndex,6) = matrix3_t::Identity(); // I
         H.template block<3,3>(startIndex,3*it_estimated->second-dimTheta) = -matrix3_t::Identity(); // -I
       }
       // Fill out N
-      startIndex = N.rows();
-      N.conservativeResize(startIndex+3, startIndex+3);
-      N.block(startIndex,0,3,startIndex).setZero();
-      N.block(0,startIndex,startIndex,3).setZero();
-      N.template block<3,3>(startIndex,startIndex).noalias() = state_.getWorldRotation() * it->covariance.block<3,3>(3,3) 
-                                                                                          * state_.getWorldRotation().transpose();
+      const matrix3_t R_world = state_.getWorldRotation();
+      N.template block<3,3>(startIndex,startIndex).noalias() = R_world * it->covariance.block<3,3>(3,3) * R_world.transpose();
       // Fill out Z
-      startIndex = Z.rows();
-      Z.conservativeResize(startIndex+3, Eigen::NoChange);
       const auto& R = state_.getRotation();
       const auto& p = state_.getPosition();
       const auto& d = state_.getVector(it_estimated->second);  
@@ -521,6 +542,10 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
       continue;
     }
   }
+
+  Z.conservativeResize(num_rows);
+  H.conservativeResize(num_rows, Eigen::NoChange);
+  N.conservativeResize(num_rows, num_rows);
 
   // Correct state using stacked observation
   if(Z.rows()>0) {
@@ -543,9 +568,7 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
       removeRowAndColumn(X_rem, it->second);
       // Remove 3 rows and columns from P
       int startIndex = 3 + 3*(it->second-3);
-      removeRowAndColumn(P_rem, startIndex); // TODO: Make more efficient
-      removeRowAndColumn(P_rem, startIndex); // TODO: Make more efficient
-      removeRowAndColumn(P_rem, startIndex); // TODO: Make more efficient
+      removeRowsAndColumns(P_rem, startIndex, 3);
       // Update all indices for estimated_landmarks and estimated_contact_positions
       for(map<int,int>::iterator it2=estimated_landmarks_.begin(); it2!=estimated_landmarks_.end(); ++it2) {
         if(it2->second > it->second) it2->second -= 1;
@@ -622,9 +645,8 @@ void InEKF::CorrectLandmarks(const vectorLandmarks& measured_landmarks) {
 
   for(vectorLandmarksIterator it=measured_landmarks.begin(); it!=measured_landmarks.end(); ++it) {
     // Detect and skip if an ID is not unique (this would cause singularity issues in InEKF::Correct)
-    if(find(used_landmark_ids.begin(), used_landmark_ids.end(), it->id) != used_landmark_ids.end()) { 
-      cout << "Duplicate landmark ID detected! Skipping measurement.\n";
-      continue; 
+    if(find(used_landmark_ids.begin(), used_landmark_ids.end(), it->id) != used_landmark_ids.end()) {
+      continue;
     } 
     else { 
       used_landmark_ids.push_back(it->id); 
@@ -810,7 +832,6 @@ void InEKF::RemoveLandmarks(const std::vector<int>& landmark_ids) {
 
 // Keep landmarks by IDs
 void InEKF::KeepLandmarks(const std::vector<int>& landmark_ids) {
-  std::cout << std::endl;
   // Loop through estimated landmarks removing ones not found in the list
   std::vector<int> ids_to_erase;
   for(map<int,int>::iterator it=estimated_landmarks_.begin(); it!=estimated_landmarks_.end(); ++it) {
@@ -1041,6 +1062,14 @@ void InEKF::CorrectContactPosition(const int id,
   }
 }
 
+
+void removeRowsAndColumns(ocs2::matrix_t& M, int index, int n) {
+  const int dim = M.cols();
+  const int tail = dim-index-n;
+  M.block(index,0,tail,dim) = M.bottomRows(tail).eval();
+  M.block(0,index,dim,tail) = M.rightCols(tail).eval();
+  M.conservativeResize(dim-n,dim-n);
+}
 
 void removeRowAndColumn(ocs2::matrix_t& M, int index) {
   const unsigned int dimX = M.cols();

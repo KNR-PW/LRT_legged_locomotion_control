@@ -117,7 +117,7 @@ namespace legged_locomotion_mpc
   TerrainAvoidanceSoftConstraint::Settings loadTerrainAvoidanceSoftConstraintSettings(
     const std::string& filename,
     const std::string& fieldName = "terrain_avoidance_soft_constraint_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

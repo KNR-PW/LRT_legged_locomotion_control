@@ -20,7 +20,7 @@ namespace legged_locomotion_mpc
 		{
       FootTangentialConstraintMatrix constraints{};
 
-      size_t numberOfConstraints = stanceTerrain.getBoundryPoints().size();
+      size_t numberOfConstraints = stanceTerrain.getBoundaryPoints().size();
       constraints.A.resize(numberOfConstraints, 3);
       constraints.b.resize(numberOfConstraints, 1);
 
@@ -29,15 +29,15 @@ namespace legged_locomotion_mpc
         for (size_t i = 0; i < numberOfConstraints; ++i) 
 		    {
           // Determine next point in counter clockwise direction
-          const auto boundryPoint = stanceTerrain.getBoundryPoint(i);
-          const auto nextBoundryPoint = stanceTerrain.getNextBoundryPoint(i);
-          vector2_t start2end = nextBoundryPoint - boundryPoint;
+          const auto boundaryPoint = stanceTerrain.getBoundaryPoint(i);
+          const auto nextBoundaryPoint = stanceTerrain.getNextBoundaryPoint(i);
+          vector2_t start2end = nextBoundaryPoint - boundaryPoint;
 
           // Get 2D constraint A_terrain * p_terrain + b - margin >= 0
           vector2_t A_terrain{-start2end.y(), start2end.x()};
           // rotate 90deg around z to get a vector pointing to interior of the polygon
           A_terrain.normalize(); // make it a unit vector.
-          scalar_t b_terrain = -A_terrain.dot(boundryPoint) - margin;
+          scalar_t b_terrain = -A_terrain.dot(boundaryPoint) - margin;
           // Take offset of one of the points
 
           // 3D position in terrain frame = T_R_W * (p_w - p_0)

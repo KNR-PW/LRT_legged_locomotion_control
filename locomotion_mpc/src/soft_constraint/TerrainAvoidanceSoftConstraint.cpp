@@ -154,8 +154,8 @@ namespace legged_locomotion_mpc
       const auto& radiuses = collisionInterface_.getFrameSphereRadiuses(
         collisionIndex);
       const auto& sphereRelativePositions = collisionInterface_.getFrameSpherePositions(collisionIndex);
-      const auto& framePosition = leggedPrecomputation.getCollisionLinkPosition(i);
-      const auto& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(i);
+      const auto& framePosition = leggedPrecomputation.getCollisionLinkPosition(collisionIndex);
+      const auto& frameEulerAngles = leggedPrecomputation.getCollisionLinkOrientation(collisionIndex);
       const matrix3_t rotationMatrix = getRotationMatrixFromZyxEulerAngles(frameEulerAngles);
       size_t currentBestSphereIndex = currentCollisionLinksSphere_[i + sixDofEndEffectorNum_];
       const auto& neighbourIndexes = collisionInterface_.getSphereNeighbours(collisionIndex, 

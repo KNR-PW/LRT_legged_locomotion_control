@@ -36,9 +36,9 @@ namespace floating_base_model
   auto FloatingBaseModelPinocchioMappingTpl<SCALAR_T>::getPinocchioJointPosition(const vector_t& state) const -> vector_t
   {
     const auto& info = floatingBaseModelInfo_;
-    assert(info.stateDim == state.rows());
+    assert(info.stateDim == static_cast<size_t>(state.rows()));
 
-    const auto model = pinocchioInterfacePtr_->getModel();
+    const auto& model = pinocchioInterfacePtr_->getModel();
 
     const auto basePosition = access_helper_functions::getBasePosition(state, info);
     const Eigen::Matrix<SCALAR_T, 3, 1> baseEulerAngles = access_helper_functions::getBaseOrientationZyx(state, info);
@@ -59,8 +59,8 @@ namespace floating_base_model
      const vector_t& input) const -> vector_t
   {
     const auto& info = floatingBaseModelInfo_;
-    assert(info.stateDim == state.rows());
-    assert(info.inputDim == input.rows());
+    assert(info.stateDim == static_cast<size_t>(state.rows()));
+    assert(info.inputDim == static_cast<size_t>(input.rows()));
 
     const auto& model = pinocchioInterfacePtr_->getModel();
     const auto baseVelocity = access_helper_functions::getBaseVelocity(state, info);
@@ -81,16 +81,16 @@ namespace floating_base_model
      const matrix_t& Jv) const -> std::pair<matrix_t, matrix_t>
   {
     const auto& info = floatingBaseModelInfo_;
-    assert(info.stateDim == state.rows());
-    const auto& model = pinocchioInterfacePtr_->getModel();
-    
+    assert(info.stateDim == static_cast<size_t>(state.rows()));
+
     const Eigen::Vector<SCALAR_T, 3> eulerAngles = access_helper_functions::getBaseOrientationZyx(state, info);
     const auto baseRotationMatrix = ocs2::getRotationMatrixFromZyxEulerAngles(eulerAngles);
     const auto E_inv = ocs2::getMappingFromEulerAnglesZyxDerivativeToLocalAngularVelocity(eulerAngles);
     
     matrix_t dfdx = matrix_t::Zero(Jv.rows(), info.stateDim);
     dfdx.template leftCols<6>() = Jv.template leftCols<6>();
-    dfdx.template middleCols<3>(6) = Jq.template leftCols<3>() * baseRotationMatrix;
+    // Freeflyer tangent is expressed in base frame: d(tangent_linear)/d(position_world) = R^T
+    dfdx.template middleCols<3>(6) = Jq.template leftCols<3>() * baseRotationMatrix.transpose();
     dfdx.template middleCols<3>(9) = Jq.template middleCols<3>(3) * E_inv;
     dfdx.rightCols(info.actuatedDofNum) = Jq.rightCols(info.actuatedDofNum);
 

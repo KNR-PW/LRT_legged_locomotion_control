@@ -129,8 +129,6 @@ namespace legged_locomotion_mpc
     cost.dfduu = matrix_t::Zero(info_.inputDim, info_.inputDim);
     cost.dfdux = matrix_t::Zero(info_.inputDim, info_.stateDim);
 
-    cost.dfdxx.diagonal().array() += config_.hessianDiagonalShift;
-
     const contact_flags_t contactFlags = referenceManager_.getContactFlags(time);
 
     for(size_t i = 0; i < info_.numThreeDofContacts; ++i)
@@ -183,8 +181,11 @@ namespace legged_locomotion_mpc
       const scalar_t penaltySecondDerivative = frictionBarrierPenaltyPtr_->getSecondDerivative(0.0, 
         constraintValue);  
 
-      const matrix3_t d2ConeD2U = rotationMatrixToTerrain.transpose() * d2ConeDF2 
+      matrix3_t d2ConeD2U = rotationMatrixToTerrain.transpose() * d2ConeDF2
         * rotationMatrixToTerrain;
+
+      // Cone is concave, shift makes its force Hessian negative definite (as in ocs2)
+      d2ConeD2U.diagonal().array() -= config_.hessianDiagonalShift;
 
       cost.dfduu.block<3, 3>(3 * i, 3 * i) = dConedU * penaltySecondDerivative * dConedU.transpose() 
         + penaltyDerivative * d2ConeD2U;

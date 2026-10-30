@@ -165,7 +165,7 @@ TEST(LeggedReferenceManagerTest, getContactFlags)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -343,7 +343,7 @@ TEST(LeggedReferenceManagerTest, getTerrainModel)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -370,7 +370,7 @@ TEST(LeggedReferenceManagerTest, getTerrainModel)
     const vector3_t positon = vector3_t::Random() * 100.0;
     const vector2_t position2D{positon.x(), positon.y()};
     EXPECT_TRUE((slopyTerrain.projectPositionInWorldOntoPlane(positon) - 
-      terrain.getSmoothedPositon(position2D)).norm() < eps);
+      terrain.getSmoothedPosition(position2D)).norm() < eps);
   }
 }
 
@@ -515,7 +515,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorTrajectoryPoint)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   
@@ -707,7 +707,7 @@ TEST(LeggedReferenceManagerTest, getEndEffectorConstraintMatrixes)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   

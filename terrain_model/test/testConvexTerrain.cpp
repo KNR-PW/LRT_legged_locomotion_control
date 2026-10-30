@@ -85,6 +85,35 @@ TEST(TestConvexTerrain, projectToConvex2dPolygonBoundary_valueTest) {
   }
 }
 
+TEST(TestConvexTerrain, projectToConvex2dPolygonBoundary_obtuseAngles) {
+  // Regular 16-gon has obtuse angles, like convex regions from region growing
+  constexpr size_t N = 16;
+  const scalar_t radius = 0.1;
+  std::vector<vector2_t> counterClockwise;
+  for (size_t i = 0; i < N; i++) {
+    const scalar_t angle = 2.0 * M_PI * i / N;
+    counterClockwise.emplace_back(radius * std::cos(angle), radius * std::sin(angle));
+  }
+  const std::vector<vector2_t> clockwise(counterClockwise.rbegin(), counterClockwise.rend());
+
+  for (const auto& boundary : {counterClockwise, clockwise}) {
+    ConvexTerrain terrain(TerrainPlane(), boundary);
+    // Points inside of inscribed circle, close to vertices and to edges
+    const scalar_t inscribedRadius = radius * std::cos(M_PI / N);
+    for (size_t i = 0; i < 4 * N; i++) {
+      const scalar_t angle = 2.0 * M_PI * i / (4 * N);
+      const vector2_t insidePoint = 0.99 * inscribedRadius * vector2_t(std::cos(angle), std::sin(angle));
+      const vector2_t outsidePoint = 1.01 * radius * vector2_t(std::cos(angle), std::sin(angle));
+      EXPECT_LT(terrain.projectToConvex2dPolygonBoundary(insidePoint).first, 0.0);
+      EXPECT_GT(terrain.projectToConvex2dPolygonBoundary(outsidePoint).first, 0.0);
+
+      // Inside points are not moved by projection
+      const vector3_t image = terrain.projectToConvex3dPolygon({insidePoint.x(), insidePoint.y(), 0.0});
+      EXPECT_TRUE(image.head<2>().isApprox(insidePoint, 1e-9));
+    }
+  }
+}
+
 TEST(TestConvexTerrain, projectToConvexPolygon) {
   
   TerrainPlane plane = getRandomTerrain();

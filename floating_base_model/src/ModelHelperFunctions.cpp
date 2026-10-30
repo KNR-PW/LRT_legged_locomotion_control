@@ -18,14 +18,20 @@ namespace floating_base_model
       const auto& model = interface.getModel();
       auto& data = interface.getData();
 
-      assert(fext.size() == model.njoints);
+      assert(fext.size() == static_cast<size_t>(model.njoints));
 
       using Force = pinocchio::ForceTpl<SCALAR_T, 0>;
       Force force;
       force.linear() = Eigen::Vector<SCALAR_T, 3>::Zero();
       force.angular() = Eigen::Vector<SCALAR_T, 3>::Zero();
 
-      for (size_t i = 0; i < info.numThreeDofContacts; i++) 
+      // Reset contact joints first, so that contacts sharing a parent joint accumulate
+      for (size_t i = 0; i < info.numThreeDofContacts + info.numSixDofContacts; i++)
+      {
+        fext[info.endEffectorJointIndices[i]] = force;
+      }
+
+      for (size_t i = 0; i < info.numThreeDofContacts; i++)
       {
         const auto forceWorldFrame = access_helper_functions::getContactForces(input, i, info);
         size_t parentJointIndex = info.endEffectorJointIndices[i];
@@ -34,7 +40,7 @@ namespace floating_base_model
         const auto& jointFramePlacement = contactFrame.placement.translation();
         force.linear() = data.oMi[parentJointIndex].rotation().transpose() * forceWorldFrame;
         force.angular() = jointFramePlacement.cross(force.linear());
-        fext[parentJointIndex] = force;
+        fext[parentJointIndex] += force;
       }  
     
       for (size_t i = info.numThreeDofContacts; i < info.numThreeDofContacts + info.numSixDofContacts; i++) 
@@ -47,7 +53,7 @@ namespace floating_base_model
         Eigen::Matrix3<SCALAR_T> worldToJointRotation = data.oMi[parentJointIndex].rotation().transpose();
         force.linear() = worldToJointRotation * wrenchWorldFrame.template block<3,1>(0, 0);
         force.angular() = worldToJointRotation * wrenchWorldFrame.template block<3,1>(3, 0) + jointFramePlacement.cross(force.linear());
-        fext[parentJointIndex] = force;
+        fext[parentJointIndex] += force;
       }  
     }
 

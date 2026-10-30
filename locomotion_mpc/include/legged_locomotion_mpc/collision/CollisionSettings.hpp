@@ -86,7 +86,7 @@ namespace legged_locomotion_mpc
   CollisionSettings loadCollisionSettings(const std::string& filename,
     const ModelSettings& modelSettings,
     const std::string& fieldName = "legged_collision_settings",
-    bool verbose = "true");
+    bool verbose = true);
   } // namespace collision
 } // namespace legged_locomotion_mpc
 

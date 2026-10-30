@@ -415,9 +415,8 @@ namespace legged_locomotion_mpc
     
     // Setup precomputation
     optimalProblem_.preComputationPtr = std::make_unique<LeggedPrecomputation>(
-      floatingBaseModelInfo_, *referenceManagerPtr_, *endEffectorForwardKinematics_, 
-      *collisionForwardKinematics_, *torqueApproximator_, *weightCompensator_, 
-      modelFolderCppAd, recompileLibrariesCppAd, verbose);
+      floatingBaseModelInfo_, *referenceManagerPtr_, *endEffectorForwardKinematics_,
+      *collisionForwardKinematics_, *torqueApproximator_, *weightCompensator_);
     
     // Setup all intermediate costs
     if(interfaceSettings_.useTrajectoryTrackingCost)
@@ -432,7 +431,7 @@ namespace legged_locomotion_mpc
         "end_effector_weights", verbose);
 
       auto trajectoryTrackingCost = std::make_unique<TrajectoryTrackingCost>(
-        floatingBaseModelInfo_, *referenceManagerPtr_, baseWeights, jointWeights, 
+        floatingBaseModelInfo_, baseWeights, jointWeights,
         endEffectorWeights, modelFolderCppAd, recompileLibrariesCppAd, verbose);
       
       optimalProblem_.costPtr->add("TrajectoryTrackingCost", std::move(trajectoryTrackingCost));
@@ -638,18 +637,19 @@ namespace legged_locomotion_mpc
         modelFile, "normal_orientation_soft_constraint_settings", verbose);
 
       auto normalOrientationSoftConstraint = 
-        std::make_unique<NormalOrientationSoftConstraint>(*referenceManagerPtr_, 
-          normalOrientationSettings, floatingBaseModelInfo_, 
-          modelFolderCppAd, recompileLibrariesCppAd, verbose);
+        std::make_unique<NormalOrientationSoftConstraint>(*referenceManagerPtr_,
+          normalOrientationSettings, floatingBaseModelInfo_);
 
       optimalProblem_.stateSoftConstraintPtr->add("NormalOrientationSoftConstraint", 
         std::move(normalOrientationSoftConstraint));
     }
 
+    // Setup target trajectory pointer
+    optimalProblem_.targetTrajectoriesPtr = &referenceManagerPtr_->getTargetTrajectories();
+
     // Setup all terminal costs
     if(interfaceSettings_.useTerminalTrackingCost)
     {
-      optimalProblem_.targetTrajectoriesPtr = &referenceManagerPtr_->getTargetTrajectories();
 
       auto lqrSolution = continuous_time_lqr::solve(optimalProblem_, initTime, 
         currentState, currentInput);

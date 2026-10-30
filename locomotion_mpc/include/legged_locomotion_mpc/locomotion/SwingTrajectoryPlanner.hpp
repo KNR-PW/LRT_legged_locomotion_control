@@ -143,7 +143,7 @@ namespace legged_locomotion_mpc
          */
         using position_trajectories = std::vector<std::vector<vector3_t>>;
         position_trajectories getEndEffectorPositionTrajectories(
-          std::vector<ocs2::scalar_t> times) const;
+          const std::vector<ocs2::scalar_t>& times) const;
 
         /** 
          * Main access method for generated cartesian reference velocity trajectories 
@@ -151,7 +151,7 @@ namespace legged_locomotion_mpc
          */
         using velocity_trajectories = std::vector<std::vector<vector3_t>>;
         velocity_trajectories getEndEffectorVelocityTrajectories(
-          std::vector<ocs2::scalar_t> times) const;
+          const std::vector<ocs2::scalar_t>& times) const;
         
         /** 
          * Main access method for generated cartesian reference terrain clearance 
@@ -159,7 +159,7 @@ namespace legged_locomotion_mpc
          */
         using foot_clearance_trajectory = std::vector<std::vector<ocs2::scalar_t>>;
         foot_clearance_trajectory getEndEffectorClearanceTrajectories(
-          std::vector<ocs2::scalar_t> times) const;
+          const std::vector<ocs2::scalar_t>& times) const;
 
         /** 
          * Main access method for generated cartesian reference surface normals 
@@ -167,7 +167,7 @@ namespace legged_locomotion_mpc
          */
         using normal_trajectories = std::vector<std::vector<vector3_t>>;
         normal_trajectories getEndEffectorNormalTrajectories(
-          std::vector<ocs2::scalar_t> times) const;
+          const std::vector<ocs2::scalar_t>& times) const;
         
         /**
          * Complete foot trajectories for single timestamp
@@ -200,7 +200,7 @@ namespace legged_locomotion_mpc
          * trajectories. Access of end effector i in time (index) t: points[t] -> pos[i], vel[i], cl[i]
          */
         EndEffectorTrajectories getEndEffectorTrajectories(
-          std::vector<ocs2::scalar_t> times) const;
+          const std::vector<ocs2::scalar_t>& times) const;
 
         struct FootTangentialConstraintTrajectories
         {
@@ -281,7 +281,7 @@ namespace legged_locomotion_mpc
         std::vector<std::vector<terrain_model::ConvexTerrain>> nominalFootholdsPerLeg_;
         std::vector<std::vector<vector3_t>> heuristicFootholdsPerLeg_;
 
-        const terrain_model::TerrainModel* terrainModel_;
+        const terrain_model::TerrainModel* terrainModel_ = nullptr;
 
         const OverExtensionPenalty overExtensionPenalty_;
     };

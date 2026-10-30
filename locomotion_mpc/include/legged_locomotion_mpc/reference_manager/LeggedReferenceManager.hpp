@@ -20,6 +20,7 @@
 #ifndef __LEGGED_REFERENCE_MANAGER_LEGGED_LOCOMOTION_MPC__
 #define __LEGGED_REFERENCE_MANAGER_LEGGED_LOCOMOTION_MPC__
 
+#include <atomic>
 #include <future>
 
 #include <ocs2_core/thread_support/Synchronized.h>
@@ -113,7 +114,14 @@ namespace legged_locomotion_mpc
     private:
 
       void generateNewTargetTrajectories(ocs2::scalar_t initTime, ocs2::scalar_t finalTime);
-    
+
+      /**
+       * Copy terrain used for generating references into terrain for getter,
+       * only if new terrain was used. Do not call in parallel with
+       * generateNewTargetTrajectories().
+       */
+      void updateTerrainModelCopy();
+
       const floating_base_model::FloatingBaseModelInfo modelInfo_;
       const Settings settings_;
 
@@ -130,8 +138,11 @@ namespace legged_locomotion_mpc
       using FootTangentialConstraintTrajectories = legged_locomotion_mpc::locomotion::SwingTrajectoryPlanner::FootTangentialConstraintTrajectories;
       ocs2::BufferedValue<FootTangentialConstraintTrajectories> footConstraintTrajectories_;
       
+      // Copy for getter, separate from terrain used by reference generation (thread safety)
       std::unique_ptr<terrain_model::TerrainModel> currentTerrainModel_;
       ocs2::BufferedPointer<terrain_model::TerrainModel> bufferedTerrainModel_;
+      // Set when reference generation took new terrain from buffer
+      std::atomic_bool terrainModelUpdated_{false};
 
       locomotion::GaitPlanner gaitPlanner_;
       locomotion::SwingTrajectoryPlanner swingPlanner_;
@@ -150,7 +161,7 @@ namespace legged_locomotion_mpc
   LeggedReferenceManager::Settings loadLeggedReferenceManagerSettings(
     const std::string& filename,
     const std::string& fieldName = "reference_manager_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

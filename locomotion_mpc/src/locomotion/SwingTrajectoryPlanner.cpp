@@ -213,7 +213,7 @@ namespace legged_locomotion_mpc
 
     using position_trajectories = std::vector<std::vector<vector3_t>>;
     position_trajectories SwingTrajectoryPlanner::getEndEffectorPositionTrajectories(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       position_trajectories positions;
       positions.reserve(times.size());
@@ -228,7 +228,7 @@ namespace legged_locomotion_mpc
 
     using velocity_trajectories = std::vector<std::vector<vector3_t>>;
       velocity_trajectories SwingTrajectoryPlanner::getEndEffectorVelocityTrajectories(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       velocity_trajectories velocities;
       velocities.reserve(times.size());
@@ -243,7 +243,7 @@ namespace legged_locomotion_mpc
 
     using foot_clearance_trajectory = std::vector<std::vector<scalar_t>>;
     foot_clearance_trajectory SwingTrajectoryPlanner::getEndEffectorClearanceTrajectories(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       foot_clearance_trajectory footClerances;
       footClerances.reserve(times.size());
@@ -257,7 +257,7 @@ namespace legged_locomotion_mpc
 
     using normal_trajectories = std::vector<std::vector<vector3_t>>;
     normal_trajectories SwingTrajectoryPlanner::getEndEffectorNormalTrajectories(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       normal_trajectories normals;
       normals.reserve(times.size());
@@ -293,7 +293,7 @@ namespace legged_locomotion_mpc
     }
 
     SwingTrajectoryPlanner::EndEffectorTrajectories SwingTrajectoryPlanner::getEndEffectorTrajectories(
-      std::vector<scalar_t> times) const
+      const std::vector<scalar_t>& times) const
     {
       EndEffectorTrajectories trajectories;
       trajectories.positions.reserve(times.size());
@@ -531,9 +531,9 @@ namespace legged_locomotion_mpc
       // Nominal foothold is equal to current foothold for end effectors in contact
       if(startsWithStancePhase(contactTimings)) 
       {
-        std::vector<vector2_t> emptyBoundry;
+        std::vector<vector2_t> emptyBoundary;
         const auto plane = lastContacts_[endEffectorIndex].second;
-        ConvexTerrain convexTerrain(plane, emptyBoundry);
+        ConvexTerrain convexTerrain(plane, emptyBoundary);
         nominalFootholdTerrain.push_back(convexTerrain);
         ++heuristicFootholdIt; // Skip this heuristic. Use lastContact directly
       }
@@ -583,10 +583,10 @@ namespace legged_locomotion_mpc
             else 
             {
               // After the horizon -> we are only interested in the position and orientation
-              std::vector<vector2_t> emptyBoundry;
+              std::vector<vector2_t> emptyBoundary;
               const auto plane = terrainModel.getLocalTerrainAtPositionInWorldAlongGravity(
                 referenceFootholdPositionInWorld);
-              ConvexTerrain convexTerrain(plane, emptyBoundry);
+              ConvexTerrain convexTerrain(plane, emptyBoundary);
               nominalFootholdTerrain.push_back(convexTerrain);
               ++heuristicFootholdIt;
             }
@@ -696,7 +696,6 @@ namespace legged_locomotion_mpc
 
         for(size_t j = 0; j < numEndEffectors; ++j)
         {
-          const scalar_t midTime = eventTimes[i] + 0.5 * (eventTimes[i + 1] - eventTimes[i]);
           const auto& footPhase = getFootPhase(j, eventTimes[i]);
           const FootTangentialConstraintMatrix* newConstraintPtr = footPhase.getFootTangentialConstraintInWorldFrame();
           if(contactFlags[j] && newConstraintPtr)
@@ -865,9 +864,10 @@ namespace legged_locomotion_mpc
       }
       for(const auto& phase: settings.phases)
       {
-        if(phase < 0.0 || phase > 1.0)
+        // Midpoint at liftoff or touchdown time makes swing spline singular
+        if(phase <= 0.0 || phase >= 1.0)
         {
-          throw std::invalid_argument("[SwingTrajectoryPlanner]: Phase needs to be between [0.0, 1.0)!");
+          throw std::invalid_argument("[SwingTrajectoryPlanner]: Phase needs to be between (0.0, 1.0)!");
         }
       }
 

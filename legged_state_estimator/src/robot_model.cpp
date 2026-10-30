@@ -32,27 +32,64 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  RobotModel::RobotModel(const std::string& urdf_path, 
+  RobotModel::RobotModel(const std::string& urdf_path,
     const std::string& imu_frame,
     const std::vector<std::string>& contact_frames): RobotModel(
-      buildFloatingBaseModel(urdf_path), imu_frame, contact_frames) { }
+      buildFloatingBaseModel(urdf_path), "", imu_frame, contact_frames) { }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  RobotModel::RobotModel(const std::string& urdf_path,
+    const std::string& base_frame, const std::string& imu_frame,
+    const std::vector<std::string>& contact_frames): RobotModel(
+      buildFloatingBaseModel(urdf_path), base_frame, imu_frame, contact_frames) { }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
   RobotModel::RobotModel(const pinocchio::Model& pin_model, const int imu_frame,
     const std::vector<int>& contact_frames): contact_frames_(contact_frames),
-      imu_frame_(imu_frame), model_(pin_model), data_(), q_(), v_(), a_(), tau_(), 
-      jac_6d_() 
+      imu_frame_(imu_frame), model_(pin_model), data_(), q_(), v_(), a_(), tau_(),
+      jac_6d_()
   {
     data_ = pinocchio::Data(model_);
     q_   = vector_t(model_.nq);
     v_   = vector_t(model_.nv);
     a_   = vector_t(model_.nv);
     tau_ = vector_t(model_.nv);
-    for(int  i = 0;  i < contact_frames.size(); ++i) 
+    for(int  i = 0;  i < contact_frames.size(); ++i)
     {
       jac_6d_.push_back(ocs2::matrix_t::Zero(6, model_.nv));
+    }
+
+    if(imu_frame < 0 || imu_frame >= model_.nframes)
+    {
+      throw std::invalid_argument(
+        "[RobotModel] invalid argument: IMU frame id " + std::to_string(imu_frame) + " does not exit!");
+    }
+    initializeBaseFrame("");
+
+    // Same checks as in the constructor with frame names
+    if(contact_frames.size() > MAX_LEG_NUMBER)
+    {
+      throw std::invalid_argument("[RobotModel] invalid argment: contact_frames.size() must not be bigger than "
+        + std::to_string(MAX_LEG_NUMBER));
+    }
+
+    if(contact_frames.size() < 2)
+    {
+      throw std::invalid_argument("[RobotModel] invalid argment: contact_frames.size() must not be smaller than "
+        + std::to_string(2));
+    }
+
+    for(const auto& e : contact_frames)
+    {
+      if(e < 0 || e >= model_.nframes)
+      {
+        throw std::invalid_argument(
+          "[RobotModel] invalid argument: contact frame id " + std::to_string(e) + " does not exit!");
+      }
     }
   }
 
@@ -60,8 +97,15 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   RobotModel::RobotModel(const pinocchio::Model& pin_model, const std::string& imu_frame,
-    const std::vector<std::string>& contact_frames): contact_frames_(), imu_frame_(), 
-      model_(pin_model), data_(), q_(), v_(), a_(), tau_(), jac_6d_() 
+    const std::vector<std::string>& contact_frames): RobotModel(
+      pin_model, "", imu_frame, contact_frames) { }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  RobotModel::RobotModel(const pinocchio::Model& pin_model, const std::string& base_frame,
+    const std::string& imu_frame, const std::vector<std::string>& contact_frames): contact_frames_(),
+      imu_frame_(), model_(pin_model), data_(), q_(), v_(), a_(), tau_(), jac_6d_()
   {
     data_ = pinocchio::Data(model_);
     q_   = vector_t(model_.nq);
@@ -80,16 +124,19 @@ namespace legged_state_estimator
         "[RobotModel] invalid argument: IMU frame '" + imu_frame + "' does not exit!");
     }
     imu_frame_ = model_.getFrameId(imu_frame);
+    initializeBaseFrame(base_frame);
 
-    if(contact_frames.size() > MAX_LEG_NUMBER) 
+    if(contact_frames.size() > MAX_LEG_NUMBER)
     {
-      std::string error_message = "[RobotModel] invalid argment: contact_frames.size() must be smaller than " + MAX_LEG_NUMBER;
+      std::string error_message = "[RobotModel] invalid argment: contact_frames.size() must not be bigger than "
+        + std::to_string(MAX_LEG_NUMBER);
       throw std::invalid_argument(error_message);
     }
 
-    if(contact_frames.size() < 2) 
+    if(contact_frames.size() < 2)
     {
-      std::string error_message = "[RobotModel] invalid argment: contact_frames.size() must be bigger than " + 2;
+      std::string error_message = "[RobotModel] invalid argment: contact_frames.size() must not be smaller than "
+        + std::to_string(2);
       throw std::invalid_argument(error_message);
     }
 
@@ -109,17 +156,60 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  RobotModel::RobotModel(): contact_frames_(), imu_frame_(), model_(), data_(), q_(), 
-    v_(), a_(), tau_(), jac_6d_() { }
+  RobotModel::RobotModel(): contact_frames_(), imu_frame_(), model_(), data_(), q_(),
+    v_(), a_(), tau_(), jac_6d_(), base_frame_(),
+    imu_placement_in_base_(pinocchio::SE3::Identity()) { }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void RobotModel::updateLegKinematics(const vector_t& qJ, 
-    const pinocchio::ReferenceFrame rf) 
+  void RobotModel::initializeBaseFrame(const std::string& base_frame)
   {
-    updateKinematics(vector3_t::Zero(), 
-      Eigen::Quaterniond::Identity().coeffs(), qJ, rf);
+    constexpr pinocchio::JointIndex root_joint = 1;
+    if(model_.njoints <= root_joint || model_.joints[root_joint].shortname() != "JointModelFreeFlyer")
+    {
+      throw std::invalid_argument(
+        "[RobotModel] invalid argument: model must have a free-flyer root joint");
+    }
+
+    // Without a given base frame, the frame of the root joint (placed at the URDF root link) is used
+    const std::string base_frame_name = base_frame.empty() ? model_.names[root_joint] : base_frame;
+    if(!model_.existFrame(base_frame_name))
+    {
+      throw std::invalid_argument(
+        "[RobotModel] invalid argument: base frame '" + base_frame_name + "' does not exit!");
+    }
+    base_frame_ = model_.getFrameId(base_frame_name);
+
+    // IMU and base must be connected only by fixed joints (Pinocchio merges them into the same parent joint)
+    const auto& base = model_.frames[base_frame_];
+    const auto& imu = model_.frames[imu_frame_];
+    if(imu.parentJoint != base.parentJoint)
+    {
+      throw std::invalid_argument(
+        "[RobotModel] invalid argument: IMU frame '" + imu.name + "' is not rigidly attached to base frame '"
+        + base.name + "', there are joints between them ('" + model_.names[imu.parentJoint] + "' and '"
+        + model_.names[base.parentJoint] + "')");
+    }
+
+    if(base.parentJoint != root_joint)
+    {
+      throw std::invalid_argument(
+        "[RobotModel] invalid argument: base frame '" + base.name + "' is not rigidly attached to the floating base, "
+        "there are joints between them ('" + model_.names[base.parentJoint] + "')");
+    }
+
+    imu_placement_in_base_ = base.placement.actInv(imu.placement);
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void RobotModel::updateLegKinematics(const vector_t& qJ,
+    const pinocchio::ReferenceFrame rf, const bool compute_jacobians)
+  {
+    updateKinematics(vector3_t::Zero(),
+      Eigen::Quaterniond::Identity().coeffs(), qJ, rf, compute_jacobians);
   }
 
   /******************************************************************************************************/
@@ -137,17 +227,23 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   void RobotModel::updateKinematics(const vector3_t& base_pos, 
-    const vector4_t& base_quat, const vector_t& qJ, 
-    const pinocchio::ReferenceFrame rf) 
+    const vector4_t& base_quat, const vector_t& qJ,
+    const pinocchio::ReferenceFrame rf, const bool compute_jacobians)
   {
     q_.template head<3>()     = base_pos;
     q_.template segment<4>(3) = base_quat;
     q_.tail(model_.nq-7) = qJ;
     pinocchio::normalize(model_, q_);
-    pinocchio::forwardKinematics(model_, data_, q_);
-    pinocchio::updateFramePlacements(model_, data_);
+    if(!compute_jacobians)
+    {
+      pinocchio::forwardKinematics(model_, data_, q_);
+      pinocchio::updateFramePlacements(model_, data_);
+      return;
+    }
+    // computeJointJacobians also computes the forward kinematics
     pinocchio::computeJointJacobians(model_, data_, q_);
-    for(int  i = 0;  i < contact_frames_.size(); ++i) 
+    pinocchio::updateFramePlacements(model_, data_);
+    for(int  i = 0;  i < contact_frames_.size(); ++i)
     {
       pinocchio::getFrameJacobian(model_, data_, contact_frames_[i], rf, jac_6d_[i]);
     }
@@ -180,11 +276,11 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void RobotModel::updateLegDynamics(const vector_t& qJ, 
-    const vector_t& dqJ) 
+  void RobotModel::updateLegDynamics(const vector_t& qJ,
+    const vector_t& dqJ, const vector4_t& base_quat)
   {
-    updateDynamics(vector3_t::Zero(), 
-      Eigen::Quaterniond::Identity().coeffs(), 
+    updateDynamics(vector3_t::Zero(),
+      base_quat,
       vector3_t::Zero(), vector3_t::Zero(), 
       vector3_t::Zero(), vector3_t::Zero(), 
       qJ, dqJ, vector_t::Zero(nJ()));
@@ -214,7 +310,23 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  const vector3_t& RobotModel::getBasePosition() const 
+  const vector3_t& RobotModel::getBasePosition() const
+  {
+    return data_.oMf[base_frame_].translation();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const matrix3_t& RobotModel::getBaseRotation() const
+  {
+    return data_.oMf[base_frame_].rotation();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const vector3_t& RobotModel::getImuPosition() const
   {
     return data_.oMf[imu_frame_].translation();
   }
@@ -222,9 +334,33 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  const matrix3_t& RobotModel::getBaseRotation() const 
+  const matrix3_t& RobotModel::getImuRotation() const
   {
     return data_.oMf[imu_frame_].rotation();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const pinocchio::SE3& RobotModel::getImuPlacementInBase() const
+  {
+    return imu_placement_in_base_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const pinocchio::SE3& RobotModel::getImuPlacementInRoot() const
+  {
+    return model_.frames[imu_frame_].placement;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  const pinocchio::SE3& RobotModel::getBasePlacementInRoot() const
+  {
+    return model_.frames[base_frame_].placement;
   }
 
   /******************************************************************************************************/
@@ -287,9 +423,43 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  const std::vector<int>& RobotModel::getContactFrames() const 
+  const std::vector<int>& RobotModel::getContactFrames() const
   {
     return contact_frames_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  std::vector<std::string> RobotModel::getJointNames() const
+  {
+    // Joint 0 is "universe", joint 1 is the free-flyer root joint (checked in initializeBaseFrame)
+    return std::vector<std::string>(model_.names.begin() + 2, model_.names.end());
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  std::vector<int> RobotModel::getContactJointVelocityIndices(const int contact_id) const
+  {
+    assert(contact_id >= 0);
+    assert(contact_id < contact_frames_.size());
+    std::vector<int> indices;
+    const auto parent_joint = model_.frames[contact_frames_[contact_id]].parentJoint;
+    for(const auto joint_id : model_.supports[parent_joint])
+    {
+      const auto& joint = model_.joints[joint_id];
+      // Skip universe and floating base joint
+      if(joint.idx_v() < 6)
+      {
+        continue;
+      }
+      for(int k = 0;  k < joint.nv(); ++k)
+      {
+        indices.push_back(joint.idx_v() + k);
+      }
+    }
+    return indices;
   }
 
   /******************************************************************************************************/

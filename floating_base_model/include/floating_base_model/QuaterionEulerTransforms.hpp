@@ -96,6 +96,7 @@ namespace quaterion_euler_transforms
    *
    * @param [in] quaterion: quaterion
    * @return 3x3 matrix mapping
+   * @note Quaterion is normalized internally. Pitch is assumed in (-pi/2, pi/2), singular at +-pi/2.
    */
   template<typename SCALAR_T>
   Eigen::Matrix<SCALAR_T, 3, 3> getMappingFromLocalAngularVelocitytoEulerAnglesDerivative(const Eigen::Quaternion<SCALAR_T>& quaterion);
@@ -117,6 +118,8 @@ namespace quaterion_euler_transforms
     *
     * @param [in] quaterions: quaterions
     * @return array of mapping partial derivatives
+    * @note Gradient of the internally normalized mapping (includes the normalization Jacobian).
+    * Pitch is assumed in (-pi/2, pi/2), singular at +-pi/2.
     */
   template<typename SCALAR_T>
   std::array<Eigen::Matrix<SCALAR_T, 3, 3>, 4> getMappingFromLocalAngularVelocitytoEulerAnglesDerivativeQuaterionGradient(const Eigen::Quaternion<SCALAR_T>& quaterion);

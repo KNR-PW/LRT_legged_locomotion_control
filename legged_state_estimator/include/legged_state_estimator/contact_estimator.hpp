@@ -59,12 +59,13 @@ namespace legged_state_estimator
     ///
     /// @brief A parameter in computing the contact force covariances.
     ///
-    ocs2::scalar_t contact_force_covariance_alpha;
+    ocs2::scalar_t contact_force_covariance_alpha = 0.0;
 
     ///
     /// @brief Threshold to determine the contact state from contact probabilities.
+    /// Must be in (0, 1) (zero default is rejected by the contact estimator).
     ///
-    ocs2::scalar_t contact_probability_threshold;
+    ocs2::scalar_t contact_probability_threshold = 0.0;
   };
 
   ///
@@ -98,9 +99,15 @@ namespace legged_state_estimator
       ContactEstimator& operator=(ContactEstimator&&) noexcept = default;
       
       ///
-      /// @brief Resets the estimation.
+      /// @brief Resets the estimation to the state after construction.
       ///
       void reset();
+
+      ///
+      /// @brief Contact force covariance of a leg whose force could not be
+      /// estimated (singular leg Jacobian), the leg is not in contact then.
+      ///
+      static constexpr ocs2::scalar_t INVALID_CONTACT_FORCE_COVARIANCE = 1.0e12;
       
       ///
       /// @brief Updates the estimation.
@@ -134,7 +141,9 @@ namespace legged_state_estimator
       
       ///
       /// @brief Get the contact force estimates.
-      /// @return const reference to the contact force estimates.
+      /// @return const reference to the contact force estimates, expressed in
+      /// the frame of the robot model kinematics (world frame when used by
+      /// LeggedStateEstimator).
       ///
       const std::vector<vector3_t>& getContactForceEstimate() const;
       
@@ -152,7 +161,8 @@ namespace legged_state_estimator
       
       ///
       /// @brief Sets the contact normal surface.
-      /// @param[in] Contact Contact normal vectors.
+      /// @param[in] Contact Contact normal vectors, expressed in the same frame
+      /// as the contact forces.
       ///
       void setContactSurfaceNormal(
         const std::vector<vector3_t>& contact_surface_normal);

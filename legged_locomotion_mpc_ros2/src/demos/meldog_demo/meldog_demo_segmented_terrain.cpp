@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
   gridMap.get(terrain_model::elevationLayerName).array() -=
       gridMap.atPosition(terrain_model::elevationLayerName, {0., 0.});
 
-  auto planarTerrain = computePlanrTerrain(std::move(gridMap), perceptionConfig);
+  auto planarTerrain = computePlanarTerrain(std::move(gridMap), perceptionConfig);
 
   std::unique_ptr<TerrainModel> terrainModel =
     std::make_unique<SegmentedPlanesTerrainModel>(std::move(planarTerrain), 
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
   const vector2_t initPositionXY{0.0, 0.0};
 
   vector3_t initialBasePosition(initPositionXY.x(), initPositionXY.y(),
-    terrainModel->getSmoothedPositon(initPositionXY).z());
+    terrainModel->getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += initialBaseHeight;
 
@@ -140,8 +140,6 @@ int main(int argc, char* argv[])
 
   auto& rollout = loopShapingInterface.getRollout();
 
-  auto& weightCompenator = leggedInterface.weightCompensator();
-
   std::unique_ptr<MPC_BASE> mpcPtr = std::make_unique<GaussNewtonDDP_MPC>(mpcSettings, 
     ddpSettings, rollout, optimalProblem, initializer);
 
@@ -149,13 +147,11 @@ int main(int argc, char* argv[])
   //   optimalProblem, initializer);
 
   mpcPtr->getSolverPtr()->setReferenceManager(loopShapingInterface.getReferenceManagerPtr());
+  mpcPtr->getSolverPtr()->addSynchronizedModule(loopShapingInterface.getSynchronizedModules());
 
   std::unique_ptr<RolloutBase> rolloutPtr(rollout.clone());
 
   MPC_MRT_Interface mpcInterface(*mpcPtr);
-
-  const size_t standingMode = ((0x01 << (NUM_THREE_DOF_CONTACTS)) - 1);
-  const contact_flags_t standingFlags(standingMode);
 
   // ====== Execute the scenario ========
   SystemObservation observation;
@@ -182,7 +178,6 @@ int main(int argc, char* argv[])
   std::vector<PerformanceIndex> performances;
 
   std::vector<SystemObservation> observations;
-  std::vector<contact_flags_t> contactFlags;
 
   std::vector<scalar_array_t> optimizedTimeTrajectories;
   std::vector<vector_array_t> optimizedStateTrajectories;
@@ -230,8 +225,6 @@ int main(int argc, char* argv[])
 
       // referenceManager.preSolverRun(observation.time, observation.time + 1.0, observation.state);
 
-      const auto& lastTrajectoryState = referenceManager.getTargetTrajectories().stateTrajectory.back();
-
       // std::cerr << "Ostatni euler angle z targetu: ";
       // std::cerr << lastTrajectoryState.block(9, 0, 3, 1).transpose() << std::endl;
 
@@ -255,6 +248,8 @@ int main(int argc, char* argv[])
       mpcInterface.evaluatePolicy(observation.time, observation.state, tmp,
         observation.input, observation.mode);
 
+      // Contact mode at current time for visualization
+      observations.back().mode = observation.mode;
       
       observation.input = LinearInterpolation::interpolate(
         observation.time, mpcInterface.getPolicy().timeTrajectory_,
@@ -300,13 +295,6 @@ int main(int argc, char* argv[])
       observation.time = finalTime;
       observation.state = stateTrajectory.back();
       observation.input = inputTrajectory.back();
-
-      const auto targetState = referenceManager.getTargetTrajectories().getDesiredState(finalTime);
-      const auto targetInput = referenceManager.getTargetTrajectories().getDesiredInput(finalTime);
-
-      // observation.time = finalTime;
-      // observation.state = targetState;
-      // observation.input = targetInput;
     } 
     catch (std::exception& e) 
     {
@@ -314,6 +302,12 @@ int main(int argc, char* argv[])
       std::cout << e.what() << "\n";
       break;
     }
+  }
+
+  if(observations.size() < 2)
+  {
+    std::cerr << "Not enough MPC data to visualize!" << std::endl;
+    return 1;
   }
 
   rclcpp::init(argc, argv);
@@ -326,15 +320,17 @@ int main(int argc, char* argv[])
   const auto leggedVisualizer = std::make_shared<LeggedVisualizer>(visualizerSettings, 
     modelSettings, modelInfo, robotModel, forwardKinematics, torqueApproximator);
 
-  while(true)
+  while(rclcpp::ok())
   {
+    // Terrain does not change, publish it once per replay
+    leggedVisualizer->publishTerrainModel(referenceManager.getTerrainModel());
+
     scalar_t visualizationTime = initTime;
     size_t visualizationIndex = 0;
-    while(visualizationTime < observations.back().time)
+    while(rclcpp::ok() && visualizationTime < observations.back().time)
     {
       const auto currentTimeStamp = leggedVisualizer->now();
       leggedVisualizer->publishObservation(currentTimeStamp, observations[visualizationIndex]);
-      leggedVisualizer->publishTerrainModel(referenceManager.getTerrainModel());
       leggedVisualizer->publishTargetTrajectory(currentTimeStamp, targetTrajectories[visualizationIndex]);
       if(visualizationIndex < optimizedTimeTrajectories.size())
       {

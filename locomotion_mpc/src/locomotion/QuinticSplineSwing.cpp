@@ -5,7 +5,7 @@
 
 #include <legged_locomotion_mpc/locomotion/QuinticSplineSwing.hpp>
 
-#include <Eigen/Sparse>
+#include <Eigen/Dense>
 
 #include <legged_locomotion_mpc/common/Utils.hpp>
 
@@ -64,82 +64,82 @@ namespace legged_locomotion_mpc
     namespace 
     {
       void addStartPositionConstraint(scalar_t p, 
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A, vector_t &b,
+        matrix_t &A, vector_t &b,
         size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 5) = 1.0;
+        A(constraintIdx, splineIdx + 5) = 1.0;
         b(constraintIdx) = p;
       }
 
       void addEndPositionConstraint(scalar_t p,
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A, vector_t &b,
+        matrix_t &A, vector_t &b,
         size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 0) = 1.0;
-        A.insert(constraintIdx, splineIdx + 1) = 1.0;
-        A.insert(constraintIdx, splineIdx + 2) = 1.0;
-        A.insert(constraintIdx, splineIdx + 3) = 1.0;
-        A.insert(constraintIdx, splineIdx + 4) = 1.0;
-        A.insert(constraintIdx, splineIdx + 5) = 1.0;
+        A(constraintIdx, splineIdx + 0) = 1.0;
+        A(constraintIdx, splineIdx + 1) = 1.0;
+        A(constraintIdx, splineIdx + 2) = 1.0;
+        A(constraintIdx, splineIdx + 3) = 1.0;
+        A(constraintIdx, splineIdx + 4) = 1.0;
+        A(constraintIdx, splineIdx + 5) = 1.0;
         b(constraintIdx) = p;
       }
 
       void addStartVelocityConstraint(scalar_t v, scalar_t dt, 
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A,
+        matrix_t &A,
         vector_t &b, size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 4) = 1.0;
+        A(constraintIdx, splineIdx + 4) = 1.0;
         b(constraintIdx) = v * dt;
       }
 
       void addEndVelocityConstraint(scalar_t v, scalar_t dt, 
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A, vector_t &b,
+        matrix_t &A, vector_t &b,
         size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 0) = 5.0;
-        A.insert(constraintIdx, splineIdx + 1) = 4.0;
-        A.insert(constraintIdx, splineIdx + 2) = 3.0;
-        A.insert(constraintIdx, splineIdx + 3) = 2.0;
-        A.insert(constraintIdx, splineIdx + 4) = 1.0;
+        A(constraintIdx, splineIdx + 0) = 5.0;
+        A(constraintIdx, splineIdx + 1) = 4.0;
+        A(constraintIdx, splineIdx + 2) = 3.0;
+        A(constraintIdx, splineIdx + 3) = 2.0;
+        A(constraintIdx, splineIdx + 4) = 1.0;
         b(constraintIdx) = v * dt;
       }
 
       void addStartAccelerationConstraint(scalar_t a, scalar_t dt, 
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A,
+        matrix_t &A,
         vector_t &b, size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 3) = 2.0;
+        A(constraintIdx, splineIdx + 3) = 2.0;
         b(constraintIdx) = a * dt * dt;
       }
 
       void addEndAccelerationConstraint(scalar_t a, scalar_t dt,
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A,
+        matrix_t &A,
         vector_t &b, size_t constraintIdx, size_t splineIdx) 
       {
-        A.insert(constraintIdx, splineIdx + 0) = 20.0;
-        A.insert(constraintIdx, splineIdx + 1) = 12.0;
-        A.insert(constraintIdx, splineIdx + 2) = 6.0;
-        A.insert(constraintIdx, splineIdx + 3) = 2.0;
+        A(constraintIdx, splineIdx + 0) = 20.0;
+        A(constraintIdx, splineIdx + 1) = 12.0;
+        A(constraintIdx, splineIdx + 2) = 6.0;
+        A(constraintIdx, splineIdx + 3) = 2.0;
         b(constraintIdx) = a * dt * dt;
       }
 
       void addAccelerationContinuity(scalar_t dt_lhs, scalar_t dt_rhs,
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A, vector_t &b,
+        matrix_t &A, vector_t &b,
         size_t constraintIdx, size_t splineIdx_lhs, size_t splineIdx_rhs) 
       {
         const scalar_t scaling = dt_lhs / dt_rhs;
         const scalar_t scaling2 = scaling * scaling;
 
-        A.insert(constraintIdx, splineIdx_lhs + 0) = 20.0;
-        A.insert(constraintIdx, splineIdx_lhs + 1) = 12.0;
-        A.insert(constraintIdx, splineIdx_lhs + 2) = 6.0;
-        A.insert(constraintIdx, splineIdx_lhs + 3) = 2.0;
-        A.insert(constraintIdx, splineIdx_rhs + 3) = -2.0 * scaling2;
+        A(constraintIdx, splineIdx_lhs + 0) = 20.0;
+        A(constraintIdx, splineIdx_lhs + 1) = 12.0;
+        A(constraintIdx, splineIdx_lhs + 2) = 6.0;
+        A(constraintIdx, splineIdx_lhs + 3) = 2.0;
+        A(constraintIdx, splineIdx_rhs + 3) = -2.0 * scaling2;
         b(constraintIdx) = 0.0;
       }
 
       void addJerkContinuity(scalar_t dt_lhs, scalar_t dt_rhs, 
-        Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> &A,
+        matrix_t &A,
         vector_t &b, size_t constraintIdx,
         size_t splineIdx_lhs, size_t splineIdx_rhs) 
       {
@@ -147,10 +147,10 @@ namespace legged_locomotion_mpc
         const scalar_t scaling2 = scaling * scaling;
         const scalar_t scaling3 = scaling2 * scaling;
 
-        A.insert(constraintIdx, splineIdx_lhs + 0) = 60.0;
-        A.insert(constraintIdx, splineIdx_lhs + 1) = 24.0;
-        A.insert(constraintIdx, splineIdx_lhs + 2) = 6.0;
-        A.insert(constraintIdx, splineIdx_rhs + 2) = -6.0 * scaling3;
+        A(constraintIdx, splineIdx_lhs + 0) = 60.0;
+        A(constraintIdx, splineIdx_lhs + 1) = 24.0;
+        A(constraintIdx, splineIdx_lhs + 2) = 6.0;
+        A(constraintIdx, splineIdx_rhs + 2) = -6.0 * scaling3;
         b(constraintIdx) = 0.0;
       }
     } // namespace
@@ -176,9 +176,8 @@ namespace legged_locomotion_mpc
       const size_t numVariablesPerSpline = 6;
       const size_t numConditions = numVariablesPerSpline * numSplines;
 
-      // Initialize sparse linear system A*x = b
-      Eigen::SparseMatrix<scalar_t, Eigen::RowMajor> A(numConditions, numConditions);
-      A.reserve(Eigen::VectorXi::Constant(numConditions, 6)); // Each constraint has max 6 entries
+      // Initialize linear system A*x = b (small, dense is faster than sparse)
+      matrix_t A = matrix_t::Zero(numConditions, numConditions);
       vector_t b(numConditions);
 
       size_t constraintIdx = 0;
@@ -221,11 +220,8 @@ namespace legged_locomotion_mpc
       // Expected number of constraints was added
       assert(constraintIdx == numConditions);
 
-      // Solve with x = inv(A'*A) * A' * b
-      Eigen::SparseMatrix<scalar_t> AtA = A.adjoint() * A;
-      Eigen::SimplicialCholesky<Eigen::SparseMatrix<scalar_t> > chol(AtA);
-      vector_t rhs = A.adjoint() * b;
-      vector_t coefficients = chol.solve(rhs);
+      // A is square and has full rank, solve directly with LU decomposition
+      const vector_t coefficients = A.partialPivLu().solve(b);
 
       assert(coefficients.allFinite());
 

@@ -22,28 +22,38 @@ namespace legged_state_estimator
       contact_state_(),
       num_contacts_(robot_model.numContacts()) 
   {
-    if(settings.beta0.size() > MAX_LEG_NUMBER) 
+    if(settings.beta0.size() != num_contacts_)
     {
       throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta0.size() must be smaller than " + MAX_LEG_NUMBER);
+        "[ContactEstimator] invalid argment: settings.beta0.size() is " + std::to_string(settings.beta0.size())
+        + ", but must be equal to number of contacts: " + std::to_string(num_contacts_));
     }
 
-    if(settings.beta0.size() < 2) 
+    if(settings.beta1.size() != num_contacts_)
     {
       throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta0.size() must be greater than 1");
+        "[ContactEstimator] invalid argment: settings.beta1.size() is " + std::to_string(settings.beta1.size())
+        + ", but must be equal to number of contacts: " + std::to_string(num_contacts_));
     }
 
-    if(settings.beta1.size() > MAX_LEG_NUMBER) 
+    // Contact force estimation assumes that contact i is moved only by joints 3*i, 3*i+1, 3*i+2
+    for(int  i = 0;  i < num_contacts_; ++i)
     {
-      throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta1.size() must be smaller than " + MAX_LEG_NUMBER);
-    }
-
-    if(settings.beta1.size() < 2) 
-    {
-      throw std::invalid_argument(
-        "[ContactEstimator] invalid argment: settings.beta1.size() must be greater than 1");
+      const std::vector<int> joint_indices = robot_model.getContactJointVelocityIndices(i);
+      const std::vector<int> expected_indices{6 + 3 * i, 6 + 3 * i + 1, 6 + 3 * i + 2};
+      if(joint_indices != expected_indices)
+      {
+        std::string actual_indices;
+        for(const int index : joint_indices)
+        {
+          actual_indices += " " + std::to_string(index - 6);
+        }
+        throw std::invalid_argument(
+          "[ContactEstimator] invalid robot model: contact " + std::to_string(i)
+          + " must be moved by exactly joints " + std::to_string(3 * i) + " " + std::to_string(3 * i + 1)
+          + " " + std::to_string(3 * i + 2) + ", but is moved by joints" + actual_indices
+          + ". Check that the order of contact frames matches the order of legs in the URDF.");
+      }
     }
 
     if(settings.contact_probability_threshold <= 0) 
@@ -85,7 +95,17 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   void ContactEstimator::reset() 
   {
-
+    // Same state as after construction (contact surface normals are kept)
+    for(int  i = 0;  i < num_contacts_; ++i) 
+    {
+      contact_force_estimate_[i].setZero();
+      contact_force_estimate_prev_[i].setZero();
+      normal_contact_force_estimate_[i] = 0;
+      normal_contact_force_estimate_prev_[i] = 0;
+      contact_probability_[i] = 0;
+      contact_force_covariance_[i] = 0;
+      contact_state_[i].second = false;
+    }
   }
 
   /******************************************************************************************************/
@@ -94,18 +114,26 @@ namespace legged_state_estimator
   void ContactEstimator::update(const RobotModel& robot_model, 
       const vector_t& tauJ) 
   {
-    // Estimate contact force from robot dynamics via logistic regression
     for(int  i = 0;  i < num_contacts_; ++i) 
     {
-      contact_force_estimate_[i].noalias() = 
+      // Estimate contact force from robot dynamics
+      const vector3_t contact_force = 
         - robot_model.getJointContactJacobian(i).template block<3, 3>(0, i * 3).transpose().inverse() 
         * (tauJ.template segment<3>(3 * i) - robot_model.getJointInverseDynamics().template segment<3>(3 * i));
-      normal_contact_force_estimate_[i] = contact_force_estimate_[i].dot(contact_surface_normal_[i]);
-    }
 
-    // Contact probability 
-    for(int  i = 0;  i < num_contacts_; ++i) 
-    {
+      // Singular leg Jacobian (e.g. straight leg) gives non-finite force: leg is not in contact and
+      // previous force is kept, otherwise the next covariance would be non-finite and break the filter
+      if(!contact_force.allFinite())
+      {
+        contact_probability_[i] = 0;
+        contact_force_covariance_[i] = INVALID_CONTACT_FORCE_COVARIANCE;
+        continue;
+      }
+
+      contact_force_estimate_[i] = contact_force;
+      normal_contact_force_estimate_[i] = contact_force_estimate_[i].dot(contact_surface_normal_[i]);
+
+      // Contact probability via logistic regression
       contact_probability_[i] = 
         1.0 / (1.0 + std::exp(- settings_.beta1[i] * normal_contact_force_estimate_[i] 
         - settings_.beta0[i]));
@@ -114,11 +142,8 @@ namespace legged_state_estimator
       {
         contact_probability_[i] = 0;
       }
-    }
 
-    // Contact covariance
-    for(int  i = 0;  i < num_contacts_; ++i) 
-    {
+      // Contact covariance
       const scalar_t df = normal_contact_force_estimate_[i] - normal_contact_force_estimate_prev_[i];
       contact_force_covariance_[i] = settings_.contact_force_covariance_alpha * df * df;
       contact_force_estimate_prev_[i] = contact_force_estimate_[i];
@@ -206,6 +231,11 @@ namespace legged_state_estimator
   void ContactEstimator::disp(std::ostream& os) const 
   {
     os << "Contact estimation:" << std::endl;
+    if(num_contacts_ == 0)
+    {
+      os << "  no contacts" << std::flush;
+      return;
+    }
     os << "  contact state: [";
     for(int  i = 0;  i < num_contacts_-1; ++i) 
     {

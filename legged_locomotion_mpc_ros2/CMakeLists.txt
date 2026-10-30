@@ -28,6 +28,7 @@ set(THIS_PACKAGE_DEPENDS
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  nav_msgs
   trajectory_msgs
 
   legged_locomotion_mpc
@@ -39,6 +40,14 @@ set(THIS_PACKAGE_DEPENDS
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
+
+# Same flags as locomotion_mpc and floating_base_model are compiled with
+set(FLAGS
+  -Wno-ignored-attributes
+  -Wno-invalid-partial-specialization   # to silence warning with unsupported Eigen Tensor
+  -DPINOCCHIO_URDFDOM_TYPEDEF_SHARED_PTR
+  -DPINOCCHIO_URDFDOM_USE_STD_SHARED_PTR
+)
 
 add_library(${PROJECT_NAME}
   src/visualization/LeggedVisualizer.cpp
@@ -90,7 +99,7 @@ if(cmake_clang_tools_FOUND)
     message(STATUS "Run clang tooling for target " ${PROJECT_NAME})
     add_clang_tooling(
             TARGETS ${PROJECT_NAME}
-            SOURCE_DIRS src include test
+            SOURCE_DIRS src include
             CT_HEADER_DIRS include
             CF_WERROR
     )

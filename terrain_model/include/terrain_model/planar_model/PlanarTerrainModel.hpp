@@ -31,6 +31,10 @@ namespace terrain_model
 
       PlanarTerrainModel* clone() const override;
 
+      // Keep overloads without penalty function from the interface visible
+      using TerrainModel::getLocalTerrainAtPositionInWorldAlongGravity;
+      using TerrainModel::getConvexTerrainAtPositionInWorld;
+
       TerrainPlane getLocalTerrainAtPositionInWorldAlongGravity(
         const vector3_t& positionInWorld,
         std::function<ocs2::scalar_t(const vector3_t&)> penaltyFunction) const override;
@@ -49,7 +53,7 @@ namespace terrain_model
 
       const SignedDistanceField* getSignedDistanceField() const override;
 
-      vector3_t getSmoothedPositon(const vector2_t& positionXYInWorld) const override;
+      vector3_t getSmoothedPosition(const vector2_t& positionXYInWorld) const override;
 
       const grid_map::GridMap& getGridMapTerrain() const override;
 

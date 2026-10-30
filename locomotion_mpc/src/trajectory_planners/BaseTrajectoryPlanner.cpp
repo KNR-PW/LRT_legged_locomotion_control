@@ -102,7 +102,9 @@ namespace legged_locomotion_mpc
           "Update the terrain before planning base trajectory");
       }
 
-      const size_t referenceSize = (finalTime - initTime) / settings_.deltaTime + 1;
+      // At least start and end point, also when horizon is shorter than delta time
+      const size_t referenceSize = std::max<size_t>(2,
+        (finalTime - initTime) / settings_.deltaTime + 1);
 
       targetTrajectories.timeTrajectory.reserve(referenceSize);
 
@@ -162,15 +164,27 @@ namespace legged_locomotion_mpc
 
         currentBaseHeight_ = (currentBasePosition - currentPlane.getPosition()).dot(
           currentPlane.getSurfaceNormalInWorld());
-        currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight, 
+        currentBaseHeight_ = std::clamp(currentBaseHeight_, settings_.minimumBaseHeight,
+          settings_.maximumBaseHeight);
+      }
+      else
+      {
+        // Move base height to initTime with vertical velocity used since last update
+        currentBaseHeight_ = std::clamp(currentBaseHeight_ + currentBaseVerticalVelocity_
+          * (initTime - currentBaseHeightTime_), settings_.minimumBaseHeight,
           settings_.maximumBaseHeight);
       }
 
-      for (size_t i = 1; i < referenceSize; ++i) 
+      currentBaseHeightTime_ = initTime;
+      currentBaseVerticalVelocity_ = clampedCommand.baseVerticalVelocity;
+
+      scalar_t newBaseHeight = currentBaseHeight_;
+
+      for (size_t i = 1; i < referenceSize; ++i)
       {
-        // New base height normal to plane 
-        currentBaseHeight_ = std::clamp(currentBaseHeight_ + 
-          clampedCommand.baseVerticalVelocity * settings_.deltaTime, settings_.minimumBaseHeight, 
+        // New base height normal to plane
+        newBaseHeight = std::clamp(newBaseHeight +
+          clampedCommand.baseVerticalVelocity * settings_.deltaTime, settings_.minimumBaseHeight,
           settings_.maximumBaseHeight);
         
         // Get new position and orientation with current body velocities
@@ -192,7 +206,7 @@ namespace legged_locomotion_mpc
         newBasePosition = newBaseTerrain.getPosition();
 
         // Add new height to position, taking into accoount fact that base is on terrain plane
-        newBasePosition.z() += currentBaseHeight_ / 
+        newBasePosition.z() += newBaseHeight /
           newBaseTerrain.getSurfaceNormalInWorld().z();
       
         newBaseOrientationZyx = getEulerAnglesFromRotationMatrix(
@@ -266,10 +280,10 @@ namespace legged_locomotion_mpc
       rhOffsetGlobal += baseXYPositionInWorld;
 
       // Get position with smoothed terrain height
-      const vector3_t lfVerticalProjection = terrainModel_->getSmoothedPositon(lfOffsetGlobal);
-      const vector3_t rfVerticalProjection = terrainModel_->getSmoothedPositon(rfOffsetGlobal);
-      const vector3_t lhVerticalProjection = terrainModel_->getSmoothedPositon(lhOffsetGlobal);
-      const vector3_t rhVerticalProjection = terrainModel_->getSmoothedPositon(rhOffsetGlobal);
+      const vector3_t lfVerticalProjection = terrainModel_->getSmoothedPosition(lfOffsetGlobal);
+      const vector3_t rfVerticalProjection = terrainModel_->getSmoothedPosition(rfOffsetGlobal);
+      const vector3_t lhVerticalProjection = terrainModel_->getSmoothedPosition(lhOffsetGlobal);
+      const vector3_t rhVerticalProjection = terrainModel_->getSmoothedPosition(rhOffsetGlobal);
 
       const TerrainPlane basePlane = computeTerrainPlane({lfVerticalProjection, 
         rfVerticalProjection, lhVerticalProjection, rhVerticalProjection});

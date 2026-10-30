@@ -1,0 +1,75 @@
+//
+// Created by qiayuan on 22-12-23.
+//
+
+// Copyright (c) 2026, Bartłomiej Krajewski
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
+ * Modified by: Bartłomiej Krajewski (https://github.com/BartlomiejK2)
+ */
+
+#ifndef __LEGGED_WHOLE_BODY_CONTROL_WEIGHTED_WBC__
+#define __LEGGED_WHOLE_BODY_CONTROL_WEIGHTED_WBC__
+
+#include <legged_whole_body_control/WbcBase.hpp>
+
+#include <proxsuite/proxqp/dense/dense.hpp>
+
+namespace legged_whole_body_control 
+{
+  class WeightedWbc: public WbcBase
+  {
+    public:
+
+      struct Weights
+      {
+        ocs2::scalar_t weightBaseTrackingTask = 1.0;
+        ocs2::scalar_t weightEndEffectorsTrackingTask = 1.0;
+        ocs2::scalar_t weightContactForceTrackingTask = 1.0;
+        ocs2::scalar_t weightTorqueRegularizationTask = 0.01;
+      };
+
+      WeightedWbc(const ocs2::PinocchioInterface& pinocchioInterface, 
+        floating_base_model::FloatingBaseModelInfo info, 
+        WbcBase::Settings settings, Weights weights);
+
+      bool calculate(ocs2::scalar_t time) override;
+
+    private:
+
+      Task formulateWeightedTask();
+      Task formulateConstraints();
+
+      std::unique_ptr<proxsuite::proxqp::dense::QP<ocs2::scalar_t>> qpSolver_;
+
+      Weights weights_;
+
+      // Constant, formulated (and weighted) once
+      Task torqueRegularizationTask_;
+  };
+
+  /**
+   * Creates WeightedWbc weights
+   * @param [in] filename: file path with weighted wbc base weights.
+   * @param [in] fieldName: field where settings are defined
+   * @param [in] verbose: verbose flag
+   * @return WeightedWbc weights struct
+   */
+  WeightedWbc::Weights loadWeightedWbcSettings(const std::string& filename,
+    const std::string& fieldName = "weighted_wbc_settings",
+    bool verbose = true);
+} // namespace legged_whole_body_control
+#endif

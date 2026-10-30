@@ -6,6 +6,10 @@
 #ifndef __TERRAIN_MODEL_TERRAIN_MODEL__
 #define __TERRAIN_MODEL_TERRAIN_MODEL__
 
+#include <functional>
+#include <string>
+#include <vector>
+
 #include <grid_map_core/GridMap.hpp>
 
 #include <terrain_model/core/Types.hpp>
@@ -55,6 +59,7 @@ namespace terrain_model
        * Returns the height profiles between two points in world frame. Provided as a set of points {alpha, height}, where alpha in [0, 1] is
        * the progress along the line. position1InWorld -> alpha = 0, position2InWorld -> alpha = 1.
        * Height is the absolute height in world frame.
+       * Profile can be empty if there is no terrain data along the line.
        */
       virtual std::vector<vector2_t> getHeightProfileAlongLine(
         const vector3_t& position1InWorld,
@@ -64,7 +69,7 @@ namespace terrain_model
        * Return vector with the same X and Y values but new "smoothed" height 
        * value in world frame.
        */
-      virtual vector3_t getSmoothedPositon(const vector2_t& positionXYInWorld) const = 0;
+      virtual vector3_t getSmoothedPosition(const vector2_t& positionXYInWorld) const = 0;
         
       /**
        * Get const reference of GridMap representation of terrain model.

@@ -43,11 +43,10 @@ namespace legged_locomotion_mpc
     using namespace floating_base_model;
 
     TrajectoryTrackingCost::TrajectoryTrackingCost(FloatingBaseModelInfo info,
-      const LeggedReferenceManager& referenceManager,
       BaseWeights baseWeights, JointWeights jointWeights,
       EndEffectorWeights endEffectorWeights, const std::string& modelFolder,
       bool recompileLibraries, bool verbose):
-      info_(std::move(info)), referenceManager_(referenceManager),
+      info_(std::move(info)),
       baseWeights_(std::move(baseWeights)), jointWeights_(std::move(jointWeights)),
       endEffectorWeights_(std::move(endEffectorWeights)) 
     {
@@ -179,7 +178,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(state, info_);
 
       const auto baseCurrentAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(state, info_);
+        access_helper_functions::getBaseAngularVelocity(state, info_);
 
       // Base target data
       const auto baseTargetPosition = floating_base_model::
@@ -192,7 +191,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(targetState, info_);
 
       const auto baseTargetAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(targetState, info_);
+        access_helper_functions::getBaseAngularVelocity(targetState, info_);
       
       // Base error
       const vector3_t basePositionError = baseTargetPosition - baseCurrentPosition;
@@ -216,8 +215,6 @@ namespace legged_locomotion_mpc
 
       const size_t endEffectorNum = info_.numThreeDofContacts + info_.numSixDofContacts;
 
-      const auto& endEffectorTargets = referenceManager_.getEndEffectorTrajectoryPoint(time);
-
       for(size_t i = 0; i < endEffectorNum; ++i)
       {
         // End effectors current data
@@ -227,8 +224,10 @@ namespace legged_locomotion_mpc
           access_helper_functions::getContactForces(input, i, info_);
 
         // End effectors target data
-        const vector3_t& endEffectorTargetPositon = endEffectorTargets.positions[i];
-        const vector3_t& endEffectorTargetVelocity = endEffectorTargets.velocities[i];
+        const vector3_t& endEffectorTargetPositon =
+          leggedPrecomputation.getReferenceEndEffectorPosition(i);
+        const vector3_t& endEffectorTargetVelocity =
+          leggedPrecomputation.getReferenceEndEffectorLinearVelocity(i);
 
         // In order to get true contact forces, not interpolated ones (when contact is changed for example)
         const auto& endEffectorTargetWrench = 
@@ -287,7 +286,7 @@ namespace legged_locomotion_mpc
       // Add joint weighted squared cost
       cost += jointPositionError.dot(jointWeights_.positions.asDiagonal() 
         * jointPositionError);
-      cost += jointVelocityError.dot(jointWeights_.positions.asDiagonal() 
+      cost += jointVelocityError.dot(jointWeights_.velocities.asDiagonal()
         * jointVelocityError);
       
       // 1 / 2 of sum
@@ -324,7 +323,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(state, info_);
 
       const auto baseCurrentAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(state, info_);
+        access_helper_functions::getBaseAngularVelocity(state, info_);
 
       // Base target data
       const auto baseTargetPosition = floating_base_model::
@@ -337,7 +336,7 @@ namespace legged_locomotion_mpc
         access_helper_functions::getBaseLinearVelocity(targetState, info_);
 
       const auto baseTargetAngularVelocity = floating_base_model::
-        access_helper_functions::getBaseLinearVelocity(targetState, info_);
+        access_helper_functions::getBaseAngularVelocity(targetState, info_);
       
       // Base error
       const vector3_t basePositionError = baseTargetPosition - baseCurrentPosition;
@@ -380,8 +379,6 @@ namespace legged_locomotion_mpc
 
       const size_t endEffectorNum = info_.numThreeDofContacts + info_.numSixDofContacts;
 
-      const auto& endEffectorTargets = referenceManager_.getEndEffectorTrajectoryPoint(time);
-
       const size_t forceIndexOffset = 3 * info_.numThreeDofContacts 
           + 6 * info_.numSixDofContacts;
 
@@ -398,8 +395,10 @@ namespace legged_locomotion_mpc
           access_helper_functions::getContactForces(input, i, info_);
 
         // End effectors target data
-        const vector3_t& endEffectorTargetPositon = endEffectorTargets.positions[i];
-        const vector3_t& endEffectorTargetVelocity = endEffectorTargets.velocities[i];
+        const vector3_t& endEffectorTargetPositon =
+          leggedPrecomputation.getReferenceEndEffectorPosition(i);
+        const vector3_t& endEffectorTargetVelocity =
+          leggedPrecomputation.getReferenceEndEffectorLinearVelocity(i);
 
         // In order to get true contact forces, not interpolated ones (when contact is changed for example)
         const auto& endEffectorTargetWrench = 
@@ -529,7 +528,7 @@ namespace legged_locomotion_mpc
     }
 
     TrajectoryTrackingCost::TrajectoryTrackingCost(const TrajectoryTrackingCost& rhs):
-      info_(rhs.info_), referenceManager_(rhs.referenceManager_), 
+      info_(rhs.info_),
       baseWeights_(rhs.baseWeights_), jointWeights_(rhs.jointWeights_),
       endEffectorWeights_(rhs.endEffectorWeights_), 
       log3AdInterfacePtr_(new CppAdInterface(*rhs.log3AdInterfacePtr_)) {}
@@ -540,7 +539,7 @@ namespace legged_locomotion_mpc
     {
       const auto targetRotation = getRotationMatrixFromZyxEulerAngles(targetEulerAngles);
       const auto currentRotation = getRotationMatrixFromZyxEulerAngles(currentEulerAngles);
-      return pinocchio::log3(targetRotation.transpose() * currentRotation);
+      return pinocchio::log3(currentRotation.transpose() * targetRotation);
     }
 
     TrajectoryTrackingCost::BaseWeights loadBaseWeights(const std::string& filename,
@@ -711,11 +710,11 @@ namespace legged_locomotion_mpc
         }
 
         // Only for 6 DoF end effectors
-        if(endEffectorNum > modelSettings.endEffectorThreeDofNames.size())
+        if(i >= modelSettings.endEffectorThreeDofNames.size())
         {
           auto& torque = endEffectorWeights.torques[i - modelSettings.endEffectorThreeDofNames.size()];
           loadData::loadEigenMatrix(filename, fieldName + "." + name + ".torque", torque);
-          if((force.array() < 0.0).any())
+          if((torque.array() < 0.0).any())
           {
             std::string message = "[TrajectoryTrackingCost]: " + name + " torque weights vector element smaller than 0!";
             throw std::invalid_argument(message);
