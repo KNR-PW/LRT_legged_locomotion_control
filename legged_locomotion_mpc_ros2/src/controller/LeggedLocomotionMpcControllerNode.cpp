@@ -45,11 +45,15 @@ namespace legged_locomotion_mpc_ros2
     this->declare_parameter("config_directory_path", "./");
     this->declare_parameter("urdf_path", "./");
 
-    // Maximum age of robot state messages [s], controller is deactivated after that
-    this->declare_parameter("state_timeout", 0.1);
+    // Maximum age of odometry and joint states messages [s], controller is deactivated after that
+    this->declare_parameter("odometry_timeout", 0.1);
+    this->declare_parameter("joint_state_timeout", 0.1);
 
     // Maximum duration between base velocity commands [s], robot stops after that
     this->declare_parameter("velocity_timeout", 0.1);
+
+    // Maximum duration between external wrench messages [s], wrench is zeroed after that
+    this->declare_parameter("wrench_timeout", 0.1);
 
     // Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
     this->declare_parameter("policy_timeout", 0.5);
@@ -59,6 +63,7 @@ namespace legged_locomotion_mpc_ros2
     lastJointStateTime_ = zeroTime;
     lastOdometryTime_ = zeroTime;
     lastCommandTime_ = zeroTime;
+    lastWrenchTime_ = zeroTime;
     mpcStartTime_ = zeroTime;
 
     RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller started in unconfigured state!");
@@ -95,19 +100,25 @@ namespace legged_locomotion_mpc_ros2
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
-    const scalar_t stateTimeout = this->get_parameter("state_timeout").as_double();
+    const scalar_t odometryTimeout = this->get_parameter("odometry_timeout").as_double();
+    const scalar_t jointStateTimeout = this->get_parameter("joint_state_timeout").as_double();
     const scalar_t velocityTimeout = this->get_parameter("velocity_timeout").as_double();
+    const scalar_t wrenchTimeout = this->get_parameter("wrench_timeout").as_double();
     const scalar_t policyTimeout = this->get_parameter("policy_timeout").as_double();
 
-    if(!(stateTimeout > 0.0) || !(velocityTimeout > 0.0) || !(policyTimeout > 0.0))
+    if(!(odometryTimeout > 0.0) || !(jointStateTimeout > 0.0) || !(velocityTimeout > 0.0) ||
+       !(wrenchTimeout > 0.0) || !(policyTimeout > 0.0))
     {
       RCLCPP_ERROR(this->get_logger(),
-        "Parameters state_timeout, velocity_timeout and policy_timeout have to be positive!");
+        "Parameters odometry_timeout, joint_state_timeout, velocity_timeout, wrench_timeout "
+        "and policy_timeout have to be positive!");
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
-    stateTimeout_ = rclcpp::Duration::from_seconds(stateTimeout);
+    odometryTimeout_ = rclcpp::Duration::from_seconds(odometryTimeout);
+    jointStateTimeout_ = rclcpp::Duration::from_seconds(jointStateTimeout);
     velocityTimeout_ = rclcpp::Duration::from_seconds(velocityTimeout);
+    wrenchTimeout_ = rclcpp::Duration::from_seconds(wrenchTimeout);
     policyTimeout_ = policyTimeout;
 
     contactFrameNameIndexMap_.clear();
@@ -140,7 +151,7 @@ namespace legged_locomotion_mpc_ros2
     contactUpdatedBuffer_.assign(modelSettings_.endEffectorThreeDofNames.size()
       + modelSettings_.endEffectorSixDofNames.size(), false);
 
-    const auto model = interface.getModel();
+    const auto& model = interface.getModel();
 
     jointNames_ = model.names;
 
@@ -306,6 +317,7 @@ namespace legged_locomotion_mpc_ros2
     mpcBenchmarkTimer_.reset();
     mrtBenchmarkTimer_.reset();
     commandActive_ = false;
+    wrenchActive_ = false;
     mpcFailed_ = false;
     jointTrajectoryPublisher_->on_activate();
 
@@ -542,9 +554,17 @@ namespace legged_locomotion_mpc_ros2
 
   bool LeggedLocomotionMpcControllerNode::isStateFresh(const rclcpp::Time& currentTime) const
   {
-    return jointStateReceived_ && odometryReceived_ &&
-      (currentTime - lastJointStateTime_) <= stateTimeout_ &&
-      (currentTime - lastOdometryTime_) <= stateTimeout_;
+    return isOdometryFresh(currentTime) && isJointStateFresh(currentTime);
+  }
+
+  bool LeggedLocomotionMpcControllerNode::isOdometryFresh(const rclcpp::Time& currentTime) const
+  {
+    return odometryReceived_ && (currentTime - lastOdometryTime_) <= odometryTimeout_;
+  }
+
+  bool LeggedLocomotionMpcControllerNode::isJointStateFresh(const rclcpp::Time& currentTime) const
+  {
+    return jointStateReceived_ && (currentTime - lastJointStateTime_) <= jointStateTimeout_;
   }
 
   void LeggedLocomotionMpcControllerNode::updateCurrentObservation()
@@ -918,6 +938,10 @@ namespace legged_locomotion_mpc_ros2
       // Same time base as observation
       leggedInterfacePtr_->disturbanceModule().updateDistrubance(
         (currentTime - mpcStartTime_).seconds(), baseWrench);
+
+      // Receive time, same as for base velocity command
+      lastWrenchTime_ = this->get_clock()->now();
+      wrenchActive_ = true;
     }
   }
 
@@ -1020,10 +1044,18 @@ namespace legged_locomotion_mpc_ros2
 
       const rclcpp::Time currentTime = this->get_clock()->now();
 
-      if(!isStateFresh(currentTime))
+      if(!isOdometryFresh(currentTime))
       {
         RCLCPP_ERROR(this->get_logger(),
-          "Robot state is older than state_timeout, MPC loop deactivation!");
+          "Odometry is older than odometry_timeout, MPC loop deactivation!");
+        this->deactivate();
+        return;
+      }
+
+      if(!isJointStateFresh(currentTime))
+      {
+        RCLCPP_ERROR(this->get_logger(),
+          "Joint states are older than joint_state_timeout, MPC loop deactivation!");
         this->deactivate();
         return;
       }
@@ -1036,6 +1068,16 @@ namespace legged_locomotion_mpc_ros2
         referenceManagerPtr_->updateCommand(
           planners::BaseTrajectoryPlanner::BaseReferenceCommand{});
         commandActive_ = false;
+      }
+
+      // Stop compensating external wrench if wrench messages stopped
+      if(wrenchActive_ && (currentTime - lastWrenchTime_) > wrenchTimeout_)
+      {
+        RCLCPP_WARN(this->get_logger(),
+          "No base external wrench for longer than wrench_timeout, wrench set to zero!");
+        leggedInterfacePtr_->disturbanceModule().updateDistrubance(
+          (currentTime - mpcStartTime_).seconds(), vector6_t::Zero());
+        wrenchActive_ = false;
       }
 
       // Update contact flags only when new message was received

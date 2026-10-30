@@ -128,6 +128,10 @@ namespace legged_locomotion_mpc_ros2
 
       bool isStateFresh(const rclcpp::Time& currentTime) const;
 
+      bool isOdometryFresh(const rclcpp::Time& currentTime) const;
+
+      bool isJointStateFresh(const rclcpp::Time& currentTime) const;
+
       // Helper data
       ModelSettings modelSettings_;
       floating_base_model::FloatingBaseModelInfo modelInfo_;
@@ -211,8 +215,9 @@ namespace legged_locomotion_mpc_ros2
       // MPC time is relative to this ROS time, absolute ROS time in double is too coarse
       rclcpp::Time mpcStartTime_;
 
-      // Maximum age of robot state messages
-      rclcpp::Duration stateTimeout_ = rclcpp::Duration(0, 0);
+      // Maximum age of odometry and joint states messages
+      rclcpp::Duration odometryTimeout_ = rclcpp::Duration(0, 0);
+      rclcpp::Duration jointStateTimeout_ = rclcpp::Duration(0, 0);
 
       // Maximum age of MPC policy used by MRT [s]
       ocs2::scalar_t policyTimeout_ = 0.0;
@@ -221,6 +226,11 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Duration velocityTimeout_ = rclcpp::Duration(0, 0);
       rclcpp::Time lastCommandTime_;
       bool commandActive_ = false;
+
+      // Maximum duration between external wrench messages
+      rclcpp::Duration wrenchTimeout_ = rclcpp::Duration(0, 0);
+      rclcpp::Time lastWrenchTime_;
+      bool wrenchActive_ = false;
       
       // Benchmark timers
       ocs2::benchmark::RepeatedTimer mpcBenchmarkTimer_;
