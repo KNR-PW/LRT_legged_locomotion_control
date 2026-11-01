@@ -78,6 +78,19 @@ TEST(TestTerrainPlane, changeHeadingVector) {
   ASSERT_TRUE(newRotation.col(2).isApprox(surfaceNormal, tol));
 }
 
+TEST(TestTerrainPlane, changeHeadingVectorVertical) {
+  // Vertical heading has no direction on horizontal plane, orientation should not change
+  vector3_t eulerXYZ{0.0, 0.0, 0.3};
+  TerrainPlane plane(vector3_t::Zero(), rotationMatrixOriginToBase(eulerXYZ));
+  const matrix3_t orientationBefore = plane.getOrientationToTerrain();
+
+  plane.changeHeadingVector(vector3_t::UnitZ());
+  ASSERT_TRUE(plane.getOrientationToTerrain().isApprox(orientationBefore));
+
+  plane.changeHeadingVector(vector3_t::Zero());
+  ASSERT_TRUE(plane.getOrientationToTerrain().isApprox(orientationBefore));
+}
+
 TEST(TestTerrainPlane, orientationWorldToTerrainFromSurfaceNormalInWorld) {
   const vector3_t surfaceNormal = vector3_t::Random().normalized();
 

@@ -85,7 +85,7 @@ namespace legged_locomotion_mpc
     JointTorqueLimitsSoftConstraint::Settings loadJointTorqueLimitsSoftConstraintSettings(
       const std::string& filename,
       const std::string& fieldName = "joint_torque_limits_soft_constraint_settings",
-      bool verbose = "true");
+      bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

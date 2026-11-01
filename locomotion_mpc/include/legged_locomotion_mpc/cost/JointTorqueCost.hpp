@@ -74,7 +74,7 @@ namespace legged_locomotion_mpc
     const floating_base_model::FloatingBaseModelInfo& info, 
     const pinocchio::Model& robotModel,
     const std::string& fieldName = "joint_torque_weights",
-    bool verbose = "true");
+    bool verbose = true);
 
   } // namespace cost
 } // namespace legged_locomotion_mpc

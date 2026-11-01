@@ -27,8 +27,8 @@ namespace legged_locomotion_mpc
       /** Heading vector (X) same as base, but normal to sufrace normal 
        * (without surface normal part)
        */
-      const vector3_t endEffectorHeading = baseHeadingVector - (baseHeadingVector.dot(
-        endEffectorNormal)) * endEffectorNormal;
+      const vector3_t endEffectorHeading = (baseHeadingVector - (baseHeadingVector.dot(
+        endEffectorNormal)) * endEffectorNormal).normalized();
 
       matrix3_t rotationMatrix;
       rotationMatrix.col(0) = endEffectorHeading;
@@ -44,8 +44,8 @@ namespace legged_locomotion_mpc
       MultiEndEffectorKinematics&& kinematicsSolver): 
         modelInfo_(std::move(modelInfo)),
         kinematicsSolver_(std::move(kinematicsSolver)),
-        jointPositionUpperLimits_(kinematicsSolver_.getPinocchioModel().lowerPositionLimit),
-        jointPositionLowerLimits_(kinematicsSolver_.getPinocchioModel().upperPositionLimit),
+        jointPositionUpperLimits_(kinematicsSolver_.getPinocchioModel().upperPositionLimit),
+        jointPositionLowerLimits_(kinematicsSolver_.getPinocchioModel().lowerPositionLimit),
         jointVelocityLimits_(kinematicsSolver_.getPinocchioModel().velocityLimit)
       {
         if(jointPositionUpperLimits_.size() != modelInfo_.actuatedDofNum)
@@ -145,7 +145,7 @@ namespace legged_locomotion_mpc
           newEndEffectorPositions, newEndEffectorNormals);
           
         newJointVelocities = computeJointVelocities(newJointPositions, newBasePose,
-          newBaseVelocity, newEndEffectorVelocities);
+          newBaseVelocity, newEndEffectorVelocities, previousJointVelocities);
       }
     }
 
@@ -186,12 +186,22 @@ namespace legged_locomotion_mpc
         relativeEndEffectorTransforms[i].rotation() = endEffectorToBaseRotation;
       }
 
+      // Solver does not start from joint positions outside of joint limits
+      const vector_t initialJointPositions = actualJointPositions.cwiseMax(
+        jointPositionLowerLimits_).cwiseMin(jointPositionUpperLimits_);
+
       vector_t newJointPositions;
 
       const ReturnStatus returnStatus = kinematicsSolver_.calculateJointPositions(
-        actualJointPositions, relativeEndEffectorPositions, relativeEndEffectorTransforms, 
+        initialJointPositions, relativeEndEffectorPositions, relativeEndEffectorTransforms,
         newJointPositions);
-      
+
+      // Solver did not return any joint positions, use initial ones
+      if(newJointPositions.size() != modelInfo_.actuatedDofNum)
+      {
+        return initialJointPositions;
+      }
+
       if(returnStatus.success) return newJointPositions;
       else
       {
@@ -206,18 +216,8 @@ namespace legged_locomotion_mpc
             break;
 
           case TaskReturnFlag::NEW_POSITION_OUT_OF_BOUNDS:
-            for(size_t i = 0; i < modelInfo_.actuatedDofNum; ++i)
-            {
-              if(newJointPositions[i] > jointPositionUpperLimits_[i])
-              {
-                newJointPositions[i] = jointPositionUpperLimits_[i];
-              }
-              else if(newJointPositions[i] < jointPositionLowerLimits_[i])
-              {
-                newJointPositions[i] = jointPositionLowerLimits_[i];
-              }
-            }
-            return newJointPositions;
+            return newJointPositions.cwiseMax(jointPositionLowerLimits_).cwiseMin(
+              jointPositionUpperLimits_);
             break;
 
           default:
@@ -228,8 +228,9 @@ namespace legged_locomotion_mpc
     }
 
     vector_t JointTrajectoryPlanner::computeJointVelocities(
-      const vector_t& actualJointPositions, const vector6_t& basePose, 
-      const vector6_t& baseVelocity, const std::vector<vector3_t>& endEffectorVelocities)
+      const vector_t& actualJointPositions, const vector6_t& basePose,
+      const vector6_t& baseVelocity, const std::vector<vector3_t>& endEffectorVelocities,
+      const vector_t& previousJointVelocities)
     {
       std::vector<vector3_t> relativeEndEffectorVelocities(modelInfo_.numThreeDofContacts);
 
@@ -245,16 +246,20 @@ namespace legged_locomotion_mpc
       std::vector<pinocchio::SE3> relativeEndEffectorTransforms(
         modelInfo_.numSixDofContacts);
 
-      kinematicsSolver_.calculateEndEffectorPoses(actualJointPositions, 
+      // Solver does not work with joint positions outside of joint limits
+      const vector_t clampedJointPositions = actualJointPositions.cwiseMax(
+        jointPositionLowerLimits_).cwiseMin(jointPositionUpperLimits_);
+
+      kinematicsSolver_.calculateEndEffectorPoses(clampedJointPositions,
         relativeEndEffectorPositions, relativeEndEffectorTransforms);
 
       const vector3_t& baseLinearVelocity = baseVelocity.block<3, 1>(0, 0);
       const vector3_t& baseAngularVelocity = baseVelocity.block<3, 1>(3, 0);
-      
+
       for(size_t i = 0; i < modelInfo_.numThreeDofContacts; ++i)
       {
-        relativeEndEffectorVelocities[i].noalias() = worldToBaseRotationMatrix * 
-          (endEffectorVelocities[i]) - baseLinearVelocity - 
+        relativeEndEffectorVelocities[i].noalias() = worldToBaseRotationMatrix *
+          (endEffectorVelocities[i]) - baseLinearVelocity -
           baseAngularVelocity.cross(relativeEndEffectorPositions[i]);
       }
 
@@ -269,9 +274,15 @@ namespace legged_locomotion_mpc
       vector_t jointVelocities;
 
       const ReturnStatus returnStatus = kinematicsSolver_.calculateJointVelocities(
-        actualJointPositions, relativeEndEffectorVelocities, 
+        clampedJointPositions, relativeEndEffectorVelocities,
         relativeEndEffectorTwists, jointVelocities);
-      
+
+      // Solver did not return any joint velocities, use previous ones
+      if(jointVelocities.size() != modelInfo_.actuatedDofNum)
+      {
+        return previousJointVelocities;
+      }
+
       if(!returnStatus.success)
       {
 
@@ -280,6 +291,7 @@ namespace legged_locomotion_mpc
           {
             if(lhs > rhs) return rhs;
             if(lhs < -rhs) return -rhs;
+            return lhs;
           });
       }
       return jointVelocities;

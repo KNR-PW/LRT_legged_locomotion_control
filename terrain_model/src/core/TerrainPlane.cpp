@@ -132,7 +132,16 @@ namespace terrain_model
   void TerrainPlane::changeHeadingVector(const vector3_t headingVectorInWorld)
   {
     const vector3_t normalPlane = getSurfaceNormalInWorld();
-    const vector3_t newXAxis = projectVectorInWorldOntoPlaneAlongGravity(headingVectorInWorld).normalized();
+    const vector3_t projectedHeading = projectVectorInWorldOntoPlaneAlongGravity(headingVectorInWorld);
+
+    // Vertical or zero heading has no direction on the plane, keep current orientation
+    const scalar_t minimalHeadingNorm = 1e-9;
+    if (!(projectedHeading.norm() > minimalHeadingNorm))
+    {
+      return;
+    }
+
+    const vector3_t newXAxis = projectedHeading.normalized();
     const vector3_t newYAxis = normalPlane.cross(newXAxis);
 
     orientationWorldToTerrain_.row(0) = newXAxis.transpose();

@@ -9,7 +9,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  convex_plane_decomposition::PlanarTerrain computePlanrTerrain(
+  convex_plane_decomposition::PlanarTerrain computePlanarTerrain(
     GridMap&& gridMap, const PlaneDecompositionPipeline::Config& pipelineConfig,
     const std::string& elevationLayerName)
   {

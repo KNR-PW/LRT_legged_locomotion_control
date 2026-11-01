@@ -90,7 +90,7 @@ namespace legged_locomotion_mpc
   {
     const vector_t stateInput = (vector_t(state.rows() + input.rows()) << state, input).finished();
     VectorFunctionLinearApproximation approx;
-    approx.f = torqueApproxCppAdInterfacePtr_->getFunctionValue(stateInput);
+    approx.f = torqueApproxCppAdInterfacePtr_->getFunctionValue(stateInput) + torqueDynamicsError_;
     const matrix_t torqueApproxJacobian = torqueApproxCppAdInterfacePtr_->getJacobian(stateInput);
     approx.dfdx = torqueApproxJacobian.leftCols(state.rows());
     approx.dfdu = torqueApproxJacobian.middleCols(state.rows(), input.rows());

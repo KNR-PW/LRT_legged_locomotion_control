@@ -68,7 +68,7 @@ namespace legged_locomotion_mpc
    */
   ModelSettings loadModelSettings(const std::string& filename,
     const std::string& fieldName = "legged_model_settings",
-    bool verbose = "true");
+    bool verbose = true);
 
 } // namespace legged_locomotion_mpc
 

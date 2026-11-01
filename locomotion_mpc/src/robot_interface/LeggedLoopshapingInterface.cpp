@@ -111,7 +111,11 @@ namespace legged_locomotion_mpc
     const vector_t initialInput = weightCompensator.getInput(initalSystemState, 
       standingFlags);
 
-    const auto nominalCostApproximation = approximateCost(optimalProblem, 0.0, 
+    // Precomputation has to be updated for this point before cost approximation
+    optimalProblem.preComputationPtr->request(Request::Cost + Request::SoftConstraint
+      + Request::Approximation, initTime, initalSystemState, initialInput);
+
+    const auto nominalCostApproximation = approximateCost(optimalProblem, initTime,
       initalSystemState, initialInput);
 
     loopShapingDefinition->costMatrix() = nominalCostApproximation.dfduu;
@@ -152,7 +156,11 @@ namespace legged_locomotion_mpc
     const vector_t initialInput = weightCompensator.getInput(initalSystemState, 
       standingFlags);
 
-    const auto nominalCostApproximation = approximateCost(optimalProblem, 0.0, 
+    // Precomputation has to be updated for this point before cost approximation
+    optimalProblem.preComputationPtr->request(Request::Cost + Request::SoftConstraint
+      + Request::Approximation, initTime, initalSystemState, initialInput);
+
+    const auto nominalCostApproximation = approximateCost(optimalProblem, initTime,
       initalSystemState, initialInput);
 
     loopShapingDefinition->costMatrix() = nominalCostApproximation.dfduu;

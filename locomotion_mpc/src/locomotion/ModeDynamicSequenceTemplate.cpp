@@ -61,7 +61,7 @@ namespace legged_locomotion_mpc
         std::vector<std::pair<scalar_t, size_t>>,
         std::greater<std::pair<scalar_t, size_t>>>;
 
-      const scalar_t gaitPeriod = 1 / dynamicParams.steppingFrequency;
+      const scalar_t gaitPeriod = 1 / frequency;
       const scalar_t timeStance = (1 - swingRatio) * gaitPeriod;
       const scalar_t timeSwing = gaitPeriod - timeStance;
 

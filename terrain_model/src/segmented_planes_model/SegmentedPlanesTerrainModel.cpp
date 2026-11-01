@@ -4,8 +4,11 @@
 //
 
 #include <terrain_model/segmented_planes_model/SegmentedPlanesTerrainModel.hpp>
+#include <terrain_model/segmented_planes_model/SegmentedPlanesGridMapUtils.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <sstream>
 
 #include <grid_map_filters_rsl/lookup.hpp>
 
@@ -17,35 +20,60 @@ namespace terrain_model
   using namespace ocs2;
   using namespace grid_map;
   using namespace convex_plane_decomposition;
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  SegmentedPlanesTerrainModel::SegmentedPlanesTerrainModel(
-    const PlanarTerrain& planarTerrain, std::string referenceFrameName): 
-      TerrainModel(std::move(referenceFrameName)),
-      planarTerrain_(planarTerrain), 
-      signedDistanceField_(nullptr),
-      elevationData_(&planarTerrain_.gridMap.get(elevationLayerName))
+
+  namespace
   {
-    planarTerrain_.gridMap.setFrameId(referenceFrameName_);
-    const auto ranges = getSignedDistanceRange(planarTerrain_.gridMap, elevationLayerName);
-    createSignedDistanceBetween(ranges.first, ranges.second);
-  }
+    /** Prepares terrain data that is shared (read only) between clones of the model */
+    std::shared_ptr<const PlanarTerrain> makeSharedTerrain(PlanarTerrain&& planarTerrain,
+      const std::string& referenceFrameName)
+    {
+      planarTerrain.gridMap.setFrameId(referenceFrameName);
+
+      // Layer data is accessed directly (distance field, lookups), it needs default start index
+      planarTerrain.gridMap.convertToDefaultStartIndex();
+
+      // Plane decomposition leaves its intermediate layers, only elevation and ground are used
+      const std::vector<std::string> layers = planarTerrain.gridMap.getLayers();
+      for(const auto& layer : layers)
+      {
+        if(layer != elevationLayerName && layer != groundLayerName)
+        {
+          planarTerrain.gridMap.erase(layer);
+        }
+      }
+      return std::make_shared<const PlanarTerrain>(std::move(planarTerrain));
+    }
+
+    /** Distance field from 0.5 m below the lowest to 0.5 m above the highest elevation */
+    std::shared_ptr<const SegmentedPlanesSignedDistanceField> makeSignedDistanceField(
+      const grid_map::GridMap& gridMap)
+    {
+      const scalar_t heightMargin = 0.5;
+      const auto& elevationData = gridMap.get(elevationLayerName);
+      const scalar_t minHeight = elevationData.minCoeffOfFinites() - heightMargin;
+      const scalar_t maxHeight = elevationData.maxCoeffOfFinites() + heightMargin;
+      return std::make_shared<const SegmentedPlanesSignedDistanceField>(gridMap,
+        elevationLayerName, minHeight, maxHeight);
+    }
+  } // namespace
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
   SegmentedPlanesTerrainModel::SegmentedPlanesTerrainModel(
-    PlanarTerrain&& planarTerrain, std::string referenceFrameName): 
-    TerrainModel(std::move(referenceFrameName)),
-    planarTerrain_(std::move(planarTerrain)),
-    signedDistanceField_(nullptr),
-    elevationData_(&planarTerrain_.gridMap.get(elevationLayerName))
-  {
-    planarTerrain_.gridMap.setFrameId(referenceFrameName_);
-    const auto ranges = getSignedDistanceRange(planarTerrain_.gridMap, elevationLayerName);
-    createSignedDistanceBetween(ranges.first, ranges.second);
-  }
+    const PlanarTerrain& planarTerrain, std::string referenceFrameName):
+      SegmentedPlanesTerrainModel(PlanarTerrain(planarTerrain), std::move(referenceFrameName)) {}
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  SegmentedPlanesTerrainModel::SegmentedPlanesTerrainModel(
+    PlanarTerrain&& planarTerrain, std::string referenceFrameName):
+      TerrainModel(std::move(referenceFrameName)),
+      planarTerrain_(makeSharedTerrain(std::move(planarTerrain), referenceFrameName_)),
+      signedDistanceField_(makeSignedDistanceField(planarTerrain_->gridMap)),
+      elevationData_(&planarTerrain_->gridMap.get(elevationLayerName)),
+      groundData_(&planarTerrain_->gridMap.get(groundLayerName)) {}
 
   /******************************************************************************************************/
   /******************************************************************************************************/
@@ -62,8 +90,13 @@ namespace terrain_model
     const vector3_t& positionInWorld, 
     std::function<scalar_t(const vector3_t&)> penaltyFunction) const
   {
-    const auto projection = getBestPlanarRegionAtPositionInWorld(positionInWorld, 
-      planarTerrain_.planarRegions, std::move(penaltyFunction));
+    if(isOutsideGridMap(positionInWorld) || planarTerrain_->planarRegions.empty())
+    {
+      return getFlatGroundPlane(positionInWorld);
+    }
+
+    const auto projection = getBestPlanarRegionAtPositionInWorld(positionInWorld,
+      planarTerrain_->planarRegions, std::move(penaltyFunction));
 
     if(projection.regionPtr == nullptr)
     {
@@ -81,8 +114,14 @@ namespace terrain_model
     const vector3_t& positionInWorld, 
     std::function<scalar_t(const vector3_t&)> penaltyFunction) const
   {
-    const auto projection = getBestPlanarRegionAtPositionInWorld(positionInWorld, 
-      planarTerrain_.planarRegions, std::move(penaltyFunction));
+    if(isOutsideGridMap(positionInWorld) || planarTerrain_->planarRegions.empty())
+    {
+      // Flat ground has no boundary, so foothold is not constrained
+      return ConvexTerrain(getFlatGroundPlane(positionInWorld), {});
+    }
+
+    const auto projection = getBestPlanarRegionAtPositionInWorld(positionInWorld,
+      planarTerrain_->planarRegions, std::move(penaltyFunction));
 
     if (projection.regionPtr == nullptr)
     {
@@ -100,21 +139,36 @@ namespace terrain_model
       projection.regionPtr->boundaryWithInset.boundary, 
       projection.positionInTerrainFrame, numberOfVertices, growthFactor);
 
-    TerrainPlane convexPlane(projection.positionInWorld, 
+    TerrainPlane convexPlane(projection.positionInWorld,
       projection.regionPtr->transformPlaneToWorld.linear().transpose());
     // Origin is at the projection
 
-    std::vector<vector2_t> convexBoundries;
-    convexBoundries.reserve(convexRegion.size());
+    std::vector<vector2_t> convexBoundary;
+    convexBoundary.reserve(convexRegion.size());
     for(const auto& point : convexRegion)
     {
-      convexBoundries.emplace_back(point.x() - projection.positionInTerrainFrame.x(),
+      convexBoundary.emplace_back(point.x() - projection.positionInTerrainFrame.x(),
         point.y() - projection.positionInTerrainFrame.y());
       // Shift points to new origin
     }
 
+    // Region growing returns all points at the projection if it could not grow (zero area),
+    // such boundary has no edges, so foothold is left unconstrained
+    scalar_t doubleArea = 0.0;
+    for(size_t i = 0; i < convexBoundary.size(); ++i)
+    {
+      const auto& currentPoint = convexBoundary[i];
+      const auto& nextPoint = convexBoundary[(i + 1) % convexBoundary.size()];
+      doubleArea += currentPoint.x() * nextPoint.y() - nextPoint.x() * currentPoint.y();
+    }
+    const scalar_t minimalArea = 1e-9; // [m^2]
+    if(!(std::abs(0.5 * doubleArea) > minimalArea))
+    {
+      convexBoundary.clear();
+    }
+
     // Return convex region with origin at the projection
-    return ConvexTerrain(std::move(convexPlane), std::move(convexBoundries));
+    return ConvexTerrain(std::move(convexPlane), std::move(convexBoundary));
   }
 
   /******************************************************************************************************/
@@ -124,25 +178,28 @@ namespace terrain_model
     const vector3_t& position1InWorld,
     const vector3_t& position2InWorld) const
   {
-    const auto result = grid_map::lookup::maxValueBetweenLocations(
-      {position1InWorld.x(), position1InWorld.y()}, {position2InWorld.x(), position2InWorld.y()},
-      planarTerrain_.gridMap, *elevationData_);
-
-    if (result.isValid)
+    // Outside of the map ground is flat, so only part of the line inside of the map is checked
+    vector2_t clippedStart, clippedEnd;
+    if(clipLineToGridMap(planarTerrain_->gridMap, position1InWorld.head<2>(),
+      position2InWorld.head<2>(), clippedStart, clippedEnd))
     {
-      return {result.position.x(), result.position.y(), result.value};
+      const auto result = grid_map::lookup::maxValueBetweenLocations(clippedStart, clippedEnd,
+        planarTerrain_->gridMap, *elevationData_);
+
+      if (result.isValid)
+      {
+        return {result.position.x(), result.position.y(), result.value};
+      }
+    }
+
+    // return highest query point if the map didn't work.
+    if (position1InWorld.z() > position2InWorld.z())
+    {
+        return position1InWorld;
     }
     else
     {
-      // return highest query point if the map didn't work.
-      if (position1InWorld.z() > position2InWorld.z())
-      {
-          return position1InWorld;
-      }
-      else
-      {
-          return position2InWorld;
-      }
+        return position2InWorld;
     }
   }
 
@@ -155,14 +212,20 @@ namespace terrain_model
   {
     const vector2_t diff2d = position2InWorld.head<2>() - position1InWorld.head<2>();
     const scalar_t diffSquareNorm = diff2d.squaredNorm();
-    const auto resolution = planarTerrain_.gridMap.getResolution();
+    const auto resolution = planarTerrain_->gridMap.getResolution();
     if (diffSquareNorm > (resolution * resolution))
     {
       // norm(p2-p1)_XY > resolution
-      const auto pointsOnLine = grid_map::lookup::valuesBetweenLocations(
-        {position1InWorld.x(), position1InWorld.y()},
-        {position2InWorld.x(), position2InWorld.y()},
-        planarTerrain_.gridMap, *elevationData_);
+      // Outside of the map ground is flat, so only part of the line inside of the map is sampled
+      vector2_t clippedStart, clippedEnd;
+      if(!clipLineToGridMap(planarTerrain_->gridMap, position1InWorld.head<2>(),
+        position2InWorld.head<2>(), clippedStart, clippedEnd))
+      {
+        return {};
+      }
+
+      const auto pointsOnLine = grid_map::lookup::valuesBetweenLocations(clippedStart, clippedEnd,
+        planarTerrain_->gridMap, *elevationData_);
       std::vector<vector2_t> heightProfile;
       heightProfile.reserve(pointsOnLine.size());
       for (const auto& point : pointsOnLine)
@@ -179,7 +242,11 @@ namespace terrain_model
     else
     {
       grid_map::Index index;
-      planarTerrain_.gridMap.getIndex({position1InWorld.x(), position1InWorld.y()}, index);
+      if(!planarTerrain_->gridMap.getIndex({position1InWorld.x(), position1InWorld.y()}, index))
+      {
+        // Outside of the map ground is flat, so there are no obstacles
+        return {};
+      }
       scalar_t heightData = (*elevationData_)(index(0), index(1));
       return {{0.0, heightData}, {1.0, heightData}};
     }
@@ -196,26 +263,11 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  vector3_t SegmentedPlanesTerrainModel::getSmoothedPositon(
+  vector3_t SegmentedPlanesTerrainModel::getSmoothedPosition(
     const vector2_t& positionXYInWorld) const
   {
-    auto projection = grid_map::lookup::projectToMapWithMargin(planarTerrain_.gridMap, 
-      grid_map::Position(positionXYInWorld.x(), positionXYInWorld.y()));
-
-    try 
-    {
-      auto z = planarTerrain_.gridMap.atPosition("smooth_planar", 
-        projection, grid_map::InterpolationMethods::INTER_NEAREST);
-      return vector3_t(positionXYInWorld.x(), positionXYInWorld.y(), z);
-    } 
-    catch (std::out_of_range& e) 
-    {
-      scalar_t interp = planarTerrain_.gridMap.getResolution() / (projection - planarTerrain_.gridMap.getPosition()).norm();
-      projection = (1.0 - interp) * projection + interp * planarTerrain_.gridMap.getPosition();
-      const auto z = planarTerrain_.gridMap.atPosition("smooth_planar", projection, 
-        grid_map::InterpolationMethods::INTER_NEAREST);
-      return vector3_t(positionXYInWorld.x(), positionXYInWorld.y(), z);
-    }
+    return vector3_t(positionXYInWorld.x(), positionXYInWorld.y(),
+      getGroundHeightAtClosestCell(planarTerrain_->gridMap, *groundData_, positionXYInWorld));
   }
 
   /******************************************************************************************************/
@@ -223,66 +275,23 @@ namespace terrain_model
   /******************************************************************************************************/
   const grid_map::GridMap& SegmentedPlanesTerrainModel::getGridMapTerrain() const
   {
-    return planarTerrain_.gridMap;
+    return planarTerrain_->gridMap;
   }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void SegmentedPlanesTerrainModel::createSignedDistanceBetween(
-    const Eigen::Vector3d& minCoordinates, const Eigen::Vector3d& maxCoordinates)
+  TerrainPlane SegmentedPlanesTerrainModel::getFlatGroundPlane(const vector3_t& positionInWorld) const
   {
-    // Compute coordinates of submap
-    const auto minXY = grid_map::lookup::projectToMapWithMargin(planarTerrain_.gridMap,
-      grid_map::Position(minCoordinates.x(), minCoordinates.y()));
-    const auto maxXY = grid_map::lookup::projectToMapWithMargin(planarTerrain_.gridMap,
-      grid_map::Position(maxCoordinates.x(), maxCoordinates.y()));
-
-    const auto centerXY = 0.5 * (minXY + maxXY);
-    const auto lengths = maxXY - minXY;
-    bool success = true;
-    grid_map::GridMap subMap = planarTerrain_.gridMap.getSubmap(centerXY, lengths, success);
-    if (success)
-    {
-      signedDistanceField_ = std::make_unique<SegmentedPlanesSignedDistanceField>(subMap, 
-        elevationLayerName, minCoordinates.z(), maxCoordinates.z());
-    }
-    else
-    {
-      throw std::runtime_error("[SegmentedPlanesTerrainModel]: Failed to get subMap");
-    }
+    // Same ground height as used for base reference
+    return TerrainPlane(getSmoothedPosition(positionInWorld.head<2>()), matrix3_t::Identity());
   }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  SegmentedPlanesTerrainModel::SegmentedPlanesTerrainModel(
-    const SegmentedPlanesTerrainModel& rhs):
-    planarTerrain_(rhs.planarTerrain_), 
-    signedDistanceField_(new SegmentedPlanesSignedDistanceField(*rhs.signedDistanceField_)),
-    elevationData_(&planarTerrain_.gridMap.get(elevationLayerName)) {}
-  
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  std::pair<Eigen::Vector3d, Eigen::Vector3d> SegmentedPlanesTerrainModel::getSignedDistanceRange(
-    const grid_map::GridMap& gridMap, const std::string& elevationLayer)
+  bool SegmentedPlanesTerrainModel::isOutsideGridMap(const vector3_t& positionInWorld) const
   {
-    // Read min-max from elevation map
-    const float heightMargin = 0.5;
-    const auto& elevationData = planarTerrain_.gridMap.get(elevationLayer);
-    const float minValue = elevationData.minCoeffOfFinites() - heightMargin;
-    const float maxValue = elevationData.maxCoeffOfFinites() + heightMargin;
-    auto minXY = grid_map::lookup::projectToMapWithMargin(
-        gridMap, grid_map::Position(std::numeric_limits<double>::lowest(),
-                                    std::numeric_limits<double>::lowest()));
-    auto maxXY = grid_map::lookup::projectToMapWithMargin(
-        gridMap, grid_map::Position(std::numeric_limits<double>::max(),
-                                      std::numeric_limits<double>::max()));
-
-    const vector3_t minCoordinates{minXY.x(), minXY.y(), minValue};
-    const vector3_t maxCoordinates{maxXY.x(), maxXY.y(), maxValue};
-      
-    return {minCoordinates, maxCoordinates};
+    return !planarTerrain_->gridMap.isInside(positionInWorld.head<2>());
   }
 } // namespace terrain_model

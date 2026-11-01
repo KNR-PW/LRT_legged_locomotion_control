@@ -129,7 +129,7 @@ static void LeggedReferenceManager_PRESOLVE(benchmark::State & state)
   const vector2_t initPositionXY{initPosition.x(), initPosition.y()};
 
   vector3_t initialBasePosition(initPosition.x(), initPosition.y(),
-    terrainModel.getSmoothedPositon(initPositionXY).z());
+    terrainModel.getSmoothedPosition(initPositionXY).z());
   
   initialBasePosition.z() += staticSettings.initialBaseHeight / slopyTerrain.getSurfaceNormalInWorld().z();
   

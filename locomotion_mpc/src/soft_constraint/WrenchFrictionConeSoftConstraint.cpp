@@ -222,19 +222,19 @@ namespace legged_locomotion_mpc
 
     // Y * f_z + tau_x >= 0
     coneConstraintMatrix(4, 2) = config.footHalfLengthY;
-    coneConstraintMatrix(4, 3) = config.frictionCoefficient;
+    coneConstraintMatrix(4, 3) = 1.0;
 
     // Y * f_z - tau_x >= 0
     coneConstraintMatrix(5, 2) = config.footHalfLengthY;
-    coneConstraintMatrix(5, 3) = -config.frictionCoefficient;
+    coneConstraintMatrix(5, 3) = -1.0;
 
     // X * f_z + tau_y >= 0
     coneConstraintMatrix(6, 2) = config.footHalfLengthX;
-    coneConstraintMatrix(7, 4) = config.frictionCoefficient;
+    coneConstraintMatrix(6, 4) = 1.0;
 
     // X * f_z - tau_y >= 0
     coneConstraintMatrix(7, 2) = config.footHalfLengthX;
-    coneConstraintMatrix(7, 4) = -config.frictionCoefficient;
+    coneConstraintMatrix(7, 4) = -1.0;
 
     // Y * f_x + X * f_y + u * (X + Y) * f_z - u * tau_x - u * tau_y + tau_z >= 0
     coneConstraintMatrix(8, 0) = config.footHalfLengthY;

@@ -7,24 +7,33 @@ namespace floating_base_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   PinocchioFloatingBaseDynamics::PinocchioFloatingBaseDynamics(FloatingBaseModelInfo floatingBaseModelInfo)
-  : mapping_(floatingBaseModelInfo), pinocchioInterfacePtr_(nullptr), fext_(){}
+  : pinocchioInterfacePtr_(nullptr), mapping_(floatingBaseModelInfo), fext_(){}
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
   PinocchioFloatingBaseDynamics::PinocchioFloatingBaseDynamics(const PinocchioFloatingBaseDynamics& rhs)
-  : mapping_(rhs.mapping_.getFloatingBaseModelInfo()), 
-    pinocchioInterfacePtr_(rhs.pinocchioInterfacePtr_)
+  : pinocchioInterfacePtr_(nullptr),
+    mapping_(rhs.mapping_.getFloatingBaseModelInfo()),
+    fext_()
   {
-    mapping_.setPinocchioInterface(*rhs.pinocchioInterfacePtr_);
-    fext_ = rhs.fext_;
+    // Each copy computes on its own pinocchio data, so copies do not race on rhs data
+    if (rhs.pinocchioInterfacePtr_ != nullptr)
+    {
+      ownedPinocchioInterfacePtr_.reset(new ocs2::PinocchioInterface(*rhs.pinocchioInterfacePtr_));
+      setPinocchioInterface(*ownedPinocchioInterfacePtr_);
+    }
   }
 
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void PinocchioFloatingBaseDynamics::setPinocchioInterface(PinocchioInterface& pinocchioInterface) 
+  void PinocchioFloatingBaseDynamics::setPinocchioInterface(ocs2::PinocchioInterface& pinocchioInterface)
   {
+    if (&pinocchioInterface != ownedPinocchioInterfacePtr_.get())
+    {
+      ownedPinocchioInterfacePtr_.reset();
+    }
     pinocchioInterfacePtr_ = &pinocchioInterface;
     mapping_.setPinocchioInterface(pinocchioInterface);
 
@@ -46,6 +55,10 @@ namespace floating_base_model
     const ocs2::vector_t& state, const ocs2::vector_t& input,
     const Eigen::Matrix<ocs2::scalar_t, 6, 1>& disturbance)
   {
+    if (pinocchioInterfacePtr_ == nullptr)
+    {
+      throw std::runtime_error("PinocchioFloatingBaseDynamics: pinocchio interface is not set, call setPinocchioInterface() first!");
+    }
     auto& interface = *pinocchioInterfacePtr_;
     const FloatingBaseModelInfo& info = mapping_.getFloatingBaseModelInfo();
     const auto& model = interface.getModel();
@@ -70,10 +83,9 @@ namespace floating_base_model
 
     const Eigen::Matrix<ocs2::scalar_t, 6, 1> tau = -model_helper_functions::computeFloatingBaseGeneralizedTorques(interface, q, v, fext_) + disturbance;
     
-    auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
-    
-    bodyVelocityDerivative.block<3, 1>(0, 0) += baseAngularVelocity.cross(baseLinearVelocity);
-    
+    // Spatial acceleration of the base = exact time derivative of the body-frame base velocity in the state
+    const auto bodyVelocityDerivative = model_helper_functions::computeBaseBodyAcceleration(Mb, tau);
+
     ocs2::vector_t dynamics(info.stateDim);
     dynamics << bodyVelocityDerivative, basePositionDerivative, eulerAnglesDerivative, actuatedJointPositionDerivative;
     

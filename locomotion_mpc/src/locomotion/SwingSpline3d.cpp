@@ -24,7 +24,7 @@ namespace legged_locomotion_mpc
       y.reserve(nodes.size());
 
       std::vector<SwingNode> z;
-      y.reserve(nodes.size());
+      z.reserve(nodes.size());
 
       for (const auto &node: nodes) 
       {

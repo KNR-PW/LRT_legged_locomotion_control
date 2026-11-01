@@ -59,7 +59,6 @@ namespace legged_locomotion_mpc
         };
       
         TrajectoryTrackingCost(floating_base_model::FloatingBaseModelInfo info,
-          const LeggedReferenceManager& referenceManager,
           BaseWeights baseWeights, JointWeights jointWeights,
           EndEffectorWeights endEffectorWeights, 
           const std::string& modelFolder = "/tmp/legged_locomotion_mpc",
@@ -90,8 +89,6 @@ namespace legged_locomotion_mpc
 
         const floating_base_model::FloatingBaseModelInfo info_;
 
-        const LeggedReferenceManager& referenceManager_;
-
         const BaseWeights baseWeights_;
         const JointWeights jointWeights_;
         const EndEffectorWeights endEffectorWeights_;
@@ -113,7 +110,7 @@ namespace legged_locomotion_mpc
    */
   TrajectoryTrackingCost::BaseWeights loadBaseWeights(const std::string& filename,
     const std::string& fieldName = "base_weights",
-    bool verbose = "true");
+    bool verbose = true);
 
   /**
    * Creates joint weights 
@@ -128,7 +125,7 @@ namespace legged_locomotion_mpc
     const floating_base_model::FloatingBaseModelInfo& info,
     const pinocchio::Model& robotModel,
     const std::string& fieldName = "joint_weights",
-    bool verbose = "true");
+    bool verbose = true);
 
   /**
    * Creates end effector weights 
@@ -141,7 +138,7 @@ namespace legged_locomotion_mpc
     const std::string& filename,
     const ModelSettings& modelSettings,
     const std::string& fieldName = "end_effector_weights",
-    bool verbose = "true");
+    bool verbose = true);
 
   } // namespace cost
 } // namespace legged_locomotion_mpc

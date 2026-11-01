@@ -29,6 +29,7 @@ set(THIS_PACKAGE_DEPENDS
 
   sensor_msgs
   geometry_msgs
+  nav_msgs
   contact_msgs
   legged_locomotion_msgs
 )

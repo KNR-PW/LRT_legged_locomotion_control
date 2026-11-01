@@ -49,9 +49,9 @@ namespace legged_state_estimator
       const size_t beta0_size = settings.contact_estimator_settings.beta0.size();
       if(beta0_size != contact_frames_size)
       {
-        std::string message = "[LeggedStateEstimator] beta0 size is " +  beta0_size;
+        std::string message = "[LeggedStateEstimator] beta0 size is " + std::to_string(beta0_size);
         message += ", but should be ";
-        message += contact_frames_size;
+        message += std::to_string(contact_frames_size);
         throw std::invalid_argument(message);
       }
 
@@ -60,9 +60,9 @@ namespace legged_state_estimator
       const size_t beta1_size = settings.contact_estimator_settings.beta1.size();
       if(beta1_size != contact_frames_size)
       {
-        std::string message = "[LeggedStateEstimator] beta1 size is " +  beta1_size;
+        std::string message = "[LeggedStateEstimator] beta1 size is " + std::to_string(beta1_size);
         message += ", but should be ";
-        message += contact_frames_size;
+        message += std::to_string(contact_frames_size);
         throw std::invalid_argument(message);
       }
 
@@ -112,8 +112,6 @@ namespace legged_state_estimator
     loadData::loadPtreeValue(pt, settings.sampling_time, 
       fieldName + ".samplingTime", verbose);
 
-    loadData::loadPtreeValue(pt, settings.lpf_gyro_cutoff_frequency, 
-      fieldName + ".lpfGyroCutoffFrequency", verbose);
 
     loadData::loadPtreeValue(pt, settings.lpf_gyro_accel_cutoff_frequency, 
       fieldName + ".lpfGyroAccelCutoffFrequency", verbose);

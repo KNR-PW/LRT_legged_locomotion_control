@@ -7,6 +7,7 @@
 
 #include <ocs2_robotic_tools/common/RotationTransforms.h>
 
+#include <legged_locomotion_mpc/common/EulerTransforms.hpp>
 #include <legged_locomotion_mpc/precomputation/LeggedPrecomputation.hpp>
 
 namespace legged_locomotion_mpc
@@ -16,30 +17,9 @@ namespace legged_locomotion_mpc
 
   NormalOrientationSoftConstraint::NormalOrientationSoftConstraint(
     const LeggedReferenceManager& referenceManager,
-    NormalOrientationSoftConstraint::Settings settings, FloatingBaseModelInfo info, 
-    const std::string& modelFolder, bool recompileLibraries, bool verbose):
-      referenceManager_(referenceManager),info_(std::move(info)), 
-      normalRelaxedBarrierPenaltyPtr_(new QuadraticPenalty(settings.barrierMu)) 
-  {
-    // Create CppAD function
-    auto systemFlowMapFunc = [&, this](const ad_vector_t& x, ad_vector_t& y) 
-    {
-      const Eigen::Matrix<ad_scalar_t, 3, 1> eulerAnglesAD = x;
-      y = getNormalFromEulerAnglesCppAd(eulerAnglesAD);
-    };
-    
-    normalFromEulerAnglesAdInterfacePtr_.reset(
-      new CppAdInterface(systemFlowMapFunc, 3, "normal_from_euler", modelFolder));
-    
-    if(recompileLibraries) 
-    {
-      normalFromEulerAnglesAdInterfacePtr_->createModels(CppAdInterface::ApproximationOrder::First, verbose);
-    } 
-    else 
-    {
-      normalFromEulerAnglesAdInterfacePtr_->loadModelsIfAvailable(CppAdInterface::ApproximationOrder::First, verbose);
-    }
-  }
+    NormalOrientationSoftConstraint::Settings settings, FloatingBaseModelInfo info):
+      referenceManager_(referenceManager),info_(std::move(info)),
+      normalRelaxedBarrierPenaltyPtr_(new QuadraticPenalty(settings.barrierMu)) {}
 
   NormalOrientationSoftConstraint* NormalOrientationSoftConstraint::clone() const
   {
@@ -116,8 +96,13 @@ namespace legged_locomotion_mpc
       const scalar_t penaltyDerivative = normalRelaxedBarrierPenaltyPtr_->getDerivative(
         0.0, value);
 
-      const matrix3_t normalGradient = matrix3_t::Map(
-        normalFromEulerAnglesAdInterfacePtr_->getJacobian(eulerAngles).data());
+      // Normal is third column of rotation matrix: dn_i / de = dR_i2 / de
+      const auto rotationGradient = euler_transforms::getRotationMatrixEulerZyxGradient(
+        eulerAngles);
+      matrix3_t normalGradient;
+      normalGradient.row(0) = rotationGradient[0][2].transpose();
+      normalGradient.row(1) = rotationGradient[1][2].transpose();
+      normalGradient.row(2) = rotationGradient[2][2].transpose();
 
       const matrix_t eulerAnglesDerivative = leggedPrecomputation.getEndEffectorOrientationDerivatives(
         endEffectorIndex).dfdx.block(0, 6, 3, info_.generalizedCoordinatesNum);
@@ -141,15 +126,7 @@ namespace legged_locomotion_mpc
   NormalOrientationSoftConstraint::NormalOrientationSoftConstraint(
     const NormalOrientationSoftConstraint &other): referenceManager_(other.referenceManager_), 
       info_(other.info_), 
-      normalRelaxedBarrierPenaltyPtr_(other.normalRelaxedBarrierPenaltyPtr_->clone()), 
-      normalFromEulerAnglesAdInterfacePtr_(new CppAdInterface(
-        *other.normalFromEulerAnglesAdInterfacePtr_)) {}
-
-  ad_vector_t NormalOrientationSoftConstraint::getNormalFromEulerAnglesCppAd(
-    const Eigen::Matrix<ad_scalar_t, 3, 1>& eulerAnglesAD)
-  {
-    return getRotationMatrixFromZyxEulerAngles(eulerAnglesAD).col(2);
-  }
+      normalRelaxedBarrierPenaltyPtr_(other.normalRelaxedBarrierPenaltyPtr_->clone()) {}
 
   NormalOrientationSoftConstraint::Settings loadNormalOrientationSoftConstraintSettings(
     const std::string& filename, const std::string& fieldName, bool verbose)

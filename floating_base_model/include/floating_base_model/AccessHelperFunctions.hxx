@@ -29,7 +29,7 @@ namespace floating_base_model
       size_t contactIndex, 
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       const size_t contactForceIndex = 3 * contactIndex;
@@ -46,7 +46,7 @@ namespace floating_base_model
       size_t contactIndex,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       const size_t contactForceIndex = 3 * contactIndex;
@@ -63,7 +63,7 @@ namespace floating_base_model
       size_t contactIndex,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       assert(contactIndex >= info.numThreeDofContacts);
@@ -79,7 +79,7 @@ namespace floating_base_model
       size_t contactIndex,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       assert(contactIndex >= info.numThreeDofContacts);
@@ -95,7 +95,7 @@ namespace floating_base_model
       size_t contactIndex,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       assert(contactIndex >= info.numThreeDofContacts);
@@ -111,7 +111,7 @@ namespace floating_base_model
       size_t contactIndex,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       assert(contactIndex < info.numThreeDofContacts + info.numSixDofContacts);
       assert(contactIndex >= info.numThreeDofContacts);
@@ -126,7 +126,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 6, 1> getBasePose(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 6, 1>(state.derived(), 6, 0);
     };
@@ -138,7 +138,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 6, 1> getBasePose(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 6, 1>(state.derived(), 6, 0);
     };
@@ -150,7 +150,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 3, 1> getBasePosition(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 3, 1>(state.derived(), 6, 0);
     };
@@ -162,7 +162,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 3, 1> getBasePosition(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 3, 1>(state.derived(), 6, 0);
     };
@@ -174,7 +174,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 3, 1> getBaseOrientationZyx(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 3, 1>(state.derived(), 9, 0);
     };
@@ -186,7 +186,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 3, 1> getBaseOrientationZyx(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 3, 1>(state.derived(), 9, 0);
     };
@@ -198,7 +198,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 6, 1> getBaseVelocity(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 6, 1>(state.derived(), 0, 0);
     };
@@ -210,7 +210,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 6, 1> getBaseVelocity(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 6, 1>(state.derived(), 0, 0);
     };
@@ -222,7 +222,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 3, 1> getBaseLinearVelocity(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 3, 1>(state.derived(), 0, 0);
     };
@@ -234,7 +234,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 3, 1> getBaseLinearVelocity(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 3, 1>(state.derived(), 0, 0);
     };
@@ -246,7 +246,7 @@ namespace floating_base_model
     Eigen::Block<Derived, 3, 1>  getBaseAngularVelocity(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, 3, 1>(state.derived(), 3, 0);
     };
@@ -258,7 +258,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, 3, 1>  getBaseAngularVelocity(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, 3, 1>(state.derived(), 3, 0);
     };
@@ -270,7 +270,7 @@ namespace floating_base_model
     Eigen::Block<Derived, Eigen::Dynamic, 1> getGeneralizedCoordinates(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, Eigen::Dynamic, 1>(state.derived(), 6, 0, info.generalizedCoordinatesNum, 1);
     };
@@ -282,7 +282,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, Eigen::Dynamic, 1> getGeneralizedCoordinates(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, Eigen::Dynamic, 1>(state.derived(), 6, 0, info.generalizedCoordinatesNum, 1);
     };
@@ -294,7 +294,7 @@ namespace floating_base_model
     Eigen::Block<Derived, Eigen::Dynamic, 1> getJointPositions(Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<Derived, Eigen::Dynamic, 1>(state.derived(), 12, 0, info.actuatedDofNum, 1);
     };
@@ -306,7 +306,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, Eigen::Dynamic, 1> getJointPositions(const Eigen::MatrixBase<Derived>& state,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(state.rows() == info.stateDim);
+      assert(static_cast<size_t>(state.rows()) == info.stateDim);
       assert(state.cols() == 1);
       return Eigen::Block<const Derived, Eigen::Dynamic, 1>(state.derived(), 12, 0, info.actuatedDofNum, 1);
     };
@@ -318,7 +318,7 @@ namespace floating_base_model
     Eigen::Block<Derived, Eigen::Dynamic, 1> getJointVelocities(Eigen::MatrixBase<Derived>& input,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       const size_t startRow = 3 * info.numThreeDofContacts + 6 * info.numSixDofContacts;
       return Eigen::Block<Derived, Eigen::Dynamic, 1>(input.derived(), startRow, 0, info.actuatedDofNum, 1);
@@ -331,7 +331,7 @@ namespace floating_base_model
     const Eigen::Block<const Derived, Eigen::Dynamic, 1> getJointVelocities(const Eigen::MatrixBase<Derived>& input,
       const FloatingBaseModelInfoTpl<SCALAR_T>& info)
     {
-      assert(input.rows() == info.inputDim);
+      assert(static_cast<size_t>(input.rows()) == info.inputDim);
       assert(input.cols() == 1);
       const size_t startRow = 3 * info.numThreeDofContacts + 6 * info.numSixDofContacts;
       return Eigen::Block<const Derived, Eigen::Dynamic, 1>(input.derived(), startRow, 0, info.actuatedDofNum, 1);

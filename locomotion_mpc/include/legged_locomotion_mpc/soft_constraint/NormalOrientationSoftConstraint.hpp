@@ -22,7 +22,6 @@
 
 #include <ocs2_core/cost/StateCost.h>
 #include <ocs2_core/penalties/Penalties.h>
-#include <ocs2_core/automatic_differentiation/CppAdInterface.h>
 
 #include <floating_base_model/FloatingBaseModelInfo.hpp>
 
@@ -52,15 +51,9 @@ namespace legged_locomotion_mpc
        * @param [in] referenceManager: Switched model ReferenceManager.
        * @param [in] settings: Soft constraint settings.
        * @param [in] info: The centroidal model information.
-       * @param [in] modelFolder: folder to save the model library files to
-       * @param [in] recompileLibraries: If true, the model library will be newly
-       * compiled. If false, an existing library will be loaded if available.
-       * @param [in] verbose: print information.
        */
       NormalOrientationSoftConstraint(const LeggedReferenceManager& referenceManager,
-        Settings settings, floating_base_model::FloatingBaseModelInfo info, 
-        const std::string& modelFolder = "/tmp/legged_locomotion_mpc", 
-        bool recompileLibraries = true, bool verbose = true);
+        Settings settings, floating_base_model::FloatingBaseModelInfo info);
 
       ~NormalOrientationSoftConstraint() override = default;
 
@@ -80,16 +73,11 @@ namespace legged_locomotion_mpc
     private:
       NormalOrientationSoftConstraint(const NormalOrientationSoftConstraint &other);
 
-      ocs2::ad_vector_t getNormalFromEulerAnglesCppAd(
-        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& eulerAnglesAD);
-
       const LeggedReferenceManager& referenceManager_;
 
       const floating_base_model::FloatingBaseModelInfo info_;
 
       std::unique_ptr<ocs2::QuadraticPenalty> normalRelaxedBarrierPenaltyPtr_;
-
-      std::unique_ptr<ocs2::CppAdInterface> normalFromEulerAnglesAdInterfacePtr_;
   };
 
   /**
@@ -102,7 +90,7 @@ namespace legged_locomotion_mpc
   NormalOrientationSoftConstraint::Settings loadNormalOrientationSoftConstraintSettings(
     const std::string& filename, 
     const std::string& fieldName = "normal_orientation_soft_constraint_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

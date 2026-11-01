@@ -99,7 +99,7 @@ namespace legged_locomotion_mpc
     GaitStaticParameters loadGaitStaticParameters(const std::string& filename,
       const ModelSettings& modelSettings,
       const std::string& fieldName = "gait_static_settings",
-      bool verbose = "true");
+      bool verbose = true);
 
     /**
      * Creates MPC gait dynamic parameters 
@@ -114,7 +114,7 @@ namespace legged_locomotion_mpc
       const ModelSettings& modelSettings,
       const GaitStaticParameters& staticParams,
       const std::string& fieldName = "gait_dynamic_settings",
-      bool verbose = "true");
+      bool verbose = true);
     
   } // namespace locomotion
 } // namespace legged_locomotion_mpc

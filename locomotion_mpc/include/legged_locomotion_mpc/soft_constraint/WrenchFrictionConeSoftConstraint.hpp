@@ -108,7 +108,7 @@ namespace legged_locomotion_mpc
   WrenchFrictionConeSoftConstraint::Config loadWrenchFrictionConeConfig(
     const std::string& filename, 
     const std::string& fieldName = "wrench_friction_cone_soft_constraint_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 
 #endif

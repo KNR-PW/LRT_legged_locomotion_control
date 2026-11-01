@@ -98,7 +98,7 @@ namespace legged_locomotion_mpc
       const std::string& filename,
       const ModelSettings modelSettings,
       const std::string& fieldName = "end_effector_soft_constraint_settings",
-      bool verbose = "true");
+      bool verbose = true);
 
 } // namespace legged_locomotion_mpc
 

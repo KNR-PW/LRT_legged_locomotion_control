@@ -11,7 +11,7 @@ sqp
   inequalityConstraintDelta             5.0
   projectStateInputEqualityConstraints  true
   printSolverStatistics                 true
-  printSolverStatus                     true
+  printSolverStatus                     false
   printLinesearch                       false
   useFeedbackPolicy                     false
   integratorType                        RK2
@@ -108,7 +108,7 @@ mpc
   solutionTimeWindow              -1   ; maximum [s]
   coldStart                       false
 
-  debugPrint                      true
+  debugPrint                      false
 
   mpcDesiredFrequency              50 ; [Hz]
   mrtDesiredFrequency             400 ; [Hz]

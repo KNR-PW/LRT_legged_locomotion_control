@@ -5,45 +5,48 @@
 
 #include <terrain_model/planar_model/PlanarTerrainModel.hpp>
 
+#include <cmath>
+#include <stdexcept>
+
+#include <grid_map_core/iterators/GridMapIterator.hpp>
+
 namespace terrain_model
 {
-  
+
   using namespace ocs2;
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  PlanarTerrainModel::PlanarTerrainModel(TerrainPlane terrainPlane, 
-    std::string referenceFrameName): 
-      TerrainModel(std::move(referenceFrameName)), 
-      terrainPlane_(terrainPlane), sdf_(std::move(terrainPlane)) 
+  PlanarTerrainModel::PlanarTerrainModel(TerrainPlane terrainPlane,
+    std::string referenceFrameName):
+      TerrainModel(std::move(referenceFrameName)),
+      terrainPlane_(terrainPlane), sdf_(std::move(terrainPlane))
   {
+    // Projection along gravity is not defined for vertical plane
+    const scalar_t minimalNormalZ = 1e-6;
+    if(!(std::abs(terrainPlane_.getSurfaceNormalInWorld().z()) > minimalNormalZ))
+    {
+      throw std::invalid_argument("[PlanarTerrainModel]: Terrain plane can not be vertical!");
+    }
+
     // Prepare gridMap
     const auto& terrainPosition3D = terrainPlane_.getPosition();
     const grid_map::Position gridMapPosition{terrainPosition3D.x(), terrainPosition3D.y()};
     const grid_map::Length gridMapLength{GRIDMAP_LENGTH, GRIDMAP_LENGTH};
     gridMap_.setFrameId(referenceFrameName_);
     gridMap_.setGeometry(gridMapLength, GRIDMAP_RESOLUTION, gridMapPosition);
+    gridMap_.add(elevationLayerName);
 
-    const size_t matrixSize = static_cast<size_t>(GRIDMAP_LENGTH / GRIDMAP_RESOLUTION);
-
-    Eigen::MatrixXf data(matrixSize, matrixSize);
-
-    vector2_t currentPosition = gridMapPosition;
-    currentPosition.array() += 
-      (matrixSize - 1) / (2 * matrixSize) * GRIDMAP_LENGTH;
-
-    for(size_t i = 0; i < matrixSize; ++i)
+    // Height of the plane at the center of every cell
+    auto& elevationData = gridMap_.get(elevationLayerName);
+    for(grid_map::GridMapIterator iterator(gridMap_); !iterator.isPastEnd(); ++iterator)
     {
-      for(size_t j = 0; j < matrixSize; ++j)
-      {
-        data(i, j) = terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(
-          currentPosition).z();
-        currentPosition(1) -= GRIDMAP_LENGTH / matrixSize;
-      }
-      currentPosition(1) += GRIDMAP_LENGTH;
-      currentPosition(0) -= GRIDMAP_LENGTH / matrixSize;
+      const grid_map::Index index = *iterator;
+      grid_map::Position cellPosition;
+      gridMap_.getPosition(index, cellPosition);
+      elevationData(index(0), index(1)) =
+        terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(cellPosition).z();
     }
-    gridMap_.add(elevationLayerName, data);
   }
 
    /******************************************************************************************************/
@@ -104,10 +107,10 @@ namespace terrain_model
     penaltyFunction) const
   {
     // As planar terrain is safe everywhere, convex terrain will be big triangle lmao 
-    std::vector<vector2_t> boundryPoints = {{-100, -100}, {100, -100}, {0, 100}};
+    std::vector<vector2_t> boundaryPoints = {{-100, -100}, {100, -100}, {0, 100}};
     const vector3_t positionOnTerrain = terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(positionInWorld);
     TerrainPlane newPlane(positionOnTerrain, terrainPlane_.getOrientationToTerrain());
-    return ConvexTerrain(newPlane, boundryPoints);
+    return ConvexTerrain(newPlane, boundaryPoints);
   }
 
   /******************************************************************************************************/
@@ -126,7 +129,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  vector3_t PlanarTerrainModel::getSmoothedPositon(const vector2_t& positionXYInWorld) const
+  vector3_t PlanarTerrainModel::getSmoothedPosition(const vector2_t& positionXYInWorld) const
   {
     return terrainPlane_.projectPositionInWorldOntoPlaneAlongGravity(positionXYInWorld);
   }

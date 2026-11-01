@@ -66,9 +66,10 @@ namespace terrain_model
        */
       vector3_t projectPositionInWorldOntoPlane(const vector3_t& positionWorld) const;
       
-      /** 
+      /**
        * Returns the projection along gravity onto the terrain
-       *  plane for a 2D position in world. The returned position is in world frame 
+       *  plane for a 2D position in world. The returned position is in world frame.
+       *  Plane can not be vertical (surface normal z != 0).
        */
       vector3_t projectPositionInWorldOntoPlaneAlongGravity(
         const vector2_t& positionXYWorld) const;
@@ -88,7 +89,8 @@ namespace terrain_model
       
       /**
        * Change heading vector (X axis) of plane rotation matrix. It is first mapped onto plane,
-       * then Y axis is calculated with right hand rule.
+       * then Y axis is calculated with right hand rule. Vertical or zero heading vector
+       * does not change the orientation.
        */
       void changeHeadingVector(const vector3_t headingVectorInWorld);
       /**

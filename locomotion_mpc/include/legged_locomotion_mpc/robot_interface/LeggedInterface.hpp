@@ -281,6 +281,6 @@ namespace legged_locomotion_mpc
    */
   LeggedInterface::Settings loadLeggedInterfaceSettings(const std::string& filename,
     const std::string& fieldName = "legged_interface_settings",
-    bool verbose = "true");
+    bool verbose = true);
 } // namespace legged_locomotion_mpc
 #endif

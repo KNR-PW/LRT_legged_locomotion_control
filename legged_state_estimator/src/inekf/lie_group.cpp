@@ -31,52 +31,46 @@ matrix3_t skew(const vector3_t& v) {
   return M;
 }
 
-matrix3_t Gamma_SO3(const vector3_t& w, const int m, 
-                          const ocs2::scalar_t exp_map_tol) {
+matrix3_t Gamma_SO3(const vector3_t& w, const int m,
+                          const ocs2::scalar_t /*exp_map_tol*/) {
   // Computes mth integral of the exponential map: \Gamma_m = \sum_{n=0}^{\infty} \dfrac{1}{(n+m)!} (w^\wedge)^n
+  // Since A^3 = -theta^2*A, it reduces to: \Gamma_m = I/m! + alpha_m*A + beta_m*A^2
+  // (exp_map_tol is no longer needed, small angles are handled by the series below)
   assert(m>=0);
-  const ocs2::scalar_t theta = w.norm();
-  if(theta < exp_map_tol) {
-      return (1.0/factorial(m))*matrix3_t::Identity(); // TODO: There is a better small value approximation for exp() given in Trawny p.19
-  } 
-  const matrix3_t A = skew(w);
-  const ocs2::scalar_t theta2 =  theta*theta;
-
-  // Closed form solution for the first 3 cases
-  switch (m) {
-    case 0: // Exp map of SO(3)
-      return matrix3_t::Identity() + (sin(theta)/theta)*A + ((1-cos(theta))/theta2)*A*A;
-    
-    case 1: // Left Jacobian of SO(3)
-      // eye(3) - A*(1/theta^2) * (R - eye(3) - A);
-      // eye(3) + (1-cos(theta))/theta^2 * A + (theta-sin(theta))/theta^3 * A^2;
-      return matrix3_t::Identity() + ((1-cos(theta))/theta2)*A + ((theta-sin(theta))/(theta2*theta))*A*A;
-
-    case 2: 
-      // 0.5*eye(3) - (1/theta^2) * (R - eye(3) - A - 0.5*A^2);
-      // 0.5*eye(3) + (theta-sin(theta))/theta^3 * A + (2*(cos(theta)-1) + theta^2)/(2*theta^4) * A^2
-      return 0.5*matrix3_t::Identity() + (theta-sin(theta))/(theta2*theta)*A + (theta2 + 2*cos(theta)-2)/(2*theta2*theta2)*A*A;
-
-    default: // General case 
-      const matrix3_t R = matrix3_t::Identity() + (sin(theta)/theta)*A + ((1-cos(theta))/theta2)*A*A;
-      matrix3_t S = matrix3_t::Identity();
-      matrix3_t Ak = matrix3_t::Identity();
-      long int kfactorial = 1;
-      for(int k=1; k<=m; ++k) {
-        kfactorial = kfactorial*k;
-        Ak = (Ak*A).eval();
-        S = (S + (1.0/kfactorial)*Ak).eval();
-      }
-      if(m==0) { 
-          return R;
-      } 
-      else if(m%2){ // odd 
-          return (1.0/kfactorial)*matrix3_t::Identity() + (pow(-1,(m+1)/2)/pow(theta,m+1))*A * (R - S);
-      } 
-      else { // even
-          return (1.0/kfactorial)*matrix3_t::Identity() + (pow(-1,m/2)/pow(theta,m)) * (R - S);
-      }
+  const ocs2::scalar_t theta2 = w.squaredNorm();
+  const ocs2::scalar_t mfactorial = factorial(m);
+  ocs2::scalar_t alpha, beta;
+  if(theta2 < 0.0625) {
+    // Series for theta < 0.25 (closed form loses precision there):
+    // alpha_m = sum_k (-theta^2)^k/(2k+1+m)!,  beta_m = sum_k (-theta^2)^k/(2k+2+m)!
+    ocs2::scalar_t alpha_term = 1.0/(mfactorial*(m+1));
+    ocs2::scalar_t beta_term = alpha_term/(m+2);
+    alpha = 0.0;
+    beta = 0.0;
+    for(int k=0; k<8; ++k) {
+      alpha += alpha_term;
+      beta += beta_term;
+      alpha_term *= -theta2/((2*k+2+m)*(2*k+3+m));
+      beta_term *= -theta2/((2*k+3+m)*(2*k+4+m));
+    }
   }
+  else {
+    // Closed form via recursion from the exp map: alpha_m = beta_{m-1}, beta_m = (1/m! - alpha_{m-1})/theta^2
+    const ocs2::scalar_t theta = std::sqrt(theta2);
+    alpha = std::sin(theta)/theta;
+    beta = (1-std::cos(theta))/theta2;
+    ocs2::scalar_t jfactorial = 1.0;
+    for(int j=1; j<=m; ++j) {
+      jfactorial *= j;
+      const ocs2::scalar_t alpha_prev = alpha;
+      alpha = beta;
+      beta = (1.0/jfactorial - alpha_prev)/theta2;
+    }
+  }
+  const matrix3_t A = skew(w);
+  matrix3_t G = alpha*A + beta*(A*A);
+  G.diagonal().array() += 1.0/mfactorial;
+  return G;
 }
 
 matrix3_t Exp_SO3(const vector3_t& w) {

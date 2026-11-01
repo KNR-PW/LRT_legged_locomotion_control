@@ -11,7 +11,7 @@ legged_state_estimator
     [3] RR_foot
   }
 
-  useContactEstimator false
+  useContactEstimator true
 
   contactEstimatorSettings
   {

@@ -104,9 +104,10 @@ namespace legged_locomotion_mpc_ros2
     currentStatePublisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       currentStateTopic, 1);
     
+    // Latched, terrain can be published rarely and still reach late subscribers
     const std::string gridMapTopic = topicPrefix + "elevation";
     gridMapPublisher_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
-      gridMapTopic, 1);
+      gridMapTopic, rclcpp::QoS(1).transient_local());
   }
 
   /******************************************************************************************************/
@@ -118,7 +119,8 @@ namespace legged_locomotion_mpc_ros2
     const auto& state = currentObservation.state;
     const auto& input = currentObservation.input;
 
-    const auto currentFlags = locomotion::contactFlags2ModeNumber(currentObservation.mode);
+    const contact_flags_t currentFlags = locomotion::modeNumber2ContactFlags(
+      currentObservation.mode);
 
     if(state.size() != modelInfo_.stateDim || input.size() != modelInfo_.inputDim)
     {
@@ -174,8 +176,8 @@ namespace legged_locomotion_mpc_ros2
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void LeggedVisualizer::publishTargetTrajectory(const rclcpp::Time& timeStamp, 
-    const TargetTrajectories targetTrajectory)
+  void LeggedVisualizer::publishTargetTrajectory(const rclcpp::Time& timeStamp,
+    const TargetTrajectories& targetTrajectory)
   {
     const auto& timeTrajectory = targetTrajectory.timeTrajectory;
     const auto& stateTrajectory = targetTrajectory.stateTrajectory;
@@ -251,11 +253,13 @@ namespace legged_locomotion_mpc_ros2
     // Publish
     desiredBasePositionPublisher_->publish(basePathMessage);
 
+    const size_t colorMapSize = visualizationSettings_.endEffectorColorMap.size();
+
     for(size_t j = 0; j < endEffectorNumber; ++j) 
     {
       auto endEffectorPathMessage = getLineMsg(
         std::move(desiredEndEffectorPositionMessages[j]),
-        visualizationSettings_.endEffectorColorMap[j % endEffectorNumber], 
+        visualizationSettings_.endEffectorColorMap[j % colorMapSize],
         visualizationSettings_.trajectoryLineWidth);
       endEffectorPathMessage.header = headerMessage;
       endEffectorPathMessage.id = 0;
@@ -345,11 +349,13 @@ namespace legged_locomotion_mpc_ros2
     // Publish
     optimizedBasePositionPublisher_->publish(basePathMessage);
 
+    const size_t colorMapSize = visualizationSettings_.endEffectorColorMap.size();
+
     for(size_t j = 0; j < endEffectorNumber; ++j) 
     {
       auto endEffectorPathMessage = getLineMsg(
         std::move(optimizedEndEffectorPositionMessages[j]),
-        visualizationSettings_.endEffectorColorMap[j % endEffectorNumber], 
+        visualizationSettings_.endEffectorColorMap[j % colorMapSize],
         visualizationSettings_.trajectoryLineWidth);
       endEffectorPathMessage.header = headerMessage;
       endEffectorPathMessage.id = 0;
@@ -365,21 +371,16 @@ namespace legged_locomotion_mpc_ros2
     const vector_t& jointPositons, const vector_t& jointVelocities, 
     const vector_t& jointTorques)
   {
-    const std::vector<scalar_t> jointPositionsVector(jointPositons.data(), 
-      jointPositons.data() + jointPositons.size());
-
-    const std::vector<scalar_t> jointVelocitiesVector(jointVelocities.data(), 
-      jointVelocities.data() + jointVelocities.size());
-
-    const std::vector<scalar_t> jointTorquesVector(jointTorques.data(), 
-      jointTorques.data() + jointTorques.size());
-
+    // Copy Eigen data directly into message
     sensor_msgs::msg::JointState jointState;
     jointState.header.stamp = timeStamp;
     jointState.name = jointNames_;
-    jointState.position = jointPositionsVector;
-    jointState.velocity = jointVelocitiesVector;
-    jointState.effort = jointTorquesVector;
+    jointState.position.assign(jointPositons.data(),
+      jointPositons.data() + jointPositons.size());
+    jointState.velocity.assign(jointVelocities.data(),
+      jointVelocities.data() + jointVelocities.size());
+    jointState.effort.assign(jointTorques.data(),
+      jointTorques.data() + jointTorques.size());
 
     jointStatePublisher_->publish(jointState);
   }
@@ -461,15 +462,15 @@ namespace legged_locomotion_mpc_ros2
 
     const size_t colorMapSize = visualizationSettings_.endEffectorColorMap.size();
 
-    // Markers for three DOF end effectors
+    // Markers for three DOF end effectors (not const, so they are moved into array)
     for(size_t i = 0; i < modelInfo_.numThreeDofContacts; ++i)
     {
-      const auto positionMarker = getFootMarker(endEffectorPositions[i], contactFlags[i], 
+      auto positionMarker = getFootMarker(endEffectorPositions[i], contactFlags[i],
         visualizationSettings_.endEffectorColorMap[i % colorMapSize],
-        visualizationSettings_.endEffectorMarkerDiameter, 
+        visualizationSettings_.endEffectorMarkerDiameter,
         visualizationSettings_.endEffectorAlphaWhenLifted);
 
-      const auto forceMarker = getForceMarker(endEffectorForces[i], 
+      auto forceMarker = getForceMarker(endEffectorForces[i],
         endEffectorPositions[i], contactFlags[i], Color::green, 
         visualizationSettings_.forceScale);
 
@@ -480,16 +481,16 @@ namespace legged_locomotion_mpc_ros2
     // Markers for six DOF end effectors
     for(size_t i = modelInfo_.numThreeDofContacts; i < endEffectorNumber; ++i)
     {
-      const auto positionMarker = getFootMarker(endEffectorPositions[i], contactFlags[i], 
+      auto positionMarker = getFootMarker(endEffectorPositions[i], contactFlags[i],
         visualizationSettings_.endEffectorColorMap[i % colorMapSize],
-        visualizationSettings_.endEffectorMarkerDiameter, 
+        visualizationSettings_.endEffectorMarkerDiameter,
         visualizationSettings_.endEffectorAlphaWhenLifted);
 
-      const auto forceMarker = getForceMarker(endEffectorForces[i], 
-        endEffectorPositions[i], contactFlags[i], Color::green, 
+      auto forceMarker = getForceMarker(endEffectorForces[i],
+        endEffectorPositions[i], contactFlags[i], Color::green,
         visualizationSettings_.forceScale);
 
-      const auto torqueMarker = getForceMarker(
+      auto torqueMarker = getForceMarker(
         endEffectorTorques[i - modelInfo_.numThreeDofContacts], 
         endEffectorPositions[i], contactFlags[i], Color::red, 
         visualizationSettings_.torqueScale);
@@ -507,13 +508,13 @@ namespace legged_locomotion_mpc_ros2
     }
 
     // Center of pressure
-    const auto centerOfPressureMarker = getCenterOfPressureMarker(
+    auto centerOfPressureMarker = getCenterOfPressureMarker(
       endEffectorForces.begin(), endEffectorForces.end(), endEffectorPositions.begin(),
       currentFlagsAsBool.begin(), Color::green, 
       visualizationSettings_.centerOfPressureMarkerDiameter);
 
     // Support polygon
-    const auto supportPolygonMarker = getSupportPolygonMarker(
+    auto supportPolygonMarker = getSupportPolygonMarker(
       endEffectorPositions.begin(), endEffectorPositions.end(), 
       currentFlagsAsBool.begin(), Color::black, 
       visualizationSettings_.supportPolygonLineWidth);

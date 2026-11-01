@@ -2,50 +2,45 @@
 
 #include <terrain_model/core/TerrainPlane.hpp>
 
+#include <legged_locomotion_mpc/common/EulerTransforms.hpp>
+
 namespace legged_locomotion_mpc
 {
   using namespace ocs2;
   using namespace floating_base_model;
   using namespace terrain_model;
 
+  namespace
+  {
+    // Values of linear approximations, so CppAD function value is not evaluated twice
+    void getValuesFromApproximations(
+      const std::vector<VectorFunctionLinearApproximation>& approximations,
+      std::vector<vector3_t>& values)
+    {
+      values.resize(approximations.size());
+      for(size_t i = 0; i < approximations.size(); ++i)
+      {
+        values[i] = approximations[i].f;
+      }
+    }
+  } // namespace
+
   LeggedPrecomputation::LeggedPrecomputation(
     FloatingBaseModelInfo modelInfo,
     const LeggedReferenceManager& referenceManager,
     const PinocchioForwardEndEffectorKinematicsCppAd& forwardKinematics,
     const PinocchioForwardCollisionKinematicsCppAd& collisionKinematics,
-    const PinocchioTorqueApproximationCppAd& torqueApproximator, 
-    const PinocchioWeightCompensator& weightCompensator, 
-    const std::string& modelFolder, bool recompileLibraries, bool verbose):
-      PreComputation(), 
-      endEffectorNumber_(modelInfo.numThreeDofContacts + modelInfo.numSixDofContacts),
-      modelInfo_(std::move(modelInfo)), 
+    const PinocchioTorqueApproximationCppAd& torqueApproximator,
+    const PinocchioWeightCompensator& weightCompensator):
+      PreComputation(),
+      modelInfo_(std::move(modelInfo)),
+      endEffectorNumber_(modelInfo_.numThreeDofContacts + modelInfo_.numSixDofContacts),
       collisionLinkNumber_(collisionKinematics.getCollisionNumber()),
-      referenceManager_(referenceManager),forwardKinematics_(forwardKinematics), 
+      referenceManager_(referenceManager),forwardKinematics_(forwardKinematics),
       collisionKinematics_(collisionKinematics), torqueApproximator_(torqueApproximator),
       weightCompensator_(weightCompensator)
   {
     rotationWorldToTerrains_.resize(endEffectorNumber_);
-
-    // Create CppAD function
-    auto systemFlowMapFunc = [&](const ad_vector_t& x, const ad_vector_t& p, 
-      ad_vector_t& y) 
-    {
-      const Eigen::Matrix<ad_scalar_t, 3, 1> eulerAnglesAD = x;
-      const Eigen::Matrix<ad_scalar_t, 3, 1> vector = p;
-      y = getRotationTimesVectorCppAd(eulerAnglesAD, vector);
-    };
-  
-    rotationMatrixVectorAdInterfacePtr_.reset(
-      new CppAdInterface(systemFlowMapFunc, 3, 3, "rotation_times_vector_euler", modelFolder));
-  
-    if(recompileLibraries) 
-    {
-      rotationMatrixVectorAdInterfacePtr_->createModels(CppAdInterface::ApproximationOrder::First, verbose);
-    } 
-    else 
-    {
-      rotationMatrixVectorAdInterfacePtr_->loadModelsIfAvailable(CppAdInterface::ApproximationOrder::First, verbose);
-    }
   }
 
   LeggedPrecomputation::LeggedPrecomputation(const LeggedPrecomputation& other):
@@ -73,9 +68,7 @@ namespace legged_locomotion_mpc
     referenceTrajectoryPoint_(other.referenceTrajectoryPoint_),
     torqueApproximation_(other.torqueApproximation_),
     torqueApproximationDerivatives_(other.torqueApproximationDerivatives_),
-    endEffectorCompensationContactWrenches_(other.endEffectorCompensationContactWrenches_),
-    rotationMatrixVectorAdInterfacePtr_(new CppAdInterface(
-      *other.rotationMatrixVectorAdInterfacePtr_)) {}
+    endEffectorCompensationContactWrenches_(other.endEffectorCompensationContactWrenches_) {}
   
   LeggedPrecomputation* LeggedPrecomputation::clone() const
   { 
@@ -88,58 +81,75 @@ namespace legged_locomotion_mpc
     assert(x.size() == modelInfo_.stateDim);
     assert(u.size() == modelInfo_.inputDim);
     
+    // With approximation request values are taken from derivatives (no double CppAD evaluation)
+    const bool approximation = request.contains(Request::Approximation);
+
     // Constraints || soft constraints || cost
     if(request.containsAny(Request::Constraint + Request::SoftConstraint + Request::Cost))
     {
-      updateEndEffectorPositions(t, x);
-      updateEndEffectorLinearVelocities(t, x, u);
-
-      if(request.contains(Request::Approximation))
+      if(approximation)
       {
         updateEndEffectorPositionDerviatives(t, x);
         updateEndEffectorLinearVelocityDerviatives(t, x, u);
       }
+      else
+      {
+        updateEndEffectorPositions(t, x);
+        updateEndEffectorLinearVelocities(t, x, u);
+      }
+
+      updateReferenceEndEffectorData(t);
     }
 
     // Constraints || soft constraints
     if(request.containsAny(Request::Constraint + Request::SoftConstraint))
     {
-      updateReferenceEndEffectorData(t);
-      updateEndEffectorOrientations(t, x);
-
-      if(request.contains(Request::Approximation))
+      if(approximation)
       {
         updateEndEffectorOrientationDerviatives(t, x);
+      }
+      else
+      {
+        updateEndEffectorOrientations(t, x);
       }
     }
 
     // Soft constraints || cost
     if(request.containsAny(Request::SoftConstraint + Request::Cost))
     {
-      updateApproximatedTorquesData(t, x, u);
-      if(request.contains(Request::Approximation))
+      if(approximation)
       {
         updateApproximatedTorquesDerivatives(t, x, u);
+      }
+      else
+      {
+        updateApproximatedTorquesData(t, x, u);
       }
     }
 
     // Constraints
     if(request.contains(Request::Constraint))
     {
-      updateEndEffectorAngularVelocities(t, x, u);
-      if(request.contains(Request::Approximation))
+      if(approximation)
       {
         updateEndEffectorAngularVelocityDerviatives(t, x, u);
+      }
+      else
+      {
+        updateEndEffectorAngularVelocities(t, x, u);
       }
     }
 
     // Soft constraints
     if(request.contains(Request::SoftConstraint))
     {
-      updateCollisionKinematicsData(t, x);
-      if(request.contains(Request::Approximation))
+      if(approximation)
       {
         updateCollisionKinematicsDerivatives(t, x);
+      }
+      else
+      {
+        updateCollisionKinematicsData(t, x);
       }
     }
 
@@ -332,6 +342,7 @@ namespace legged_locomotion_mpc
   {
     endEffectorPositionDerivaties_ = forwardKinematics_.getPositionLinearApproximation(
       state);
+    getValuesFromApproximations(endEffectorPositionDerivaties_, endEffectorPositions_);
   }
   
   void LeggedPrecomputation::updateEndEffectorOrientationDerviatives(scalar_t time, 
@@ -339,6 +350,7 @@ namespace legged_locomotion_mpc
   {
     endEffectorEulerAngleDerivaties_ = forwardKinematics_.getOrientationLinearApproximation(
       state);
+    getValuesFromApproximations(endEffectorEulerAngleDerivaties_, endEffectorEulerAngles_);
   }
     
   void LeggedPrecomputation::updateEndEffectorLinearVelocityDerviatives(scalar_t time, 
@@ -346,6 +358,7 @@ namespace legged_locomotion_mpc
   {
     endEffectorLinearVelocityDerivaties_ = forwardKinematics_.getLinearVelocityLinearApproximation(
       state, input);
+    getValuesFromApproximations(endEffectorLinearVelocityDerivaties_, endEffectorLinearVelocities_);
   }
   
   void LeggedPrecomputation::updateEndEffectorAngularVelocityDerviatives(scalar_t time, 
@@ -353,6 +366,7 @@ namespace legged_locomotion_mpc
   {
     endEffectorAngularVelocityDerivaties_ = forwardKinematics_.getAngularVelocityLinearApproximation(
       state, input);
+    getValuesFromApproximations(endEffectorAngularVelocityDerivaties_, endEffectorAngularVelocities_);
   }
 
   void LeggedPrecomputation::updateApproximatedTorquesData(scalar_t time, 
@@ -364,8 +378,9 @@ namespace legged_locomotion_mpc
   void LeggedPrecomputation::updateApproximatedTorquesDerivatives(scalar_t time, 
     const vector_t& state, const vector_t& input)
   {
-    torqueApproximationDerivatives_ = torqueApproximator_.getLinearApproximation(state, 
+    torqueApproximationDerivatives_ = torqueApproximator_.getLinearApproximation(state,
       input);
+    torqueApproximation_ = torqueApproximationDerivatives_.f;
   }
 
   void LeggedPrecomputation::updateReferenceEndEffectorData(scalar_t time)
@@ -393,6 +408,8 @@ namespace legged_locomotion_mpc
       state);
     collisionLinkEulerAngleDerivaties_ = collisionKinematics_.getOrientationLinearApproximation(
       state);
+    getValuesFromApproximations(collisionLinkPositionDerivaties_, collisionLinkPositions_);
+    getValuesFromApproximations(collisionLinkEulerAngleDerivaties_, collisionLinkEulerAngles_);
   }
 
   void LeggedPrecomputation::updateEndEffectorCompensationContactWrenches(scalar_t time, 
@@ -406,20 +423,16 @@ namespace legged_locomotion_mpc
   matrix3_t LeggedPrecomputation::getRotationTimesVectorGradient(
     const vector3_t& eulerAnglesZYX, const vector3_t& vector) const
   {
-    const vector_t x = (vector_t(3) << eulerAnglesZYX).finished();
-    const vector_t p = (vector_t(3) << vector).finished();
-    const matrix_t dynamicsJacobian = rotationMatrixVectorAdInterfacePtr_->getJacobian(x, p);
-    const matrix3_t approx = matrix3_t::Map(dynamicsJacobian.data());
+    // d(R * v)_i / de = sum_j dR_ij / de * v_j
+    const auto rotationGradient = euler_transforms::getRotationMatrixEulerZyxGradient(
+      eulerAnglesZYX);
 
-    return approx;
-  }
-
-  ad_vector_t LeggedPrecomputation::getRotationTimesVectorCppAd(
-    const Eigen::Matrix<ad_scalar_t, 3, 1>& eulerAnglesAD, 
-    const Eigen::Matrix<ad_scalar_t, 3, 1>& vector)
-  {
-    const Eigen::Matrix<ad_scalar_t, 3, 3> rotationMatrix = getRotationMatrixFromZyxEulerAngles(
-      eulerAnglesAD);
-    return rotationMatrix * vector;
+    matrix3_t gradient;
+    for(size_t i = 0; i < 3; ++i)
+    {
+      gradient.row(i) = (rotationGradient[i][0] * vector.x() + rotationGradient[i][1] * vector.y()
+        + rotationGradient[i][2] * vector.z()).transpose();
+    }
+    return gradient;
   }
 } // namespace legged_locomotion_mpc

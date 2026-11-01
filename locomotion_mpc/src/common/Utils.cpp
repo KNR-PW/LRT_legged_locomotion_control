@@ -137,16 +137,20 @@ namespace legged_locomotion_mpc
     {
       const auto numStanceLegs = numberOfClosedContacts(info, contactFlags);
       size_t numEndEffectors = info.numThreeDofContacts + info.numSixDofContacts;
-      if(numStanceLegs > 0) 
+      const scalar_t totalWeight = info.robotMass * PLUS_GRAVITY_VALUE;
+      for (size_t i = 0; i < numEndEffectors; i++)
       {
-        const scalar_t totalWeight = info.robotMass * PLUS_GRAVITY_VALUE;
-        const vector3_t forceInInertialFrame(0.0, 0.0, totalWeight / numStanceLegs);
-        for (size_t i = 0; i < numEndEffectors; i++) 
+        if(contactFlags[i])
         {
-          if(contactFlags[i]) {
-            access_helper_functions::getContactForces(input, i, info) = forceInInertialFrame;
-          }
-        } 
+          // At least this leg is in contact, so numStanceLegs > 0
+          access_helper_functions::getContactForces(input, i, info) =
+            vector3_t(0.0, 0.0, totalWeight / numStanceLegs);
+        }
+        else
+        {
+          // Legs not in contact have no force, even if input had one before
+          access_helper_functions::getContactForces(input, i, info).setZero();
+        }
       }
     }
 

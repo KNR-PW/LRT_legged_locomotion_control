@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <vector>
 #include <cstddef>
 #include <bitset>
+#include <string>
 
 #include <ocs2_core/Types.h>
 

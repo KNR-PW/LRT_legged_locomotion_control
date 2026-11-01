@@ -20,7 +20,7 @@ using namespace terrain_model;
 using namespace floating_base_model;
 using namespace multi_end_effector_kinematics;
 
-const scalar_t positionTolerance = 1e-1;
+const scalar_t endEffectorPositionTolerance = 1e-5;
 const scalar_t velocityTolerance = 1e-3;
 
 const scalar_t stateTolerance = 1e-5;
@@ -28,6 +28,26 @@ const scalar_t inputTolerance = 1e-5;
 
 const size_t NUM_TEST = 100;
 const size_t POSITION_CHANGE_CONST = 100;
+
+// Distance from joint limits for random joint positions (bigger than position change)
+const scalar_t JOINT_LIMIT_MARGIN = 0.05;
+
+// Joint velocity scale and limit margin for trajectory (joints drift at most 0.2 rad)
+const scalar_t TRAJECTORY_JOINT_VELOCITY = 0.2;
+const scalar_t TRAJECTORY_JOINT_LIMIT_MARGIN = 0.25;
+
+/**
+ * Get random joint positions between joint limits shrinked by margin
+ * (inverse kinematics solver does not start outside of joint limits)
+ */
+vector_t getRandomJointPositions(const vector_t& lowerLimits,
+  const vector_t& upperLimits, scalar_t margin)
+{
+  const vector_t lower = lowerLimits.array() + margin;
+  const vector_t upper = upperLimits.array() - margin;
+  const vector_t random = 0.5 * (vector_t::Random(lowerLimits.size()).array() + 1.0);
+  return lower + random.cwiseProduct(upper - lower);
+}
 
 TEST(JointTrajectoryPlannerTest, computeJointPositions) 
 {
@@ -40,23 +60,27 @@ TEST(JointTrajectoryPlannerTest, computeJointPositions)
 
   InverseSolverSettings solverSettings;
   solverSettings.tolerance = 1e-8;
-  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings, 
+  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings,
     solverSettings, solverName);
-    
+
+  const vector_t jointLowerLimits = kinematicsSolver.getPinocchioModel().lowerPositionLimit;
+  const vector_t jointUpperLimits = kinematicsSolver.getPinocchioModel().upperPositionLimit;
+
   ocs2::PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(urdfPathName, baseLink);
   const FloatingBaseModelInfo modelInfo = createFloatingBaseModelInfo(interface, meldog3DofContactNames, meldog6DofContactNames);
 
   JointTrajectoryPlanner planner(modelInfo, std::move(kinematicsSolver));
-  
+
   std::string modelName = "meldogForwardKinematics";
-  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface, 
+  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface,
     modelInfo, modelName);
 
   for(size_t i = 0; i < NUM_TEST; ++i)
   {
     const vector6_t currentBasePose = vector6_t::Random();
-    const vector_t currentJointPositions = vector_t::Random(ACTUATED_DOF_NUM) * M_PI_2;
-    const vector_t jointPositionsTrue = currentJointPositions + 
+    const vector_t currentJointPositions = getRandomJointPositions(jointLowerLimits,
+      jointUpperLimits, JOINT_LIMIT_MARGIN);
+    const vector_t jointPositionsTrue = currentJointPositions +
       vector_t::Random(ACTUATED_DOF_NUM) / POSITION_CHANGE_CONST;
 
     vector_t state = vector_t::Zero(modelInfo.stateDim);
@@ -73,8 +97,25 @@ TEST(JointTrajectoryPlannerTest, computeJointPositions)
 
     const vector_t calculatedJointPositions = planner.computeJointPositions(
       currentJointPositions, currentBasePose, endEffectorPositions, emptyNormals);
-    
-    EXPECT_TRUE((calculatedJointPositions - jointPositionsTrue).norm() < positionTolerance);
+
+    /**
+     * Calculated joint positions reach target end effector positions. Joint positions
+     * are not compared, inverse kinematics has more solutions (e.g. near straight leg)
+     */
+    access_helper_functions::
+      getJointPositions(state, modelInfo) = calculatedJointPositions;
+
+    const std::vector<vector3_t> calculatedEndEffectorPositions =
+      forwardKinematics.getPosition(state);
+
+    for(size_t j = 0; j < endEffectorPositions.size(); ++j)
+    {
+      EXPECT_TRUE((calculatedEndEffectorPositions[j] - endEffectorPositions[j]).norm()
+        < endEffectorPositionTolerance);
+    }
+
+    EXPECT_TRUE((calculatedJointPositions.array() >= jointLowerLimits.array()).all());
+    EXPECT_TRUE((calculatedJointPositions.array() <= jointUpperLimits.array()).all());
   }
 }
 
@@ -89,23 +130,27 @@ TEST(JointTrajectoryPlannerTest, computeJointVelocities)
 
   InverseSolverSettings solverSettings;
   solverSettings.tolerance = 1e-8;
-  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings, 
+  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings,
     solverSettings, solverName);
+
+  const vector_t jointLowerLimits = kinematicsSolver.getPinocchioModel().lowerPositionLimit;
+  const vector_t jointUpperLimits = kinematicsSolver.getPinocchioModel().upperPositionLimit;
 
   ocs2::PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(urdfPathName, baseLink);
   const FloatingBaseModelInfo modelInfo = createFloatingBaseModelInfo(interface, meldog3DofContactNames, meldog6DofContactNames);
 
   JointTrajectoryPlanner planner(modelInfo, std::move(kinematicsSolver));
-  
+
   std::string modelName = "meldogForwardKinematics";
-  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface, 
+  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface,
     modelInfo, modelName);
 
   for(size_t i = 0; i < NUM_TEST; ++i)
   {
     const vector6_t currentBasePose = vector6_t::Random();
     const vector6_t currentBaseVelocity = vector6_t::Random();
-    const vector_t currentJointPositions = vector_t::Random(ACTUATED_DOF_NUM) * M_PI_2;
+    const vector_t currentJointPositions = getRandomJointPositions(jointLowerLimits,
+      jointUpperLimits, JOINT_LIMIT_MARGIN);
     const vector_t jointVelocitiesTrue = vector_t::Random(ACTUATED_DOF_NUM);
 
     vector_t state = vector_t::Zero(modelInfo.stateDim);
@@ -122,12 +167,16 @@ TEST(JointTrajectoryPlannerTest, computeJointVelocities)
     access_helper_functions::
       getJointVelocities(input, modelInfo) = jointVelocitiesTrue;
 
-    const std::vector<vector3_t> endEffectorVelocities = 
+    const std::vector<vector3_t> endEffectorVelocities =
       forwardKinematics.getLinearVelocity(state, input);
 
+    // Previous velocities are zero, so test fails if solver does not return velocities
+    const vector_t previousJointVelocities = vector_t::Zero(ACTUATED_DOF_NUM);
+
     const vector_t calculatedJointVelocities = planner.computeJointVelocities(
-      currentJointPositions, currentBasePose, currentBaseVelocity, endEffectorVelocities);
-    
+      currentJointPositions, currentBasePose, currentBaseVelocity, endEffectorVelocities,
+      previousJointVelocities);
+
     EXPECT_TRUE((calculatedJointVelocities - jointVelocitiesTrue).norm() < velocityTolerance);
   }
 }
@@ -143,16 +192,19 @@ TEST(JointTrajectoryPlannerTest, updateTrajectory)
 
   InverseSolverSettings solverSettings;
   solverSettings.tolerance = 1e-8;
-  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings, 
+  MultiEndEffectorKinematics kinematicsSolver(urdfPathName, modelSettings,
     solverSettings, solverName);
+
+  const vector_t jointLowerLimits = kinematicsSolver.getPinocchioModel().lowerPositionLimit;
+  const vector_t jointUpperLimits = kinematicsSolver.getPinocchioModel().upperPositionLimit;
 
   ocs2::PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(urdfPathName, baseLink);
   const FloatingBaseModelInfo modelInfo = createFloatingBaseModelInfo(interface, meldog3DofContactNames, meldog6DofContactNames);
 
   JointTrajectoryPlanner planner(modelInfo, std::move(kinematicsSolver));
-  
+
   std::string modelName = "meldogForwardKinematics";
-  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface, 
+  PinocchioForwardEndEffectorKinematicsCppAd forwardKinematics(interface,
     modelInfo, modelName);
 
   const scalar_t initTime = 0.0;
@@ -188,8 +240,11 @@ TEST(JointTrajectoryPlannerTest, updateTrajectory)
   vector6_t currentBasePose = vector6_t::Random();
   vector6_t currentBaseVelocity = vector6_t::Random();
 
-  vector_t currentJointPositions = vector_t::Random(ACTUATED_DOF_NUM);
-  vector_t currentJointVelocities = vector_t::Random(ACTUATED_DOF_NUM);
+  // Joints stay inside joint limits during whole trajectory
+  vector_t currentJointPositions = getRandomJointPositions(jointLowerLimits,
+    jointUpperLimits, TRAJECTORY_JOINT_LIMIT_MARGIN);
+  vector_t currentJointVelocities = vector_t::Random(ACTUATED_DOF_NUM)
+    * TRAJECTORY_JOINT_VELOCITY;
 
   state = vector_t::Zero(modelInfo.stateDim);
   input = vector_t::Zero(modelInfo.inputDim);
@@ -227,7 +282,7 @@ TEST(JointTrajectoryPlannerTest, updateTrajectory)
     currentJointPositions += currentJointVelocities * deltaTime;
 
     currentBaseVelocity = vector6_t::Random();
-    currentJointVelocities = vector_t::Random(ACTUATED_DOF_NUM);
+    currentJointVelocities = vector_t::Random(ACTUATED_DOF_NUM) * TRAJECTORY_JOINT_VELOCITY;
 
     state = vector_t::Zero(modelInfo.stateDim);
     input = vector_t::Zero(modelInfo.inputDim);

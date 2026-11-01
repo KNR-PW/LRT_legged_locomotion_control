@@ -145,7 +145,7 @@ namespace legged_locomotion_mpc
       assert(newTime > eventTimes_.back());
 
       // Calculate new cached phase
-      scalar_t newCachedPhase = cachedPhase_.back() + (newTime - eventTimes_.back()) * dynamicParamsVec_.back().steppingFrequency;
+      scalar_t newCachedPhase = normalizePhase(cachedPhase_.back() + (newTime - eventTimes_.back()) * dynamicParamsVec_.back().steppingFrequency);
       eventTimes_.push_back(newTime);
       dynamicParamsVec_.push_back(newDynamicParams);
       cachedPhase_.push_back(newCachedPhase);

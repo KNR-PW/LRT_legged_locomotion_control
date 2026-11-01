@@ -44,11 +44,8 @@ namespace legged_locomotion_mpc
         const LeggedReferenceManager& referenceManager,
         const PinocchioForwardEndEffectorKinematicsCppAd& forwardKinematics,
         const PinocchioForwardCollisionKinematicsCppAd& collisionKinematics,
-        const PinocchioTorqueApproximationCppAd& torqueApproximator, 
-        const PinocchioWeightCompensator& weightCompensator,
-        const std::string& modelFolder = "/tmp/legged_locomotion_mpc",
-        bool recompileLibraries = true,
-        bool verbose = true);
+        const PinocchioTorqueApproximationCppAd& torqueApproximator,
+        const PinocchioWeightCompensator& weightCompensator);
 
       ~LeggedPrecomputation() override = default;
 
@@ -144,29 +141,33 @@ namespace legged_locomotion_mpc
       /**
        * Updates:
        * - end effector position derivaties
+       * - end effector positions (taken from derivatives)
        */
-      void updateEndEffectorPositionDerviatives(ocs2::scalar_t time, 
+      void updateEndEffectorPositionDerviatives(ocs2::scalar_t time,
         const ocs2::vector_t& state);
-      
+
       /**
        * Updates:
        * - end effector orientation as euler angle derivatives
+       * - end effector orientations as euler angles (taken from derivatives)
        */
-      void updateEndEffectorOrientationDerviatives(ocs2::scalar_t time, 
+      void updateEndEffectorOrientationDerviatives(ocs2::scalar_t time,
         const ocs2::vector_t& state);
-        
+
       /**
        * Updates:
        * - end effector linear velocity derivatives
+       * - end effector linear velocities (taken from derivatives)
        */
-      void updateEndEffectorLinearVelocityDerviatives(ocs2::scalar_t time, 
+      void updateEndEffectorLinearVelocityDerviatives(ocs2::scalar_t time,
         const ocs2::vector_t& state, const ocs2::vector_t& input);
-      
+
       /**
        * Updates:
        * - end effector angular velocity derivatives
+       * - end effector angular velocities (taken from derivatives)
        */
-      void updateEndEffectorAngularVelocityDerviatives(ocs2::scalar_t time, 
+      void updateEndEffectorAngularVelocityDerviatives(ocs2::scalar_t time,
         const ocs2::vector_t& state, const ocs2::vector_t& input);
       
       /**
@@ -179,6 +180,7 @@ namespace legged_locomotion_mpc
       /**
        * Updates:
        * - approxmiated torque derivatives
+       * - approxmiated torque values (taken from derivatives)
        */
       void updateApproximatedTorquesDerivatives(ocs2::scalar_t time, 
         const ocs2::vector_t& state, const ocs2::vector_t& input);
@@ -203,7 +205,7 @@ namespace legged_locomotion_mpc
       /**
        * Updates:
        * - collision links position and orientations as euler angle derivatives
-       * - collision links linear and angular velocity derivatives
+       * - collision links positions and orientations (taken from derivatives)
        */
       void updateCollisionKinematicsDerivatives(ocs2::scalar_t time, 
         const ocs2::vector_t& state);
@@ -212,13 +214,8 @@ namespace legged_locomotion_mpc
        * Updates:
        * - end effector (3 and 6 DoF) contact forces or wrenches
        */
-      void updateEndEffectorCompensationContactWrenches(ocs2::scalar_t time, 
+      void updateEndEffectorCompensationContactWrenches(ocs2::scalar_t time,
         const ocs2::vector_t& state);
-
-      // Cpp AD version of rotation matrix and vector multiplication: R * v
-      ocs2::ad_vector_t getRotationTimesVectorCppAd(
-        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& eulerAnglesAD, 
-        const Eigen::Matrix<ocs2::ad_scalar_t, 3, 1>& vector);
 
       const floating_base_model::FloatingBaseModelInfo modelInfo_;
       const size_t endEffectorNumber_;
@@ -261,12 +258,6 @@ namespace legged_locomotion_mpc
       ocs2::VectorFunctionLinearApproximation torqueApproximationDerivatives_;
 
       std::vector<vector6_t> endEffectorCompensationContactWrenches_;
-
-      /**
-       * Helper Cpp AD function for getting partial derivative w.r.t euler ZYX angles
-       * from rotation matrix and vector multiplication: d(R * v)/de
-       */
-      std::unique_ptr<ocs2::CppAdInterface> rotationMatrixVectorAdInterfacePtr_;
   };
 } // namespace legged_locomotion_mpc
 

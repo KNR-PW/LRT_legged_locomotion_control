@@ -27,7 +27,8 @@ namespace legged_locomotion_mpc
     for(const auto& frameName : collisionSettings.collisionLinkNames)
     {
       const size_t frameIndex = model.getFrameId(frameName);
-      if(frameIndex <= 0)
+      // Pinocchio returns number of frames when frame is not found
+      if(frameIndex == model.frames.size())
       {
         std::string message = "[PinocchioForwardCollisionKinematicsCppAd]: There is no frame named " + frameName + "!";
         throw std::invalid_argument(message);

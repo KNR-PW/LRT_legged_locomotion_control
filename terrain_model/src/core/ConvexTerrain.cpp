@@ -27,7 +27,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const std::vector<vector2_t>& ConvexTerrain::getBoundryPoints() const
+	const std::vector<vector2_t>& ConvexTerrain::getBoundaryPoints() const
   {
     return boundary_;
   }
@@ -35,7 +35,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const vector2_t& ConvexTerrain::getBoundryPoint(size_t currentPointIndex) const
+	const vector2_t& ConvexTerrain::getBoundaryPoint(size_t currentPointIndex) const
   {
   	return boundary_[currentPointIndex % boundary_.size()]; // wrap around
   }
@@ -43,7 +43,7 @@ namespace terrain_model
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-	const vector2_t& ConvexTerrain::getNextBoundryPoint(size_t currentPointIndex) const
+	const vector2_t& ConvexTerrain::getNextBoundaryPoint(size_t currentPointIndex) const
   {
   	return boundary_[(currentPointIndex + 1) % boundary_.size()]; // next point with wrap around
   }
@@ -65,13 +65,25 @@ namespace terrain_model
             image = q;
         }
     };
-    bool isInside = true;
+    // Point is inside of convex polygon if it is on the same side of all edges,
+    // this works for clockwise and counter-clockwise order
+    bool hasPointOnLeftSide = false;
+    bool hasPointOnRightSide = false;
     for (size_t i = 0; i < boundary_.size(); i++)
     {
-        const auto& p1 = getBoundryPoint(i);
-        const auto& p2 = getNextBoundryPoint(i);
+        const auto& p1 = getBoundaryPoint(i);
+        const auto& p2 = getNextBoundaryPoint(i);
         const vector2_t p12 = p2 - p1;
-        const scalar_t r = p12.dot(queryPoint - p1) / p12.squaredNorm();
+        const vector2_t p1Query = queryPoint - p1;
+        const scalar_t edgeSquaredNorm = p12.squaredNorm();
+        if (edgeSquaredNorm < std::numeric_limits<scalar_t>::epsilon())
+        {
+            // Degenerated edge, only its point can be the closest one
+            saveIfCloser(p1);
+            continue;
+        }
+
+        const scalar_t r = p12.dot(p1Query) / edgeSquaredNorm;
         if (r > 1.0)
         {
             saveIfCloser(p2);
@@ -79,14 +91,24 @@ namespace terrain_model
         else if (r < 0.0)
         {
             saveIfCloser(p1);
-            isInside = false; // the point is outside since the angle is obtuse
         }
         else
         {
             const vector2_t q = p1 + r * p12;
             saveIfCloser(q);
         }
+
+        const scalar_t crossProduct = p12.x() * p1Query.y() - p12.y() * p1Query.x();
+        if (crossProduct > 0.0)
+        {
+            hasPointOnLeftSide = true;
+        }
+        else if (crossProduct < 0.0)
+        {
+            hasPointOnRightSide = true;
+        }
     } // end of i loop
+    const bool isInside = !(hasPointOnLeftSide && hasPointOnRightSide);
     return {(isInside ? -dist2 : dist2), image};
   }
   
