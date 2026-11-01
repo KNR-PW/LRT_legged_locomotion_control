@@ -1,5 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <rclcpp/executors/single_threaded_executor.hpp>
 
 #include <legged_state_estimator_ros2/LeggedStateEstimatorNode.hpp>
 
@@ -11,7 +11,8 @@ int main(int argc, char** argv)
 
   auto leggedStateEstimatorNode = std::make_shared<LeggedStateEstimatorNode>();
 
-  rclcpp::executors::MultiThreadedExecutor executor;
+  // All callbacks are in one mutually exclusive callback group, more threads would only wait
+  rclcpp::executors::SingleThreadedExecutor executor;
 
   executor.add_node(leggedStateEstimatorNode->get_node_base_interface());
   executor.spin();
