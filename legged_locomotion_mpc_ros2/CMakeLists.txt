@@ -136,6 +136,12 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 
+# Launch files, ocs2 configs and ROS parameters
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_export_dependencies(${THIS_PACKAGE_DEPENDS})
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 

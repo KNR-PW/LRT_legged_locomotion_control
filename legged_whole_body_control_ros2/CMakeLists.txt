@@ -39,6 +39,7 @@ set(THIS_PACKAGE_DEPENDS
   
   ocs2_msgs
   ocs2_ros_interfaces
+  contact_msgs
   legged_locomotion_msgs
 )
 
@@ -79,6 +80,12 @@ endif (cmake_clang_tools_FOUND)
 
 install(TARGETS legged_whole_body_controller_node
   DESTINATION lib/${PROJECT_NAME})
+
+# Launch files, ocs2 configs and ROS parameters
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()
 

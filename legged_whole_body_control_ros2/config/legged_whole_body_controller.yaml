@@ -1,0 +1,28 @@
+# ROS parameters of the Legged Whole Body Controller node.
+# config_directory_path, urdf_path and use_sim_time are set by the launch file.
+legged_whole_body_controller:
+  ros__parameters:
+    # Type of WBC, only "weighted" is supported
+    type: "weighted"
+
+    # Maximum age of odometry and joint states messages [s], controller is deactivated after that
+    odometry_timeout: 0.1
+    joint_state_timeout: 0.1
+
+    # Maximum duration between external wrench messages [s], wrench is zeroed after that
+    wrench_timeout: 0.1
+
+    # Number of not solved WBC problems in a row, controller is deactivated after that
+    max_consecutive_failures: 10
+
+    # Maximum age of MPC policy [s] (from its start time), WBC is standing after that.
+    # Has to be longer than MPC period + MPC solve time and shorter than MPC horizon (task.info)
+    policy_timeout: 0.5
+
+    # Contact sensors correct planned contact flags of the policy:
+    #  - planned stance without contact (late touchdown): foot is moved to its planned position, no force,
+    #  - planned swing with contact after the middle of swing (early touchdown): foot is in contact
+    use_contact_sensors: true
+
+    # Maximum time without contacts messages [s] (receive time), planned contact flags are used after that
+    contacts_timeout: 0.1

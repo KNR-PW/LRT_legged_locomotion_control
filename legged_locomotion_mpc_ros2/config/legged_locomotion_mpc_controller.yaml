@@ -1,0 +1,19 @@
+# ROS parameters of the Legged Locomotion MPC controller node.
+# config_directory_path, urdf_path, use_sim_time and use_mrt_control are set by the launch file.
+legged_locomotion_mpc_controller:
+  ros__parameters:
+    # Maximum age of odometry and joint states messages [s], controller is deactivated after that
+    odometry_timeout: 0.1
+    joint_state_timeout: 0.1
+
+    # Maximum duration between base velocity commands [s], robot stops after that
+    velocity_timeout: 0.1
+
+    # Maximum duration between external wrench messages [s], wrench is zeroed after that
+    wrench_timeout: 0.1
+
+    # Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
+    policy_timeout: 0.5
+
+    # Frequency of robot state updates for MPC when MRT is not used [Hz]
+    observation_frequency: 200.0

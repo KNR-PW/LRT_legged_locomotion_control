@@ -1,0 +1,62 @@
+legged_state_estimator
+{
+  worldFrameName world
+  baseFrameName trunk_link
+  imuFrameName imu_link
+  
+  contactFrames
+  {
+    [0] RFF_link
+    [1] RRF_link
+    [2] LFF_link
+    [3] LRF_link
+  }
+
+  useContactEstimator false
+
+  contactEstimatorSettings
+  {
+    beta0
+    {
+      [0] -10.0
+      [1] -10.0
+      [2] -10.0
+      [3] -10.0
+    }
+
+    beta1
+    {
+      [0] 0.7
+      [1] 0.7
+      [2] 0.7
+      [3] 0.7
+    }
+
+    contactForceCovarianceAlpha 0.1
+
+    contactProbabilityThreshold 0.1
+  }
+
+  noiseSettings
+  {
+    gyroscopeNoise 0.1
+    gyroscopeBiasNoise 0.01
+    accelerometerNoise 0.1
+    accelerometerBiasNoise 0.01
+    contactNoise 0.01
+  }
+
+  dynamicContactEstimation true
+
+  contactPositionNoise 0.01
+
+  contactRotationNoise 0.01
+
+  samplingTime 0.002
+
+  lpfGyroAccelCutoffFrequency 200
+  lpfLinAccelCutoffFrequency 200
+  lpfDqJCutoffFrequency 30
+  lpfDdqJCutoffFrequency 30
+  lpfTauJCutoffFrequency 30
+}

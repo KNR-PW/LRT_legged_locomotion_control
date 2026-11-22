@@ -49,8 +49,11 @@
 
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
+#include <contact_msgs/msg/contacts.hpp>
+
 #include <legged_locomotion_msgs/msg/mpc_policy.hpp>
 
+#include <legged_whole_body_control_ros2/ContactFlagsFusion.hpp>
 #include <legged_whole_body_control_ros2/MpcPolicyEvaluator.hpp>
 
 namespace legged_whole_body_control_ros2
@@ -94,6 +97,16 @@ namespace legged_whole_body_control_ros2
       // Reads new MPC policy message (if there is one) into policy evaluator
       void updatePolicy();
 
+      // Reads new contacts message (if there is one) into measured contact flags
+      void updateContacts();
+
+      // Contacts message was received not earlier than contacts_timeout (receive time)
+      bool isContactsFresh(const rclcpp::Time& currentTime) const;
+
+      // Contact flags of the policy, corrected by contact sensors (late and early touchdowns)
+      legged_whole_body_control::contact_flags_t getPolicyContactFlags(ocs2::scalar_t time,
+        const rclcpp::Time& currentTime);
+
       // Policy is available, not older than policy_timeout and time is not after its end
       bool isPolicyValid(ocs2::scalar_t time) const;
 
@@ -107,6 +120,7 @@ namespace legged_whole_body_control_ros2
 
       std::vector<std::string> jointNames_;
       std::unordered_map<std::string, size_t> jointNameIndexMap_;
+      std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
       std::atomic_bool controllerRunning_{false};
       size_t endEffectorNum_ = 0;
 
@@ -116,6 +130,7 @@ namespace legged_whole_body_control_ros2
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
       rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometrySubscriber_;
+      rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
 
       // Command subscribers
       rclcpp::Subscription<legged_locomotion_msgs::msg::MpcPolicy>::SharedPtr policySubscriber_;
@@ -177,6 +192,19 @@ namespace legged_whole_body_control_ros2
       // Terrain normals and contact flags passed to WBC
       std::vector<legged_whole_body_control::vector3_t> terrainNormals_;
       legged_whole_body_control::contact_flags_t contactFlags_;
+
+      // Read once in on_configure, contact sensors correct planned contact flags
+      bool useContactSensors_ = true;
+
+      // Contact sensors, planned flags are used when they are older than contacts_timeout
+      legged_whole_body_control::contact_flags_t measuredContactFlags_;
+      bool contactsReceived_ = false;
+      rclcpp::Time lastContactsReceiveTime_;
+      rclcpp::Duration contactsTimeout_ = rclcpp::Duration(0, 0);
+
+      // Planned and measured contacts fusion, created in on_configure
+      std::unique_ptr<ContactFlagsFusion> contactFlagsFusionPtr_;
+      std::vector<ocs2::scalar_t> timesToTouchdown_;
       
       // Maximum age of odometry and joint states messages, WBC is deactivated after that
       rclcpp::Duration odometryTimeout_ = rclcpp::Duration(0, 0);

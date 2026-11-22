@@ -5,6 +5,9 @@
 
 #include <legged_locomotion_mpc/locomotion/SwingTrajectoryPlanner.hpp>
 
+#include <cmath>
+#include <stdexcept>
+
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
@@ -26,12 +29,42 @@ namespace legged_locomotion_mpc
     using namespace terrain_model;
     using namespace floating_base_model;
 
+    namespace
+    {
+      // End effector frames are on the terrain when heights above terrain are not set
+      SwingTrajectoryPlanner::StaticSettings withHeightsAboveTerrain(
+        SwingTrajectoryPlanner::StaticSettings settings, size_t endEffectorNum)
+      {
+        auto& heightsAboveTerrain = settings.endEffectorHeightsAboveTerrain;
+        if(heightsAboveTerrain.empty())
+        {
+          heightsAboveTerrain.assign(endEffectorNum, 0.0);
+        }
+        else if(heightsAboveTerrain.size() != endEffectorNum)
+        {
+          throw std::invalid_argument("[SwingTrajectoryPlanner]: Number of end effector heights above terrain "
+            "different than number of end effectors!");
+        }
+        return settings;
+      }
+
+      // Terrain moved along its normal, boundary is defined in the terrain plane, so it stays the same
+      ConvexTerrain moveAlongNormal(const ConvexTerrain& terrain, scalar_t distance)
+      {
+        const TerrainPlane& plane = terrain.getTerrainPlane();
+        TerrainPlane movedPlane(plane.getPosition() + distance * plane.getSurfaceNormalInWorld(),
+          plane.getOrientationToTerrain());
+        return ConvexTerrain(std::move(movedPlane), terrain.getBoundaryPoints());
+      }
+    } // namespace
+
     SwingTrajectoryPlanner::SwingTrajectoryPlanner(FloatingBaseModelInfo info,
       StaticSettings staticSettings,
       DynamicSettings initDynamicSettings,
       const forwardKinematics &forwardKinematics,
       const OverExtensionPenalty& overExtensionPenalty): modelInfo_(std::move(info)),
-        staticSettings_(std::move(staticSettings)), 
+        staticSettings_(withHeightsAboveTerrain(std::move(staticSettings),
+          modelInfo_.numThreeDofContacts + modelInfo_.numSixDofContacts)),
         dynamicSettings_(std::move(initDynamicSettings)),
         forwardKinematics_(forwardKinematics),
         overExtensionPenalty_(overExtensionPenalty)
@@ -528,6 +561,10 @@ namespace legged_locomotion_mpc
       auto heuristicFootholdIt = heuristicFootholds.cbegin();
       std::vector<ConvexTerrain> nominalFootholdTerrain;
 
+      // Terrain from terrain model is moved to the end effector frame height. Current contact (from kinematics)
+      // and footholds of the previous iteration are already at this height
+      const scalar_t heightAboveTerrain = staticSettings_.endEffectorHeightsAboveTerrain[endEffectorIndex];
+
       // Nominal foothold is equal to current foothold for end effectors in contact
       if(startsWithStancePhase(contactTimings)) 
       {
@@ -577,7 +614,7 @@ namespace legged_locomotion_mpc
               auto penaltyFunction = overExtensionPenalty_.getPenalty(endEffectorIndex, desiredState);
               ConvexTerrain convexTerrain = terrainModel.getConvexTerrainAtPositionInWorld(
                   referenceFootholdPositionInWorld, penaltyFunction);
-              nominalFootholdTerrain.push_back(convexTerrain);
+              nominalFootholdTerrain.push_back(moveAlongNormal(convexTerrain, heightAboveTerrain));
               ++heuristicFootholdIt;
             } 
             else 
@@ -587,7 +624,7 @@ namespace legged_locomotion_mpc
               const auto plane = terrainModel.getLocalTerrainAtPositionInWorldAlongGravity(
                 referenceFootholdPositionInWorld);
               ConvexTerrain convexTerrain(plane, emptyBoundary);
-              nominalFootholdTerrain.push_back(convexTerrain);
+              nominalFootholdTerrain.push_back(moveAlongNormal(convexTerrain, heightAboveTerrain));
               ++heuristicFootholdIt;
             }
           }
@@ -622,6 +659,7 @@ namespace legged_locomotion_mpc
       SwingPhase::SwingProfile swingProfile;
       swingProfile.sdfMidswingMargin = staticSettings_.sdfMidswingMargin;
       swingProfile.maxSwingHeightAdaptation = staticSettings_.maxSwingHeightAdaptation;
+      swingProfile.endEffectorHeightAboveTerrain = staticSettings_.endEffectorHeightsAboveTerrain[endEffectorIndex];
 
       SwingPhase::SwingProfile::Node midPoint;
       midPoint.phase = dynamicSettings_.phases[endEffectorIndex];
@@ -817,6 +855,21 @@ namespace legged_locomotion_mpc
        if(settings.maxSwingHeightAdaptation < 0.0)
       {
         throw std::invalid_argument("[SwingTrajectoryPlanner]: Max swing height adaptation smaller than 0.0!");
+      }
+
+      // Optional (0.0 for every end effector), number of heights is checked in SwingTrajectoryPlanner constructor
+      const std::string heightsName = fieldName + ".endEffectorHeightsAboveTerrain";
+      if(pt.get_child_optional(heightsName))
+      {
+        loadData::loadStdVector(filename, heightsName, settings.endEffectorHeightsAboveTerrain, verbose);
+      }
+      for(const scalar_t height: settings.endEffectorHeightsAboveTerrain)
+      {
+        if(!std::isfinite(height) || height < 0.0)
+        {
+          throw std::invalid_argument("[SwingTrajectoryPlanner]: End effector height above terrain "
+            "smaller than 0.0 or not finite!");
+        }
       }
 
       if(verbose) 

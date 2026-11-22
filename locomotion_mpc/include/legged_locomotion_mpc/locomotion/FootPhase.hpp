@@ -169,6 +169,11 @@ namespace legged_locomotion_mpc
           ocs2::scalar_t sdfStartEndMargin = -0.02;
          /** Limits the amount of additional swing height from terrain adaptation. */
           ocs2::scalar_t maxSwingHeightAdaptation = 0.2;
+         /**
+          * Height of the end effector frame above the terrain at liftoff and touchdown [m].
+          * Obstacles are measured from the terrain below the swing line.
+          */
+          ocs2::scalar_t endEffectorHeightAboveTerrain = 0.0;
         };
 
         /**

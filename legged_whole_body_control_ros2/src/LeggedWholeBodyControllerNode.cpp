@@ -75,12 +75,19 @@ namespace legged_whole_body_control_ros2
     // Has to be longer than MPC period + MPC solve time and shorter than MPC horizon
     this->declare_parameter("policy_timeout", 0.5);
 
+    // Contact sensors correct planned contact flags of the policy (late and early touchdowns)
+    this->declare_parameter("use_contact_sensors", true);
+
+    // Maximum time without contacts messages [s] (receive time), planned contact flags are used after that
+    this->declare_parameter("contacts_timeout", 0.1);
+
     // Same clock type as node clock, times from different clocks can not be compared
     const rclcpp::Time zeroTime(0, 0, this->get_clock()->get_clock_type());
     lastJointStateTime_ = zeroTime;
     lastOdometryTime_ = zeroTime;
     wbcStartTime_ = zeroTime;
     lastWrenchTime_ = zeroTime;
+    lastContactsReceiveTime_ = zeroTime;
 
     RCLCPP_INFO(this->get_logger(), "Legged WBC Controller started in unconfigured state!");
   }
@@ -117,13 +124,14 @@ namespace legged_whole_body_control_ros2
     const scalar_t wrenchTimeout = this->get_parameter("wrench_timeout").as_double();
     const int64_t maxConsecutiveFailures = this->get_parameter("max_consecutive_failures").as_int();
     const scalar_t policyTimeout = this->get_parameter("policy_timeout").as_double();
+    const scalar_t contactsTimeout = this->get_parameter("contacts_timeout").as_double();
 
     if(!(odometryTimeout > 0.0) || !(jointStateTimeout > 0.0) || !(wrenchTimeout > 0.0) ||
-       maxConsecutiveFailures < 1 || !(policyTimeout > 0.0))
+       maxConsecutiveFailures < 1 || !(policyTimeout > 0.0) || !(contactsTimeout > 0.0))
     {
       RCLCPP_ERROR(this->get_logger(),
         "Parameters odometry_timeout, joint_state_timeout, wrench_timeout, "
-        "max_consecutive_failures and policy_timeout have to be positive!");
+        "max_consecutive_failures, policy_timeout and contacts_timeout have to be positive!");
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
@@ -132,6 +140,8 @@ namespace legged_whole_body_control_ros2
     wrenchTimeout_ = rclcpp::Duration::from_seconds(wrenchTimeout);
     maxConsecutiveFailures_ = static_cast<size_t>(maxConsecutiveFailures);
     policyTimeout_ = policyTimeout;
+    useContactSensors_ = this->get_parameter("use_contact_sensors").as_bool();
+    contactsTimeout_ = rclcpp::Duration::from_seconds(contactsTimeout);
 
     const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
 
@@ -176,6 +186,23 @@ namespace legged_whole_body_control_ros2
     {
       RCLCPP_ERROR(this->get_logger(), "Error while creating MPC policy evaluator: %s", e.what());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
+
+    contactFlagsFusionPtr_ = std::make_unique<ContactFlagsFusion>(endEffectorNum_);
+    timesToTouchdown_.assign(endEffectorNum_, 0.0);
+
+    // Contact frames in WBC end effector order, names from previous configuration can be different
+    contactFrameNameIndexMap_.clear();
+
+    for(size_t i = 0; i < wbcSettings_.endEffectorThreeDofNames.size(); ++i)
+    {
+      contactFrameNameIndexMap_[wbcSettings_.endEffectorThreeDofNames[i]] = i;
+    }
+
+    for(size_t i = 0; i < wbcSettings_.endEffectorSixDofNames.size(); ++i)
+    {
+      contactFrameNameIndexMap_[wbcSettings_.endEffectorSixDofNames[i]] =
+        wbcSettings_.endEffectorThreeDofNames.size() + i;
     }
 
     const auto& model = pinocchioInterfacePtr_->getModel();
@@ -223,6 +250,19 @@ namespace legged_whole_body_control_ros2
     odometrySubscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
       odometryTopic, qos,
       [](const nav_msgs::msg::Odometry::ConstSharedPtr) {}, subscriptionOptions);
+
+    // Contact sensors subscriber
+    if(useContactSensors_)
+    {
+      const std::string contactsTopic = "/contacts";
+      contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
+        contactsTopic, qos,
+        [](const contact_msgs::msg::Contacts::ConstSharedPtr) {}, subscriptionOptions);
+    }
+    else
+    {
+      contactsSubscriber_.reset();
+    }
 
     // Base external wrench subsciber
     const std::string baseWrenchTopic = "/base_external_wrench";
@@ -296,6 +336,9 @@ namespace legged_whole_body_control_ros2
 
     // WBC stands until MPC policy is received
     followingPolicy_ = false;
+
+    // Contacts have to be received during this activation, planned flags are used until then
+    contactsReceived_ = false;
 
     wbcBenchmarkTimer_.reset();
 
@@ -413,6 +456,7 @@ namespace legged_whole_body_control_ros2
       }
 
       updatePolicy();
+      updateContacts();
 
       // Policy is evaluated at time of measured state, as by MRT in MPC node
       const scalar_t time = currentMeasuredObservation_.time;
@@ -423,6 +467,9 @@ namespace legged_whole_body_control_ros2
         {
           RCLCPP_INFO(this->get_logger(), "WBC is following MPC policy!");
           followingPolicy_ = true;
+
+          // Robot was standing, every end effector in swing lifts off now
+          contactFlagsFusionPtr_->reset(time, contact_flags_t((size_t(1) << endEffectorNum_) - 1));
         }
 
         const auto& measuredState = currentMeasuredObservation_.state;
@@ -438,7 +485,7 @@ namespace legged_whole_body_control_ros2
           policyEvaluatorPtr_->getFinalTime());
         policyEvaluatorPtr_->evaluate(nextTime, measuredState, nextDesiredState_, nextDesiredInput_);
 
-        contactFlags_ = policyEvaluatorPtr_->getContactFlags(time);
+        contactFlags_ = getPolicyContactFlags(time, currentTime);
         terrainNormals_ = policyEvaluatorPtr_->getTerrainNormals(time);
       }
       else
@@ -647,6 +694,85 @@ namespace legged_whole_body_control_ros2
     return policyEvaluatorPtr_->hasPolicy() &&
       (time - policyEvaluatorPtr_->getStartTime()) <= policyTimeout_ &&
       time <= policyEvaluatorPtr_->getFinalTime();
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedWholeBodyControllerNode::updateContacts()
+  {
+    if(!contactsSubscriber_) return;
+
+    rclcpp::MessageInfo msgInfo;
+
+    contact_msgs::msg::Contacts contacts;
+    if(!contactsSubscriber_->take(contacts, msgInfo)) return;
+
+    if(contacts.contacts.size() != endEffectorNum_)
+    {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored an invalid Contacts message");
+      return;
+    }
+
+    contact_flags_t newContactFlags;
+    std::vector<bool> contactUpdated(endEffectorNum_, false);
+
+    for(const auto& contact: contacts.contacts)
+    {
+      const auto contactIndexIt = contactFrameNameIndexMap_.find(contact.header.frame_id);
+
+      // Unknown or duplicated frame would leave some contact flag unset
+      if(contactIndexIt == contactFrameNameIndexMap_.end() || contactUpdated[contactIndexIt->second])
+      {
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+          "Ignored Contacts message with unknown or duplicated frame: %s",
+          contact.header.frame_id.c_str());
+        return;
+      }
+
+      newContactFlags[contactIndexIt->second] = contact.contact;
+      contactUpdated[contactIndexIt->second] = true;
+    }
+
+    measuredContactFlags_ = newContactFlags;
+
+    // Receive time, contact stamps are often not set
+    lastContactsReceiveTime_ = this->get_clock()->now();
+    contactsReceived_ = true;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::isContactsFresh(const rclcpp::Time& currentTime) const
+  {
+    return contactsReceived_ && (currentTime - lastContactsReceiveTime_) <= contactsTimeout_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  contact_flags_t LeggedWholeBodyControllerNode::getPolicyContactFlags(scalar_t time,
+    const rclcpp::Time& currentTime)
+  {
+    const contact_flags_t plannedFlags = policyEvaluatorPtr_->getContactFlags(time);
+
+    if(!useContactSensors_) return plannedFlags;
+
+    if(!isContactsFresh(currentTime))
+    {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "No contacts message for longer than contacts_timeout, planned contact flags are used!");
+
+      // Lift off times are not known when contacts are back, swing is assumed to start then
+      contactFlagsFusionPtr_->reset(time, plannedFlags);
+      return plannedFlags;
+    }
+
+    policyEvaluatorPtr_->getTimesToTouchdown(time, timesToTouchdown_);
+    return contactFlagsFusionPtr_->update(time, plannedFlags, measuredContactFlags_,
+      timesToTouchdown_);
   }
   
   /******************************************************************************************************/

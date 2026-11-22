@@ -1,0 +1,189 @@
+wbc_base_settings
+{
+  worldLinkName world
+  baseLinkName trunk_link
+
+  endEffectorThreeDofNames
+  {
+    [0] RFF_link
+    [1] RRF_link
+    [2] LFF_link
+    [3] LRF_link
+  }
+
+  endEffectorSixDofNames
+  {
+
+  }
+
+  ; Friction cone task also sets zero forces of end effectors that are not in contact,
+  ; end effectors tracking task tracks swing trajectories of the MPC policy
+  useDynamicsTask             true
+  useBaseTrackingTask         true
+  useEndEffectorsTrackingTask true
+  useContactForceTrackingTask true
+  useTorqueLimitsTask         true
+  useKinematicContactTask     false
+  useFrictionConeTask         true
+  useTorqueRegularizationTask true
+
+  ; Desired accelerations: ff * a_des + kp * position error + kd * velocity error
+  ; (critically damped, kd = 2 * sqrt(kp))
+  baseSettings
+  {
+    linearFeedForwardGain
+    {
+      (0,0) 1.0
+      (1,0) 1.0
+      (2,0) 1.0
+    }
+
+    linearProportionalGain
+    {
+      (0,0)  100.0
+      (1,0)  100.0
+      (2,0)  100.0
+    }
+
+    linearDerivativeGain
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  20.0
+    }
+
+    angularFeedForwardGain
+    {
+      (0,0)  1.0
+      (1,0)  1.0
+      (2,0)  1.0
+    }
+
+    angularProportionalGain
+    {
+      (0,0)  100.0
+      (1,0)  100.0
+      (2,0)  100.0
+    }
+
+    angularDerivativeGain
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  20.0
+    }
+  }
+
+  ; Used only for end effectors that are not in contact (swing)
+  endEffectorSettings
+  {
+    RFF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  1.0
+        (1,0)  1.0
+        (2,0)  1.0
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  350.0
+        (1,0)  350.0
+        (2,0)  350.0
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  37.0
+        (1,0)  37.0
+        (2,0)  37.0
+      }
+    }
+    RRF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  1.0
+        (1,0)  1.0
+        (2,0)  1.0
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  350.0
+        (1,0)  350.0
+        (2,0)  350.0
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  37.0
+        (1,0)  37.0
+        (2,0)  37.0
+      }
+    }
+    LFF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  1.0
+        (1,0)  1.0
+        (2,0)  1.0
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  350.0
+        (1,0)  350.0
+        (2,0)  350.0
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  37.0
+        (1,0)  37.0
+        (2,0)  37.0
+      }
+    }
+    LRF_link
+    {
+      linearFeedForwardGain
+      {
+        (0,0)  1.0
+        (1,0)  1.0
+        (2,0)  1.0
+      }
+
+      linearProportionalGain
+      {
+        (0,0)  350.0
+        (1,0)  350.0
+        (2,0)  350.0
+      }
+
+      linearDerivativeGain
+      {
+        (0,0)  37.0
+        (1,0)  37.0
+        (2,0)  37.0
+      }
+    }
+  }
+
+  ; Same as in MPC (force_friction_cone_soft_constraint_settings)
+  frictionConeSettings
+  {
+    frictionCoefficient 0.5
+  }
+
+  desiredFrequency 500.0
+}
+
+weighted_wbc_settings
+{
+  weightBaseTrackingTask 10.0
+  weightEndEffectorsTrackingTask 2.5
+  weightContactForceTrackingTask 0.05
+  weightTorqueRegularizationTask 0.01
+}

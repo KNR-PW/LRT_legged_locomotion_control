@@ -1,0 +1,18 @@
+# ROS parameters of the Legged State Estimator node.
+# config_directory_path, urdf_path and use_sim_time are set by the launch file.
+legged_state_estimator:
+  ros__parameters:
+    # Publish joint states estimate (/joint_states_estimated)
+    publish_joint_estimates: false
+
+    # Maximum age of IMU and joint states messages [s], estimator is deactivated after that
+    imu_timeout: 0.1
+    joint_state_timeout: 0.1
+
+    # Maximum time without contacts messages [s] (only without contact estimator),
+    # estimator is deactivated after that
+    contacts_timeout: 0.1
+
+    # Duration of IMU data [s] received before activation, used for initial IMU biases.
+    # Base must not rotate and accelerate during it
+    imu_bias_calibration_duration: 1.0

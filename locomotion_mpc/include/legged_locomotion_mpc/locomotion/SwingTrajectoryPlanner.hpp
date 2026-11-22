@@ -75,6 +75,13 @@ namespace legged_locomotion_mpc
 
           /** Limits the amount of additional swing height from terrain adaptation. */
           ocs2::scalar_t maxSwingHeightAdaptation = 0.4;
+
+          /**
+           * Height of every end effector frame above the terrain when it is in contact [m],
+           * e.g. radius of a spherical foot with its frame in the center. Planned footholds are
+           * moved by it along the terrain normal. Empty: 0.0 for every end effector.
+           */
+          std::vector<ocs2::scalar_t> endEffectorHeightsAboveTerrain;
         };
 
         struct DynamicSettings

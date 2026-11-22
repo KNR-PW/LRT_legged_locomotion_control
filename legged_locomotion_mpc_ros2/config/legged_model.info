@@ -1,0 +1,582 @@
+legged_model_settings
+{
+  robotName                 meldog
+
+  ; SQP: fixed time grid (task.info sqp.dt), predictable solve time.
+  ; DDP with adaptive ODE45 had solve time spikes and failed in walking (maximum number of function calls)
+  algorithm                 SQP
+  verbose                   false
+  recompileLibrariesCppAd   false
+
+  modelFolderCppAd          /home/bartek/Magisterka/legged_mpc/cppAD_libs/
+  worldLinkName             world
+  baseLinkName              trunk_link
+  
+  endEffectorThreeDofNames
+  {
+    [0] RFF_link
+    [1] RRF_link
+    [2] LFF_link
+    [3] LRF_link
+  }
+
+  endEffectorSixDofNames
+  {
+
+  }
+
+  hipFrameNames
+  {
+    [0] RFUL_link
+    [1] RRUL_link
+    [2] LFUL_link
+    [3] LRUL_link
+  }
+}
+
+legged_interface_settings
+{
+  useTrajectoryTrackingCost               true
+  useTerminalTrackingCost                 true
+  useJointTorqueCost                      false
+
+  useNormalVelocityConstraint             true
+
+  useForceFrictionConeSoftConstraint      true
+  useZero3DofVelocityConstraint           true
+  useZeroForceConstraint                  true
+
+  useWrenchFrictionConeSoftConstraint     false
+  useZero6DofVelocityConstraint           false
+  useZeroWrenchConstraint                 false
+
+  useEndEffectorPlacementSoftConstraint   true
+  useJointLimitsSoftConstraint            true
+  useJointTorqueLimitsSoftConstraint      true
+  useTerrainAvoidanceSoftConstraint       true
+  useSelfCollisionAvoidanceSoftConstraint false
+
+  useNormalOrientationSoftConstraint      false
+}
+
+base_planner_static_settings
+{
+  minimumBaseHeight 0.1
+
+  maximumBaseHeight 1.0
+
+  maximumBaseHeadingVelocity 1.0
+
+  maximumBaseLateralVelocity 1.0
+
+  maximumBaseVerticalVelocity 0.2
+
+  maximumYawRate 1.0
+  
+  nominalBaseWidthLateral 0.55
+
+  nominalBaseWidthHeading 0.8
+}
+
+legged_collision_settings
+{
+  collisionLinkNames
+  {
+
+  }
+
+  terrainCollisionLinkNames
+  {
+    
+  }
+
+  selfCollisionPairNames
+  {
+    
+  }
+  
+  maxExcesses
+  {
+    [0] 0.075
+    [1] 0.075
+    [2] 0.075
+    [3] 0.075
+  }
+
+  terrainRelaxations
+  {
+    [0] 0.005
+    [1] 0.005
+    [2] 0.005
+    [3] 0.005
+  }
+
+  selfCollisionRelaxations
+  {
+
+  }
+
+  shrinkRatio 0.75
+
+  maxSphereNeighbours 10
+}
+
+joint_limits_soft_constraint_settings
+{
+  mu 0.1
+
+  delta 0.01
+}
+
+joint_torque_limits_soft_constraint_settings
+{
+  mu 0.1
+
+  delta 0.01
+}
+
+self_collison_avoidance_soft_constraint_settings
+{
+  mu 0.15
+
+  delta 0.005
+}
+
+terrain_avoidance_soft_constraint_settings
+{
+  endEffectorSettings
+  {
+    mu 0.15
+    delta 0.005
+  }
+  collisionLinksSettings
+  {
+    mu 0.2
+    delta 0.05
+  }
+}
+
+end_effector_soft_constraint_settings
+{
+  RFF_link
+  {
+    safetyRadius 0.05
+  }
+
+  RRF_link
+  {
+    safetyRadius 0.05
+  }
+
+  LRF_link
+  {
+    safetyRadius 0.05
+  }
+  
+  LFF_link
+  {
+    safetyRadius 0.05
+  }
+
+  mu 0.1
+
+  delta 0.05
+}
+
+force_friction_cone_soft_constraint_settings
+{
+  frictionCoefficient   0.5
+  regularization        0.1
+  hessianDiagonalShift  1e-6
+  mu                    0.25
+  delta                 0.005
+}
+
+gait_static_settings
+{
+  initPhase 0.5
+  maximumSteppingFrequency  2.5
+  minimumSteppingFrequency  0.0
+  touchdownWindow           0.75
+}
+
+gait_dynamic_settings
+{
+  steppingFrequency 0.0
+  swingRatio        0.25
+  phaseOffsets
+  {
+    [0] 0.0
+    [1] 0.0
+    [2] 0.0
+  }
+}
+
+inverse_solver_settings
+{
+  maxIterations         150
+
+  tolerance             1e-3
+
+  minimumStepSize       1e-5
+
+  dampingCoefficient    1e-2
+
+  stepCoefficient       0.5
+
+  singularityThreshold  1e-6
+}
+
+inverse_solver_name NewtonRaphsonAD
+
+base_weights
+{
+  position
+  {
+    (0,0)  500.0
+    (1,0)  500.0
+    (2,0)  1000.0
+  }
+
+  rotation
+  {
+    (0,0)  50.0
+    (1,0)  50.0
+    (2,0)  100.0
+  }
+
+  linearVelocity
+  {
+    (0,0)  10.0
+    (1,0)  10.0
+    (2,0)  20.0
+  }
+
+  angularVelocity
+  {
+    (0,0)  10.0
+    (1,0)  10.0
+    (2,0)  20.0
+  }
+}
+
+joint_weights
+{
+  LFT_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  LFH_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  LFK_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  LRT_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  LRH_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  LRK_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RFT_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RFH_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RFK_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RRT_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RRH_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+
+  RRK_joint
+  {
+    position 10.0
+    velocity 5.0
+  }
+}
+
+end_effector_weights
+{
+  RFF_link
+  {
+    position
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  50.0
+    }
+
+    velocity
+    {
+      (0,0)  10.0
+      (1,0)  10.0
+      (2,0)  20.0
+    }
+
+    force
+    {
+      (0,0)  0.001
+      (1,0)  0.001
+      (2,0)  0.001
+    }
+  }
+
+  RRF_link
+  {
+    position
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  50.0
+    }
+
+    velocity
+    {
+      (0,0)  10.0
+      (1,0)  10.0
+      (2,0)  20.0
+    }
+
+    force
+    {
+      (0,0)  0.001
+      (1,0)  0.001
+      (2,0)  0.001
+    }
+  }
+
+  LFF_link
+  {
+    position
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  50.0
+    }
+
+    velocity
+    {
+      (0,0)  10.0
+      (1,0)  10.0
+      (2,0)  20.0
+    }
+
+    force
+    {
+      (0,0)  0.001
+      (1,0)  0.001
+      (2,0)  0.001
+    }
+  }
+
+  LRF_link
+  {
+    position
+    {
+      (0,0)  20.0
+      (1,0)  20.0
+      (2,0)  50.0
+    }
+
+    velocity
+    {
+      (0,0)  10.0
+      (1,0)  10.0
+      (2,0)  20.0
+    }
+
+    force
+    {
+      (0,0)  0.001
+      (1,0)  0.001
+      (2,0)  0.001
+    }
+  }
+}
+
+joint_torque_weights
+{
+  LFT_joint
+  {
+    torqueWeight 0.25
+  }
+
+  LFH_joint
+  {
+    torqueWeight 0.25
+  }
+
+  LFK_joint
+  {
+    torqueWeight 0.25
+  }
+
+  LRT_joint
+  {
+    torqueWeight 0.25
+  }
+
+  LRH_joint
+  {
+    torqueWeight 0.25
+  }
+
+  LRK_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RFT_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RFH_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RFK_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RRT_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RRH_joint
+  {
+    torqueWeight 0.25
+  }
+
+  RRK_joint
+  {
+    torqueWeight 0.25
+  }
+}
+
+over_extension_penalty_settings
+{
+  nominalLegExtension 0.35
+
+  legOverExtensionWeight 0.75
+}
+
+reference_manager_settings
+{
+  maximumReferenceSampleInterval 0.01
+  gaitUpdateOffset               0.25
+  threaded                       false
+}
+
+swing_planner_static_settings
+{
+  liftOffVelocity                 0.1
+
+  touchDownVelocity               -0.1
+        
+  errorGain                       0.0
+          
+  swingTimeScale                  0.15
+
+  sdfMidswingMargin               0.025
+
+  terrainMargin                   0.025
+          
+  previousFootholdFactor          0.0
+
+  previousFootholdDeadzone        0.0
+
+  previousFootholdTimeDeadzone    0.0
+          
+  referenceExtensionAfterHorizon  1.0
+
+  maxSwingHeightAdaptation        0.3
+
+  ; Height of end effector frame above terrain in contact [m], in end effector order
+  ; (3 DoF, then 6 DoF). Meldog: frames are centers of 0.035 m foot spheres (meldog.urdf)
+  endEffectorHeightsAboveTerrain
+  {
+    [0] 0.035 ; RFF_link
+    [1] 0.035 ; RRF_link
+    [2] 0.035 ; LFF_link
+    [3] 0.035 ; LRF_link
+  }
+}
+
+swing_planner_dynamic_settings
+{
+  swingHeights
+  {
+    [0] 0.05
+    [1] 0.05
+    [2] 0.05
+    [3] 0.05
+  }
+
+  phases
+  {
+    [0] 0.5
+    [1] 0.5
+    [2] 0.5
+    [3] 0.5
+  }
+
+  tangentialProgresses
+   {
+    [0] 0.5
+    [1] 0.5
+    [2] 0.5
+    [3] 0.5
+  }
+
+  tangentialVelocityFactors
+   {
+    [0] 1.0
+    [1] 1.0
+    [2] 1.0
+    [3] 1.0
+  }
+}

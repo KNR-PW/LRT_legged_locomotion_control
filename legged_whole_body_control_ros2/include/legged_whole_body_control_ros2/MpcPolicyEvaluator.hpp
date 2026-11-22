@@ -86,6 +86,14 @@ namespace legged_whole_body_control_ros2
       legged_whole_body_control::contact_flags_t getContactFlags(ocs2::scalar_t time) const;
 
       /**
+       * Time from time to the next planned touchdown of every end effector (from mode schedule),
+       * infinity if the end effector is in contact at time or there is no touchdown in the policy.
+       * Policy has to be available.
+       */
+      void getTimesToTouchdown(ocs2::scalar_t time,
+        std::vector<ocs2::scalar_t>& timesToTouchdown) const;
+
+      /**
        * Terrain normals of the last policy time point not later than time (first point if time
        * is before the policy). Policy has to be available.
        */

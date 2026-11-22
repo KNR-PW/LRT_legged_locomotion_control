@@ -72,4 +72,10 @@ endif (cmake_clang_tools_FOUND)
 install(TARGETS legged_state_estimator_node
     DESTINATION lib/${PROJECT_NAME})
 
+# Launch files, ocs2 configs and ROS parameters
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()

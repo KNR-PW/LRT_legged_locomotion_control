@@ -10,6 +10,8 @@
 
 #include <ocs2_ros_interfaces/common/RosMsgConversions.h>
 
+#include <legged_whole_body_control_ros2/ContactFlagsFusion.hpp>
+
 namespace legged_whole_body_control_ros2
 {
   using namespace ocs2;
@@ -271,6 +273,19 @@ namespace legged_whole_body_control_ros2
 
     // Modes are checked in readPolicy, only end effector bits are set
     return contact_flags_t(mrt_.getPolicy().modeSchedule_.modeAtTime(time));
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void MpcPolicyEvaluator::getTimesToTouchdown(scalar_t time,
+    std::vector<scalar_t>& timesToTouchdown) const
+  {
+    assert(hasPolicy_);
+
+    const auto& modeSchedule = mrt_.getPolicy().modeSchedule_;
+    computeTimesToTouchdown(modeSchedule.eventTimes, modeSchedule.modeSequence, time,
+      endEffectorNum_, timesToTouchdown);
   }
 
   /******************************************************************************************************/

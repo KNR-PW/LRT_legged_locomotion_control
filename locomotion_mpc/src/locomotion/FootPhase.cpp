@@ -157,7 +157,9 @@ namespace legged_locomotion_mpc
           {
             const scalar_t pointProgress = point[0];
             const scalar_t pointHeight = point[1];
-            const scalar_t heightRelativeToSwingLine = pointHeight - (liftOffPositionInWorld.z() + pointProgress * swingVector.z());
+            // Swing line goes through end effector frames, which are above the terrain in contact
+            const scalar_t heightRelativeToSwingLine = pointHeight + swingProfile.endEffectorHeightAboveTerrain
+              - (liftOffPositionInWorld.z() + pointProgress * swingVector.z());
             const scalar_t relativeHeightProjectedOnNormal = heightRelativeToSwingLine * swingTrajectoryNormal.z();
             if(relativeHeightProjectedOnNormal > maxObstacleHeight) 
             {
