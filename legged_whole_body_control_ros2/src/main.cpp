@@ -13,7 +13,8 @@ int main(int argc, char** argv)
 
   auto leggedWholeBodyControllerNode = std::make_shared<LeggedWholeBodyControllerNode>();
 
-  rclcpp::executors::MultiThreadedExecutor executor;
+  // All callbacks are in one mutually exclusive callback group, more threads would only wait
+  rclcpp::executors::SingleThreadedExecutor executor;
 
   executor.add_node(leggedWholeBodyControllerNode->get_node_base_interface());
   executor.spin();

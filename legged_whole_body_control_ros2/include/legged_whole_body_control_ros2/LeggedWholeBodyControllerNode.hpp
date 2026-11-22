@@ -20,6 +20,12 @@
 #ifndef __LEGGED_WHOLE_BODY_CONTROLLER_LEGGED_WHOLE_BODY_CONTROL_ROS2__
 #define __LEGGED_WHOLE_BODY_CONTROLLER_LEGGED_WHOLE_BODY_CONTROL_ROS2__
 
+#include <atomic>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include <ocs2_core/reference/TargetTrajectories.h>
 #include <ocs2_mpc/SystemObservation.h>
 
@@ -37,17 +43,15 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include <geometry_msgs/msg/transform_stamped.hpp>
-#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
-#include <ocs2_msgs/msg/mpc_observation.hpp>
+#include <legged_locomotion_msgs/msg/mpc_policy.hpp>
 
-#include <contact_msgs/msg/contacts.hpp>
-
-#include <legged_locomotion_msgs/msg/terrain_normals_stamped.hpp>
+#include <legged_whole_body_control_ros2/MpcPolicyEvaluator.hpp>
 
 namespace legged_whole_body_control_ros2
 {
@@ -75,10 +79,27 @@ namespace legged_whole_body_control_ros2
 
       void setupWbc();
       
+      bool waitForInitialState();
+
+      bool isStateFresh(const rclcpp::Time& currentTime) const;
+
+      bool isOdometryFresh(const rclcpp::Time& currentTime) const;
+
+      bool isJointStateFresh(const rclcpp::Time& currentTime) const;
+
       void updateMeasuredObservation();
-      void updateDesiredObservation();
-      void updateContactFlags();
-      void updateTerrainNormals();
+      void updateOdometry();
+      void updateJointStates();
+
+      // Reads new MPC policy message (if there is one) into policy evaluator
+      void updatePolicy();
+
+      // Policy is available, not older than policy_timeout and time is not after its end
+      bool isPolicyValid(ocs2::scalar_t time) const;
+
+      // Standing reference from measured state: zero velocities, all end effectors in contact,
+      // weight compensating contact forces. Used when there is no valid MPC policy
+      void setStandingReference();
 
       // Helper data
       floating_base_model::FloatingBaseModelInfo modelInfo_;
@@ -86,49 +107,90 @@ namespace legged_whole_body_control_ros2
 
       std::vector<std::string> jointNames_;
       std::unordered_map<std::string, size_t> jointNameIndexMap_;
-      std::unordered_map<std::string, size_t> contactFrameNameIndexMap_;
-      std::atomic_bool controllerRunning_;
-      size_t endEffectorNum_;
+      std::atomic_bool controllerRunning_{false};
+      size_t endEffectorNum_ = 0;
+
+      // Robot model from URDF, made in on_configure and used for WBC setup on every activation
+      std::unique_ptr<ocs2::PinocchioInterface> pinocchioInterfacePtr_;
 
       // Observation subscribers
       rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr jointStateSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::TransformStamped>::SharedPtr baseTransformSubscriber_;
-      rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr baseTwistSubscriber_;
-      rclcpp::Subscription<contact_msgs::msg::Contacts>::SharedPtr contactsSubscriber_;
-      
+      rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometrySubscriber_;
+
       // Command subscribers
-      rclcpp::Subscription<ocs2_msgs::msg::MpcObservation>::SharedPtr desiredObservationSubscriber_;
-      rclcpp::Subscription<legged_locomotion_msgs::msg::TerrainNormalsStamped>::SharedPtr terrainNormalsSubscriber_;
+      rclcpp::Subscription<legged_locomotion_msgs::msg::MpcPolicy>::SharedPtr policySubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
+
+      // Reused by every WBC tick, take() overwrites it
+      legged_locomotion_msgs::msg::MpcPolicy policyMessage_;
       
       // Joint trajectory publisher from MRT
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
         trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
+      // Preallocated in on_configure, only point values change in WBC loop
+      trajectory_msgs::msg::JointTrajectory jointTrajectory_;
+
       // WBC loop timer
-      ocs2::scalar_t wbcDurationSeconds_;
+      ocs2::scalar_t wbcDurationSeconds_ = 0.0;
       rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
 
       // Last time robot state messages was recived
       rclcpp::Time lastJointStateTime_;
-      rclcpp::Time lastBaseTransformTime_;
-      rclcpp::Time lastBaseTwistTime_;
-      rclcpp::Time lastContactFlagsTime_;
-      rclcpp::Time lastDesiredObservationTime_;
-      rclcpp::Time lastTerrainNormalsTime_;
+      rclcpp::Time lastOdometryTime_;
+
+      // WBC time is relative to this ROS time, absolute ROS time in double is too coarse
+      rclcpp::Time wbcStartTime_;
+
+      // Robot state messages received since activation started
+      bool jointStateReceived_ = false;
+      bool odometryReceived_ = false;
 
       // WBC Base
       std::unique_ptr<legged_whole_body_control::WbcBase> wbcPtr_;
 
-      // System observations and normals
+      // MPC policy (MRT of the whole body controller), created in on_configure
+      std::unique_ptr<MpcPolicyEvaluator> policyEvaluatorPtr_;
+
+      // Maximum age of MPC policy (from its start time), WBC is standing after that
+      ocs2::scalar_t policyTimeout_ = 0.0;
+
+      // WBC follows MPC policy, false when standing
+      bool followingPolicy_ = false;
+
+      // Measured observation, time is relative to wbcStartTime_
       ocs2::SystemObservation currentMeasuredObservation_;
-      ocs2::SystemObservation currentDesiredObservation_;
+
+      // Standing reference, used without valid MPC policy
+      ocs2::vector_t standingState_;
+      ocs2::vector_t standingInput_;
+
+      // Desired state and input one WBC period before current time, at current time
+      // and one WBC period after current time (joint command)
+      ocs2::vector_t previousDesiredState_;
+      ocs2::vector_t previousDesiredInput_;
+      ocs2::vector_t desiredState_;
+      ocs2::vector_t desiredInput_;
+      ocs2::vector_t nextDesiredState_;
+      ocs2::vector_t nextDesiredInput_;
+
+      // Terrain normals and contact flags passed to WBC
       std::vector<legged_whole_body_control::vector3_t> terrainNormals_;
       legged_whole_body_control::contact_flags_t contactFlags_;
       
-      // Maximum duration between robot state messages
-      rclcpp::Duration maxDurationBetweenMessages_ = rclcpp::Duration(1, 0);
+      // Maximum age of odometry and joint states messages, WBC is deactivated after that
+      rclcpp::Duration odometryTimeout_ = rclcpp::Duration(0, 0);
+      rclcpp::Duration jointStateTimeout_ = rclcpp::Duration(0, 0);
       
+      // Maximum duration between external wrench messages, wrench is zeroed after that
+      rclcpp::Duration wrenchTimeout_ = rclcpp::Duration(0, 0);
+      rclcpp::Time lastWrenchTime_;
+      bool wrenchActive_ = false;
+
+      // WBC is deactivated after this many not solved problems in a row
+      size_t maxConsecutiveFailures_ = 0;
+      size_t consecutiveFailures_ = 0;
+
       // Benchmark timers
       ocs2::benchmark::RepeatedTimer wbcBenchmarkTimer_;
   };  

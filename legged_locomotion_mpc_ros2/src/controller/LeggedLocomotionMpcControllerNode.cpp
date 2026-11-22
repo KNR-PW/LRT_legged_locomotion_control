@@ -1,4 +1,5 @@
 #include <legged_locomotion_mpc_ros2/controller/LeggedLocomotionMpcControllerNode.hpp>
+#include <legged_locomotion_mpc_ros2/controller/MpcPolicyConversions.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -57,6 +58,13 @@ namespace legged_locomotion_mpc_ros2
 
     // Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
     this->declare_parameter("policy_timeout", 0.5);
+
+    // True: MRT sends joint trajectory to the robot (/joint_trajectory),
+    // false: MPC policy is sent to the whole body controller (/mpc_policy), MRT is not used
+    this->declare_parameter("use_mrt_control", false);
+
+    // Frequency of robot state updates for MPC when MRT is not used [Hz]
+    this->declare_parameter("observation_frequency", 200.0);
 
     // Same clock type as node clock, times from different clocks can not be compared
     const rclcpp::Time zeroTime(0, 0, this->get_clock()->get_clock_type());
@@ -120,6 +128,15 @@ namespace legged_locomotion_mpc_ros2
     velocityTimeout_ = rclcpp::Duration::from_seconds(velocityTimeout);
     wrenchTimeout_ = rclcpp::Duration::from_seconds(wrenchTimeout);
     policyTimeout_ = policyTimeout;
+
+    useMrtControl_ = this->get_parameter("use_mrt_control").as_bool();
+    const scalar_t observationFrequency = this->get_parameter("observation_frequency").as_double();
+
+    if(!useMrtControl_ && !(observationFrequency > 0.0))
+    {
+      RCLCPP_ERROR(this->get_logger(), "Parameter observation_frequency has to be positive!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
 
     contactFrameNameIndexMap_.clear();
 
@@ -249,46 +266,70 @@ namespace legged_locomotion_mpc_ros2
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedLocomotionMpcControllerNode::updateExternalWrench, this, std::placeholders::_1));
     
-    // Joint trajectory publisher, only newest trajectory matters. Volatile, so subscriber
-    // started later does not get old trajectory (system default is transient local for Fast DDS)
-    const std::string jointTrajectoryTopic = "/joint_trajectory";
-    jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-      jointTrajectoryTopic, QoS(1).reliable().durability_volatile());
+    // Objects of the other control mode are destroyed, reconfiguration can change the mode
+    jointTrajectoryTimer_.reset();
+    observationTimer_.reset();
+    jointTrajectoryPublisher_.reset();
+    policyPublisher_.reset();
 
-    /**
-     * Create timer for joint trajectory commands
-     */
-
-    // Get duration 
+    // Get durations
     const std::string taskFilePath = configDirectoryPath + "/task.info";
     const auto mpcSettings = mpc::loadSettings(taskFilePath, "mpc", false);
-    mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
 
     mpcDuration_ = rclcpp::Duration::from_seconds(1.0 / mpcSettings.mpcDesiredFrequency_);
 
-    // Preallocate joint trajectory message, MRT loop only writes point values
-    jointTrajectory_ = trajectory_msgs::msg::JointTrajectory();
-
-    // Start trajectory now (time 0 seconds 0 nanoseconds)
-    jointTrajectory_.header.stamp.sec = 0;
-    jointTrajectory_.header.stamp.nanosec = 0;
-    jointTrajectory_.joint_names = jointNames_;
-
-    jointTrajectory_.points.resize(2);
-    for(auto& point: jointTrajectory_.points)
+    if(useMrtControl_)
     {
-      point.positions.resize(modelInfo_.actuatedDofNum);
-      point.velocities.resize(modelInfo_.actuatedDofNum);
-      point.effort.resize(modelInfo_.actuatedDofNum);
-    }
-    jointTrajectory_.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
-    jointTrajectory_.points[1].time_from_start = rclcpp::Duration::from_seconds(
-      mrtDurationSeconds_);
+      // Joint trajectory publisher, only newest trajectory matters. Volatile, so subscriber
+      // started later does not get old trajectory (system default is transient local for Fast DDS)
+      const std::string jointTrajectoryTopic = "/joint_trajectory";
+      jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
+        jointTrajectoryTopic, QoS(1).reliable().durability_volatile());
 
-    // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
-    jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
-      rclcpp::Duration::from_seconds(mrtDurationSeconds_), 
-      std::bind(&LeggedLocomotionMpcControllerNode::sendJointTrajectory, this));
+      /**
+       * Create timer for joint trajectory commands
+       */
+
+      mrtDurationSeconds_ = 1.0 / mpcSettings.mrtDesiredFrequency_;
+
+      // Preallocate joint trajectory message, MRT loop only writes point values
+      jointTrajectory_ = trajectory_msgs::msg::JointTrajectory();
+
+      // Start trajectory now (time 0 seconds 0 nanoseconds)
+      jointTrajectory_.header.stamp.sec = 0;
+      jointTrajectory_.header.stamp.nanosec = 0;
+      jointTrajectory_.joint_names = jointNames_;
+
+      jointTrajectory_.points.resize(2);
+      for(auto& point: jointTrajectory_.points)
+      {
+        point.positions.resize(modelInfo_.actuatedDofNum);
+        point.velocities.resize(modelInfo_.actuatedDofNum);
+        point.effort.resize(modelInfo_.actuatedDofNum);
+      }
+      jointTrajectory_.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
+      jointTrajectory_.points[1].time_from_start = rclcpp::Duration::from_seconds(
+        mrtDurationSeconds_);
+
+      // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
+      jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(),
+        rclcpp::Duration::from_seconds(mrtDurationSeconds_),
+        std::bind(&LeggedLocomotionMpcControllerNode::sendJointTrajectory, this));
+    }
+    else
+    {
+      // Policy publisher for whole body controller, only newest policy matters. Reliable, because
+      // large message is fragmented and best effort drops it when any fragment is lost.
+      // Volatile, so subscriber started later does not get old policy
+      const std::string policyTopic = "/mpc_policy";
+      policyPublisher_ = this->create_publisher<legged_locomotion_msgs::msg::MpcPolicy>(
+        policyTopic, QoS(1).reliable().durability_volatile());
+
+      // Robot state for MPC, policy is sent by MPC thread (not wall timer, as it uses system clock)
+      observationTimer_ = rclcpp::create_timer(this, this->get_clock(),
+        rclcpp::Duration::from_seconds(1.0 / observationFrequency),
+        std::bind(&LeggedLocomotionMpcControllerNode::updateObservationLoop, this));
+    }
 
     RCLCPP_INFO(this->get_logger(), "Legged Locomotion MPC Controller configured successfully!");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
@@ -316,10 +357,22 @@ namespace legged_locomotion_mpc_ros2
 
     mpcBenchmarkTimer_.reset();
     mrtBenchmarkTimer_.reset();
+    policyBenchmarkTimer_.reset();
     commandActive_ = false;
     wrenchActive_ = false;
     mpcFailed_ = false;
-    jointTrajectoryPublisher_->on_activate();
+
+    // Policy age is counted from activation until the first policy is sent
+    lastPolicyTime_ = currentObservation_.time;
+
+    if(useMrtControl_)
+    {
+      jointTrajectoryPublisher_->on_activate();
+    }
+    else
+    {
+      policyPublisher_->on_activate();
+    }
 
     {
       std::lock_guard<std::mutex> lock(terrainMutex_);
@@ -329,6 +382,20 @@ namespace legged_locomotion_mpc_ros2
       if(terrainModelPtr_)
       {
         referenceManagerPtr_->updateTerrainModel(std::move(terrainModelPtr_));
+      }
+    }
+
+    // Initial policy from MPC setup is sent before MPC thread starts
+    if(!useMrtControl_)
+    {
+      try
+      {
+        publishPolicy();
+      }
+      catch(const std::exception& e)
+      {
+        RCLCPP_ERROR(this->get_logger(), "Initial policy publishing error: %s", e.what());
+        return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
       }
     }
 
@@ -347,7 +414,15 @@ namespace legged_locomotion_mpc_ros2
     stopMpcThread();
     mpcFailed_ = false;
 
-    jointTrajectoryPublisher_->on_deactivate();
+    if(jointTrajectoryPublisher_ && jointTrajectoryPublisher_->is_activated())
+    {
+      jointTrajectoryPublisher_->on_deactivate();
+    }
+
+    if(policyPublisher_ && policyPublisher_->is_activated())
+    {
+      policyPublisher_->on_deactivate();
+    }
 
     {
       // Keep current terrain for next activation, MPC thread is already stopped
@@ -364,9 +439,18 @@ namespace legged_locomotion_mpc_ros2
     returnString += "\n###   Maximum : " + std::to_string(mpcBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
     returnString += "\n###   Average : " + std::to_string(mpcBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
     returnString += "########################################################################";
-    returnString += "\n### WRT Benchmarking";
-    returnString += "\n###   Maximum : " + std::to_string(mrtBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
-    returnString += "\n###   Average : " + std::to_string(mrtBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    if(useMrtControl_)
+    {
+      returnString += "\n### MRT Benchmarking";
+      returnString += "\n###   Maximum : " + std::to_string(mrtBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+      returnString += "\n###   Average : " + std::to_string(mrtBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    }
+    else
+    {
+      returnString += "\n### Policy Publishing Benchmarking";
+      returnString += "\n###   Maximum : " + std::to_string(policyBenchmarkTimer_.getMaxIntervalInMilliseconds()) + "[ms].";
+      returnString += "\n###   Average : " + std::to_string(policyBenchmarkTimer_.getAverageInMilliseconds()) + "[ms].\n";
+    }
 
     RCLCPP_INFO(this->get_logger(), "%s", returnString.c_str());
 
@@ -395,6 +479,11 @@ namespace legged_locomotion_mpc_ros2
     if(jointTrajectoryPublisher_ && jointTrajectoryPublisher_->is_activated())
     {
       jointTrajectoryPublisher_->on_deactivate();
+    }
+
+    if(policyPublisher_ && policyPublisher_->is_activated())
+    {
+      policyPublisher_->on_deactivate();
     }
 
     RCLCPP_ERROR(this->get_logger(), "Error in transition from %s state, controller stopped!",
@@ -767,6 +856,13 @@ namespace legged_locomotion_mpc_ros2
           mpcBenchmarkTimer_.startTimer();
           mpcMrtPtr_->advanceMpc();
           mpcBenchmarkTimer_.endTimer();
+
+          // Without MRT control, policy is used only by this thread
+          if(!useMrtControl_)
+          {
+            publishPolicy();
+          }
+
           const auto endTime = this->get_clock()->now();
           const auto durationLeft = mpcDuration_ - (endTime - startTime);
           this->get_clock()->sleep_for(durationLeft);
@@ -1024,70 +1120,145 @@ namespace legged_locomotion_mpc_ros2
     }
   }
 
-  void LeggedLocomotionMpcControllerNode::sendJointTrajectory()
+  bool LeggedLocomotionMpcControllerNode::updateMpcObservation()
   {
     // MPC thread can not deactivate node by itself (it would join itself)
     if(mpcFailed_.exchange(false))
     {
       RCLCPP_ERROR(this->get_logger(), "MPC loop deactivation!");
       this->deactivate();
-      return;
+      return false;
     }
 
-    if(!mpcMrtPtr_ || !controllerRunning_) return;
+    if(!mpcMrtPtr_ || !controllerRunning_) return false;
 
+    updateCurrentObservation();
+
+    const rclcpp::Time currentTime = this->get_clock()->now();
+
+    if(!isOdometryFresh(currentTime))
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Odometry is older than odometry_timeout, MPC loop deactivation!");
+      this->deactivate();
+      return false;
+    }
+
+    if(!isJointStateFresh(currentTime))
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Joint states are older than joint_state_timeout, MPC loop deactivation!");
+      this->deactivate();
+      return false;
+    }
+
+    // Stop robot if velocity commands stopped
+    if(commandActive_ && (currentTime - lastCommandTime_) > velocityTimeout_)
+    {
+      RCLCPP_WARN(this->get_logger(),
+        "No base velocity command for longer than velocity_timeout, stopping!");
+      referenceManagerPtr_->updateCommand(
+        planners::BaseTrajectoryPlanner::BaseReferenceCommand{});
+      commandActive_ = false;
+    }
+
+    // Stop compensating external wrench if wrench messages stopped
+    if(wrenchActive_ && (currentTime - lastWrenchTime_) > wrenchTimeout_)
+    {
+      RCLCPP_WARN(this->get_logger(),
+        "No base external wrench for longer than wrench_timeout, wrench set to zero!");
+      leggedInterfacePtr_->disturbanceModule().updateDistrubance(
+        (currentTime - mpcStartTime_).seconds(), vector6_t::Zero());
+      wrenchActive_ = false;
+    }
+
+    // Update contact flags only when new message was received
+    if(newContactFlags_)
+    {
+      referenceManagerPtr_->updateContactFlags(contactFlags_);
+      newContactFlags_ = false;
+    }
+
+    mpcMrtPtr_->setCurrentObservation(currentObservation_);
+
+    return true;
+  }
+
+  void LeggedLocomotionMpcControllerNode::updateObservationLoop()
+  {
+    try
+    {
+      if(!updateMpcObservation()) return;
+
+      // MPC thread can stall without exception, whole body controller would use old policy
+      if(currentObservation_.time - lastPolicyTime_ > policyTimeout_)
+      {
+        RCLCPP_ERROR(this->get_logger(),
+          "MPC policy is older than policy_timeout, MPC loop deactivation!");
+        this->deactivate();
+        return;
+      }
+    }
+    catch(const std::exception& e)
+    {
+      // Exception would leave the executor and terminate the whole process
+      RCLCPP_ERROR(this->get_logger(), "Observation loop error: %s, MPC loop deactivation!", e.what());
+      this->deactivate();
+    }
+  }
+
+  void LeggedLocomotionMpcControllerNode::publishPolicy()
+  {
+    // Only new policy is sent
+    if(!mpcMrtPtr_->updatePolicy()) return;
+
+    policyBenchmarkTimer_.startTimer();
+
+    const auto& policy = mpcMrtPtr_->getPolicy();
+
+    auto& message = policyMessage_;
+
+    // Policy times are relative to MPC start time
+    message.header.stamp = mpcStartTime_;
+    message.header.frame_id = modelSettings_.worldLinkName;
+
+    createMpcPolicyMessage(policy, mpcMrtPtr_->getCommand(),
+      mpcMrtPtr_->getPerformanceIndices(), message.policy);
+
+    // Terrain normals at policy time points. References are changed only by MPC thread
+    // (preSolverRun), so these are the normals the policy was optimized with
+    const size_t pointNum = policy.timeTrajectory_.size();
+    message.normals.resize(pointNum * endEffectorNum_);
+
+    for(size_t k = 0; k < pointNum; ++k)
+    {
+      const auto point = referenceManagerPtr_->getEndEffectorTrajectoryPoint(
+        policy.timeTrajectory_[k]);
+
+      for(size_t i = 0; i < endEffectorNum_; ++i)
+      {
+        tf2::toMsg(point.surfaceNormals[i], message.normals[k * endEffectorNum_ + i]);
+      }
+    }
+
+    // Policy age is checked by observation timer
+    lastPolicyTime_ = policy.timeTrajectory_.front();
+
+    if(policyPublisher_->is_activated())
+    {
+      policyPublisher_->publish(message);
+    }
+
+    policyBenchmarkTimer_.endTimer();
+  }
+
+  void LeggedLocomotionMpcControllerNode::sendJointTrajectory()
+  {
     try
     {
       mrtBenchmarkTimer_.startTimer();
 
-      updateCurrentObservation();
-
-      const rclcpp::Time currentTime = this->get_clock()->now();
-
-      if(!isOdometryFresh(currentTime))
-      {
-        RCLCPP_ERROR(this->get_logger(),
-          "Odometry is older than odometry_timeout, MPC loop deactivation!");
-        this->deactivate();
-        return;
-      }
-
-      if(!isJointStateFresh(currentTime))
-      {
-        RCLCPP_ERROR(this->get_logger(),
-          "Joint states are older than joint_state_timeout, MPC loop deactivation!");
-        this->deactivate();
-        return;
-      }
-
-      // Stop robot if velocity commands stopped
-      if(commandActive_ && (currentTime - lastCommandTime_) > velocityTimeout_)
-      {
-        RCLCPP_WARN(this->get_logger(),
-          "No base velocity command for longer than velocity_timeout, stopping!");
-        referenceManagerPtr_->updateCommand(
-          planners::BaseTrajectoryPlanner::BaseReferenceCommand{});
-        commandActive_ = false;
-      }
-
-      // Stop compensating external wrench if wrench messages stopped
-      if(wrenchActive_ && (currentTime - lastWrenchTime_) > wrenchTimeout_)
-      {
-        RCLCPP_WARN(this->get_logger(),
-          "No base external wrench for longer than wrench_timeout, wrench set to zero!");
-        leggedInterfacePtr_->disturbanceModule().updateDistrubance(
-          (currentTime - mpcStartTime_).seconds(), vector6_t::Zero());
-        wrenchActive_ = false;
-      }
-
-      // Update contact flags only when new message was received
-      if(newContactFlags_)
-      {
-        referenceManagerPtr_->updateContactFlags(contactFlags_);
-        newContactFlags_ = false;
-      }
-
-      mpcMrtPtr_->setCurrentObservation(currentObservation_);
+      if(!updateMpcObservation()) return;
 
       mpcMrtPtr_->updatePolicy();
 

@@ -25,15 +25,20 @@ set(THIS_PACKAGE_DEPENDS
 
   tf2_eigen
 
+  ocs2_core
+  ocs2_oc
   ocs2_mpc
+  ocs2_pinocchio_interface
+  floating_base_model
   legged_whole_body_control
 
   sensor_msgs
   geometry_msgs
+  nav_msgs
   trajectory_msgs
   
   ocs2_msgs
-  contact_msgs
+  ocs2_ros_interfaces
   legged_locomotion_msgs
 )
 
@@ -44,6 +49,7 @@ endforeach()
 # Legged WBC controller
 add_executable(legged_whole_body_controller_node
   src/LeggedWholeBodyControllerNode.cpp
+  src/MpcPolicyEvaluator.cpp
   src/main.cpp
 )
 target_include_directories(legged_whole_body_controller_node
@@ -58,10 +64,10 @@ ament_target_dependencies(legged_whole_body_controller_node ${THIS_PACKAGE_DEPEN
 
 find_package(cmake_clang_tools QUIET)
 if(cmake_clang_tools_FOUND)
-    message(STATUS "Run clang tooling for target " ${PROJECT_NAME})
+    message(STATUS "Run clang tooling for target legged_whole_body_controller_node")
     add_clang_tooling(
-            TARGETS ${PROJECT_NAME}
-            SOURCE_DIRS src include test
+            TARGETS legged_whole_body_controller_node
+            SOURCE_DIRS src include
             CT_HEADER_DIRS include
             CF_WERROR
     )

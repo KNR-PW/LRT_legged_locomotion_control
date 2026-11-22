@@ -1,5 +1,10 @@
 #include <legged_whole_body_control_ros2/LeggedWholeBodyControllerNode.hpp>
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <thread>
+
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <floating_base_model/FactoryFunctions.hpp>
@@ -56,13 +61,26 @@ namespace legged_whole_body_control_ros2
     this->declare_parameter("urdf_path", "./");
     this->declare_parameter("type", "weighted");
 
-    maxDurationBetweenMessages_ = rclcpp::Duration::from_seconds(1.0);
+    // Maximum age of odometry and joint states messages [s], controller is deactivated after that
+    this->declare_parameter("odometry_timeout", 0.1);
+    this->declare_parameter("joint_state_timeout", 0.1);
 
-    lastJointStateTime_ = this->get_clock()->now();
-    lastBaseTransformTime_ = this->get_clock()->now();
-    lastBaseTwistTime_ = this->get_clock()->now();
-    lastContactFlagsTime_ = this->get_clock()->now();
-    lastDesiredObservationTime_ = this->get_clock()->now();
+    // Maximum duration between external wrench messages [s], wrench is zeroed after that
+    this->declare_parameter("wrench_timeout", 0.1);
+
+    // Number of not solved WBC problems in a row, controller is deactivated after that
+    this->declare_parameter("max_consecutive_failures", 10);
+
+    // Maximum age of MPC policy [s] (from its start time), WBC is standing after that.
+    // Has to be longer than MPC period + MPC solve time and shorter than MPC horizon
+    this->declare_parameter("policy_timeout", 0.5);
+
+    // Same clock type as node clock, times from different clocks can not be compared
+    const rclcpp::Time zeroTime(0, 0, this->get_clock()->get_clock_type());
+    lastJointStateTime_ = zeroTime;
+    lastOdometryTime_ = zeroTime;
+    wbcStartTime_ = zeroTime;
+    lastWrenchTime_ = zeroTime;
 
     RCLCPP_INFO(this->get_logger(), "Legged WBC Controller started in unconfigured state!");
   }
@@ -84,47 +102,91 @@ namespace legged_whole_body_control_ros2
     }
     catch(const std::exception& e)
     {
-      RCLCPP_ERROR(this->get_logger(), "Error: Cannot find legged_wbc.info file!");
+      RCLCPP_ERROR(this->get_logger(), "Error while loading legged_wbc.info file: %s", e.what());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
-    const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
-    
-    PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(urdfFilePath, 
-      wbcSettings_.baseLinkName);
+    if(this->get_parameter("type").as_string() != "weighted")
+    {
+      RCLCPP_ERROR(this->get_logger(), "Error: Only \"weighted\" type supported!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
 
-    modelInfo_ = createFloatingBaseModelInfo(interface, 
-      wbcSettings_.endEffectorThreeDofNames, wbcSettings_.endEffectorSixDofNames);
+    const scalar_t odometryTimeout = this->get_parameter("odometry_timeout").as_double();
+    const scalar_t jointStateTimeout = this->get_parameter("joint_state_timeout").as_double();
+    const scalar_t wrenchTimeout = this->get_parameter("wrench_timeout").as_double();
+    const int64_t maxConsecutiveFailures = this->get_parameter("max_consecutive_failures").as_int();
+    const scalar_t policyTimeout = this->get_parameter("policy_timeout").as_double();
+
+    if(!(odometryTimeout > 0.0) || !(jointStateTimeout > 0.0) || !(wrenchTimeout > 0.0) ||
+       maxConsecutiveFailures < 1 || !(policyTimeout > 0.0))
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Parameters odometry_timeout, joint_state_timeout, wrench_timeout, "
+        "max_consecutive_failures and policy_timeout have to be positive!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
+
+    odometryTimeout_ = rclcpp::Duration::from_seconds(odometryTimeout);
+    jointStateTimeout_ = rclcpp::Duration::from_seconds(jointStateTimeout);
+    wrenchTimeout_ = rclcpp::Duration::from_seconds(wrenchTimeout);
+    maxConsecutiveFailures_ = static_cast<size_t>(maxConsecutiveFailures);
+    policyTimeout_ = policyTimeout;
+
+    const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
+
+    // URDF is parsed once, WBC is created from this interface on every activation
+    try
+    {
+      pinocchioInterfacePtr_ = std::make_unique<PinocchioInterface>(
+        createPinocchioInterfaceFromUrdfFile(urdfFilePath, wbcSettings_.baseLinkName));
+
+      modelInfo_ = createFloatingBaseModelInfo(*pinocchioInterfacePtr_,
+        wbcSettings_.endEffectorThreeDofNames, wbcSettings_.endEffectorSixDofNames);
+    }
+    catch(const std::exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Error while creating robot model from URDF: %s", e.what());
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
 
     // Resize current measured observation
     currentMeasuredObservation_.state = vector_t::Zero(modelInfo_.stateDim);
     currentMeasuredObservation_.input = vector_t::Zero(modelInfo_.inputDim);
 
-    // Resize current desired observation
-    currentDesiredObservation_.state = vector_t::Zero(modelInfo_.stateDim);
-    currentDesiredObservation_.input = vector_t::Zero(modelInfo_.inputDim);
+    // Resize standing and desired references
+    standingState_ = vector_t::Zero(modelInfo_.stateDim);
+    standingInput_ = vector_t::Zero(modelInfo_.inputDim);
+    previousDesiredState_ = vector_t::Zero(modelInfo_.stateDim);
+    previousDesiredInput_ = vector_t::Zero(modelInfo_.inputDim);
+    desiredState_ = vector_t::Zero(modelInfo_.stateDim);
+    desiredInput_ = vector_t::Zero(modelInfo_.inputDim);
+    nextDesiredState_ = vector_t::Zero(modelInfo_.stateDim);
+    nextDesiredInput_ = vector_t::Zero(modelInfo_.inputDim);
 
     endEffectorNum_ = modelInfo_.numThreeDofContacts + modelInfo_.numSixDofContacts;
 
-    for(size_t i = 0; i < wbcSettings_.endEffectorThreeDofNames.size(); ++i)
+    // MRT of the whole body controller, policy dimensions are checked with the model
+    try
     {
-      contactFrameNameIndexMap_[wbcSettings_.endEffectorThreeDofNames[i]] = i;
+      policyEvaluatorPtr_ = std::make_unique<MpcPolicyEvaluator>(modelInfo_.stateDim,
+        modelInfo_.inputDim, endEffectorNum_);
+    }
+    catch(const std::exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Error while creating MPC policy evaluator: %s", e.what());
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
 
-    for(size_t i = wbcSettings_.endEffectorThreeDofNames.size();
-      i < wbcSettings_.endEffectorThreeDofNames.size() + wbcSettings_.endEffectorSixDofNames.size(); ++i)
-    {
-      contactFrameNameIndexMap_[wbcSettings_.endEffectorSixDofNames[
-        i - wbcSettings_.endEffectorThreeDofNames.size()]] = i;
-    }
-
-    const auto model = interface.getModel();
+    const auto& model = pinocchioInterfacePtr_->getModel();
 
     jointNames_ = model.names;
 
     // Remove "universe" and "root_joint" joints from joint names
     jointNames_.erase(std::remove(jointNames_.begin(), jointNames_.end(), "universe"), jointNames_.end());
     jointNames_.erase(std::remove(jointNames_.begin(), jointNames_.end(), "root_joint"), jointNames_.end()); 
+
+    jointNameIndexMap_.clear();
 
     for(size_t i = 0; i < jointNames_.size(); ++i)
     {
@@ -143,40 +205,24 @@ namespace legged_whole_body_control_ros2
     rclcpp::QoS qos(rclcpp::KeepLast(1));
     qos = qos.best_effort();
 
-    // Desired mpc observation subscriber
-    const std::string mpcObservationTopic = "/mpc_target_observation";
-    desiredObservationSubscriber_ = this->create_subscription<ocs2_msgs::msg::MpcObservation>(
-      mpcObservationTopic, qos, 
-      [](const ocs2_msgs::msg::MpcObservation::ConstSharedPtr) {}, subscriptionOptions);
+    // MPC policy subscriber, reliable as the publisher (large message is fragmented,
+    // best effort would drop it when any fragment is lost)
+    const std::string policyTopic = "/mpc_policy";
+    policySubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::MpcPolicy>(
+      policyTopic, rclcpp::QoS(1).reliable().durability_volatile(),
+      [](const legged_locomotion_msgs::msg::MpcPolicy::ConstSharedPtr) {}, subscriptionOptions);
 
-    const std::string terrianNormalsTopic = "/terrain_normals";
-    terrainNormalsSubscriber_ = this->create_subscription<legged_locomotion_msgs::msg::TerrainNormalsStamped>(
-      terrianNormalsTopic, qos, 
-      [](const legged_locomotion_msgs::msg::TerrainNormalsStamped::ConstSharedPtr) {}, subscriptionOptions);
-    
     // Joint states subscriber
     const std::string jointSatesTopic = "/joint_states";
     jointStateSubscriber_ = this->create_subscription<sensor_msgs::msg::JointState>(
       jointSatesTopic, qos, 
       [](const sensor_msgs::msg::JointState::ConstSharedPtr) {}, subscriptionOptions);
     
-    // Base pose subscriber
-    const std::string baseTransformTopic = "/base_transform";
-    baseTransformSubscriber_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
-      baseTransformTopic, qos, 
-      [](const geometry_msgs::msg::TransformStamped::ConstSharedPtr) {}, subscriptionOptions);
-
-    // Base twist subscriber
-    const std::string baseTwistTopic = "/base_twist";
-    baseTwistSubscriber_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
-      baseTwistTopic, qos, 
-      [](const geometry_msgs::msg::TwistStamped::ConstSharedPtr) {}, subscriptionOptions); 
-    
-    // Contact flags subscriber
-    const std::string contactFlagsTopic = "/contacts";
-    contactsSubscriber_ = this->create_subscription<contact_msgs::msg::Contacts>(
-      contactFlagsTopic, qos, 
-      [](const contact_msgs::msg::Contacts::ConstSharedPtr) {}, subscriptionOptions);
+    // Base pose and twist subscriber
+    const std::string odometryTopic = "/odom";
+    odometrySubscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      odometryTopic, qos,
+      [](const nav_msgs::msg::Odometry::ConstSharedPtr) {}, subscriptionOptions);
 
     // Base external wrench subsciber
     const std::string baseWrenchTopic = "/base_external_wrench";
@@ -184,10 +230,11 @@ namespace legged_whole_body_control_ros2
       baseWrenchTopic, QoS(1).reliable().keep_last(1), 
       std::bind(&LeggedWholeBodyControllerNode::updateExternalWrench, this, std::placeholders::_1));
     
-    // Joint trajectory publisher
+    // Joint trajectory publisher, same QoS as MRT control in MPC node. Only newest trajectory
+    // matters. Volatile, so subscriber started later does not get old trajectory
     const std::string jointTrajectoryTopic = "/joint_trajectory";
     jointTrajectoryPublisher_ = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-      jointTrajectoryTopic, SystemDefaultsQoS());
+      jointTrajectoryTopic, QoS(1).reliable().durability_volatile());
 
     /**
      * Create timer for joint trajectory commands
@@ -195,6 +242,20 @@ namespace legged_whole_body_control_ros2
 
     // Get duration 
     wbcDurationSeconds_ = 1.0 / wbcSettings_.desiredFrequency;
+
+    // Preallocate joint trajectory message, WBC loop only writes point values
+    jointTrajectory_ = trajectory_msgs::msg::JointTrajectory();
+
+    // Start trajectory now (time 0 seconds 0 nanoseconds)
+    jointTrajectory_.header.stamp.sec = 0;
+    jointTrajectory_.header.stamp.nanosec = 0;
+    jointTrajectory_.joint_names = jointNames_;
+
+    jointTrajectory_.points.resize(1);
+    jointTrajectory_.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
+    jointTrajectory_.points[0].positions.resize(modelInfo_.actuatedDofNum);
+    jointTrajectory_.points[0].velocities.resize(modelInfo_.actuatedDofNum);
+    jointTrajectory_.points[0].effort.resize(modelInfo_.actuatedDofNum);
 
     // Joint trajectory timer (not wall timer, as it uses system clock, not ROS one)
     jointTrajectoryTimer_ = rclcpp::create_timer(this, this->get_clock(), 
@@ -211,6 +272,14 @@ namespace legged_whole_body_control_ros2
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
     LeggedWholeBodyControllerNode::on_activate(const rclcpp_lifecycle::State& state)
   {
+    // WBC starts from measured state, it has to be known
+    if(!waitForInitialState())
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "No recent odometry or joint states, activation aborted!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::FAILURE;
+    }
+
     try
     {
       setupWbc();
@@ -220,6 +289,13 @@ namespace legged_whole_body_control_ros2
       RCLCPP_ERROR(this->get_logger(), "WBC setup error: %s", e.what());
       return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
     }
+
+    // New WBC starts without external wrench
+    wrenchActive_ = false;
+    consecutiveFailures_ = 0;
+
+    // WBC stands until MPC policy is received
+    followingPolicy_ = false;
 
     wbcBenchmarkTimer_.reset();
 
@@ -277,9 +353,22 @@ namespace legged_whole_body_control_ros2
     baseWrench(4) = externalWrench->wrench.torque.y;
     baseWrench(5) = externalWrench->wrench.torque.z;
 
+    // Non-finite values would make every WBC problem unsolvable
+    if(!baseWrench.allFinite())
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Ignored base external wrench with non-finite values");
+      return;
+    }
+
     if(wbcPtr_ && controllerRunning_)
     {
-      wbcPtr_->updateExternalWrench(currentTime.seconds(), baseWrench);
+      // Same time base as measured observation
+      wbcPtr_->updateExternalWrench((currentTime - wbcStartTime_).seconds(), baseWrench);
+
+      // Receive time, same as base velocity command in MPC node
+      lastWrenchTime_ = this->get_clock()->now();
+      wrenchActive_ = true;
     }
   }
   
@@ -288,70 +377,163 @@ namespace legged_whole_body_control_ros2
   /******************************************************************************************************/
   void LeggedWholeBodyControllerNode::sendJointTrajectory()
   {
-    if(wbcPtr_ && controllerRunning_)
+    if(!wbcPtr_ || !controllerRunning_) return;
+
+    try
     {
       wbcBenchmarkTimer_.startTimer();
 
       updateMeasuredObservation();
-      updateDesiredObservation();
-      updateContactFlags();
-      updateTerrainNormals();
 
-      wbcPtr_->updateDesired(currentDesiredObservation_.time, 
-        currentDesiredObservation_.state, currentDesiredObservation_.input);
+      const rclcpp::Time currentTime = this->get_clock()->now();
 
-      wbcPtr_->updateMeasured(currentMeasuredObservation_.time, 
-        currentMeasuredObservation_.state, currentMeasuredObservation_.input);
+      if(!isOdometryFresh(currentTime))
+      {
+        RCLCPP_ERROR(this->get_logger(),
+          "Odometry is older than odometry_timeout, WBC loop deactivation!");
+        this->deactivate();
+        return;
+      }
 
-      wbcPtr_->updateContactFlags(lastContactFlagsTime_.seconds(), 
-        contactFlags_);
+      if(!isJointStateFresh(currentTime))
+      {
+        RCLCPP_ERROR(this->get_logger(),
+          "Joint states are older than joint_state_timeout, WBC loop deactivation!");
+        this->deactivate();
+        return;
+      }
 
-      wbcPtr_->updateTerrainNormals(lastTerrainNormalsTime_.seconds(), terrainNormals_);
+      // Stop compensating external wrench if wrench messages stopped
+      if(wrenchActive_ && (currentTime - lastWrenchTime_) > wrenchTimeout_)
+      {
+        RCLCPP_WARN(this->get_logger(),
+          "No base external wrench for longer than wrench_timeout, wrench set to zero!");
+        wbcPtr_->updateExternalWrench((currentTime - wbcStartTime_).seconds(), vector6_t::Zero());
+        wrenchActive_ = false;
+      }
 
-      wbcPtr_->calculate(currentMeasuredObservation_.time);
+      updatePolicy();
 
-      trajectory_msgs::msg::JointTrajectory jointTrajectory;
-      
-      // Start trajectory now (time 0 seconds 0 nanoseconds)
-      jointTrajectory.header.stamp.sec = 0;
-      jointTrajectory.header.stamp.nanosec = 0;
-      jointTrajectory.joint_names = jointNames_;
-      
-      jointTrajectory.points.resize(1);
+      // Policy is evaluated at time of measured state, as by MRT in MPC node
+      const scalar_t time = currentMeasuredObservation_.time;
 
-      const auto accelerationVector = wbcPtr_->getJointAcceleration();
+      if(isPolicyValid(time))
+      {
+        if(!followingPolicy_)
+        {
+          RCLCPP_INFO(this->get_logger(), "WBC is following MPC policy!");
+          followingPolicy_ = true;
+        }
 
-      const vector_t velocityVector = access_helper_functions::getJointVelocities(
-        currentDesiredObservation_.input, modelInfo_) 
-        + accelerationVector * wbcDurationSeconds_;
+        const auto& measuredState = currentMeasuredObservation_.state;
 
-      const vector_t positionVector = access_helper_functions::getJointPositions(
-        currentDesiredObservation_.state, modelInfo_) 
-        + velocityVector * wbcDurationSeconds_;
+        // WBC computes desired accelerations from two last desired points,
+        // both are taken from the same policy, so policy updates do not make jumps in them
+        policyEvaluatorPtr_->evaluate(time - wbcDurationSeconds_, measuredState,
+          previousDesiredState_, previousDesiredInput_);
+        policyEvaluatorPtr_->evaluate(time, measuredState, desiredState_, desiredInput_);
 
-      const vector_t effortVector = wbcPtr_->getJointTorque();
+        // Not after the policy end (MRT warns about it), the last point is held there anyway
+        const scalar_t nextTime = std::min(time + wbcDurationSeconds_,
+          policyEvaluatorPtr_->getFinalTime());
+        policyEvaluatorPtr_->evaluate(nextTime, measuredState, nextDesiredState_, nextDesiredInput_);
 
-      const std::vector<scalar_t> positions(positionVector.data(), 
-        positionVector.data() + positionVector.size());
+        contactFlags_ = policyEvaluatorPtr_->getContactFlags(time);
+        terrainNormals_ = policyEvaluatorPtr_->getTerrainNormals(time);
+      }
+      else
+      {
+        // Robot stops where it is, when policy is lost
+        if(followingPolicy_)
+        {
+          RCLCPP_WARN(this->get_logger(),
+            "MPC policy is older than policy_timeout or ended, WBC is standing!");
+          followingPolicy_ = false;
+          setStandingReference();
+        }
 
-      const std::vector<scalar_t> velocities(velocityVector.data(), 
-        velocityVector.data() + velocityVector.size());
+        previousDesiredState_ = standingState_;
+        previousDesiredInput_ = standingInput_;
+        desiredState_ = standingState_;
+        desiredInput_ = standingInput_;
+        nextDesiredState_ = standingState_;
+        nextDesiredInput_ = standingInput_;
 
-      const std::vector<scalar_t> efforts(effortVector.data(), 
-          effortVector.data() + effortVector.size());
-        
-      jointTrajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
-      jointTrajectory.points[0].positions = std::move(positions);
-      jointTrajectory.points[0].velocities = std::move(velocities);
-      jointTrajectory.points[0].effort = std::move(efforts);
+        // All end effectors in contact, last terrain normals are kept
+        contactFlags_ = contact_flags_t((size_t(1) << endEffectorNum_) - 1);
+      }
+
+      wbcPtr_->updateDesired(time - wbcDurationSeconds_, previousDesiredState_, previousDesiredInput_);
+      wbcPtr_->updateDesired(time, desiredState_, desiredInput_);
+
+      wbcPtr_->updateMeasured(time, currentMeasuredObservation_.state,
+        currentMeasuredObservation_.input);
+
+      wbcPtr_->updateContactFlags(time, contactFlags_);
+
+      wbcPtr_->updateTerrainNormals(time, terrainNormals_);
+
+      const bool solved = wbcPtr_->calculate(time);
+
+      // WBC keeps previous result when problem is not solved (zeros at start),
+      // so nothing is sent and joint controller keeps previous command
+      if(!solved)
+      {
+        wbcBenchmarkTimer_.endTimer();
+
+        if(++consecutiveFailures_ >= maxConsecutiveFailures_)
+        {
+          RCLCPP_ERROR(this->get_logger(),
+            "WBC problem not solved %zu times in a row, WBC loop deactivation!",
+            consecutiveFailures_);
+          this->deactivate();
+          return;
+        }
+
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+          "WBC problem not solved, joint trajectory not sent!");
+        return;
+      }
+
+      consecutiveFailures_ = 0;
+
+      // Write directly into preallocated message vectors, no allocations
+      auto& point = jointTrajectory_.points[0];
+      const size_t jointNum = modelInfo_.actuatedDofNum;
+
+      Eigen::Map<vector_t> velocities(point.velocities.data(), jointNum);
+      Eigen::Map<vector_t> positions(point.positions.data(), jointNum);
+
+      if(followingPolicy_)
+      {
+        // Planned joint state one WBC period ahead (as second point of MRT joint trajectory)
+        velocities = access_helper_functions::getJointVelocities(nextDesiredInput_, modelInfo_);
+        positions = access_helper_functions::getJointPositions(nextDesiredState_, modelInfo_);
+      }
+      else
+      {
+        // Standing joint state moved by WBC joint accelerations
+        velocities = access_helper_functions::getJointVelocities(desiredInput_, modelInfo_)
+          + wbcPtr_->getJointAcceleration() * wbcDurationSeconds_;
+        positions = access_helper_functions::getJointPositions(desiredState_, modelInfo_)
+          + velocities * wbcDurationSeconds_;
+      }
+
+      Eigen::Map<vector_t>(point.effort.data(), jointNum) = wbcPtr_->getJointTorque();
 
       wbcBenchmarkTimer_.endTimer();
 
       // Publish 
       if(jointTrajectoryPublisher_->is_activated())
       {
-        jointTrajectoryPublisher_->publish(jointTrajectory);
+        jointTrajectoryPublisher_->publish(jointTrajectory_);
       }
+    }
+    catch(const std::exception& e)
+    {
+      // Exception would leave the executor and terminate the whole process
+      RCLCPP_ERROR(this->get_logger(), "WBC loop error: %s, WBC loop deactivation!", e.what());
+      this->deactivate();
     }
   }
 
@@ -360,11 +542,6 @@ namespace legged_whole_body_control_ros2
   /******************************************************************************************************/
   void LeggedWholeBodyControllerNode::setupWbc()
   {
-    const std::string urdfFilePath = this->get_parameter("urdf_path").as_string();
-    
-    PinocchioInterface interface = createPinocchioInterfaceFromUrdfFile(urdfFilePath, 
-      wbcSettings_.baseLinkName);
-
     WeightedWbc::Weights weights;
 
     const std::string wbcType = this->get_parameter("type").as_string();
@@ -379,7 +556,8 @@ namespace legged_whole_body_control_ros2
       }
       catch(const std::exception& e)
       {
-        const std::string errorMessage = "Error: Cannot find legged_weighted_wbc.info file!";
+        const std::string errorMessage = "Error while loading weighted_wbc_settings from legged_wbc.info file: "
+          + std::string(e.what());
         throw std::runtime_error(errorMessage);
       }
     }
@@ -389,274 +567,286 @@ namespace legged_whole_body_control_ros2
       throw std::runtime_error(errorMessage);
     }
 
-    wbcPtr_ = std::make_unique<WeightedWbc>(interface, modelInfo_, wbcSettings_, weights);
+    // WBC copies the interface, so the one from on_configure is not changed
+    wbcPtr_ = std::make_unique<WeightedWbc>(*pinocchioInterfacePtr_, modelInfo_, wbcSettings_, weights);
 
+    // WBC setup can take a long time, get newest robot state
     updateMeasuredObservation();
-    updateTerrainNormals();
 
-    const size_t standingMode = ((0x01 << (endEffectorNum_)) - 1);
-    const contact_flags_t standingFlags(standingMode);
-    contactFlags_ = standingFlags;
+    // Policy from previous activation has times relative to previous WBC start time
+    policyEvaluatorPtr_->reset();
 
-    terrainNormals_.resize(endEffectorNum_, vector3_t{0.0, 0.0, 1.0});
+    // WBC stands on flat terrain until MPC policy is received
+    contactFlags_ = contact_flags_t((size_t(1) << endEffectorNum_) - 1);
+    terrainNormals_.assign(endEffectorNum_, vector3_t{0.0, 0.0, 1.0});
+    setStandingReference();
 
-    auto startInput = weightCompensatingInput(modelInfo_, contactFlags_);
+    const scalar_t time = currentMeasuredObservation_.time;
 
-    access_helper_functions::getJointVelocities(startInput, modelInfo_) = 
-      access_helper_functions::getJointVelocities(currentMeasuredObservation_.input,
-        modelInfo_);
-    
-    currentMeasuredObservation_.mode = standingMode;
-    currentMeasuredObservation_.input = startInput;
+    wbcPtr_->updateDesired(time, standingState_, standingInput_);
 
-    // Copy measured observation to desired at startup
-    currentDesiredObservation_ = currentMeasuredObservation_;
+    wbcPtr_->updateMeasured(time, currentMeasuredObservation_.state,
+      currentMeasuredObservation_.input);
 
-    wbcPtr_->updateDesired(currentDesiredObservation_.time, 
-        currentDesiredObservation_.state, currentDesiredObservation_.input);
+    wbcPtr_->updateContactFlags(time, contactFlags_);
 
-    wbcPtr_->updateMeasured(currentMeasuredObservation_.time, 
-      currentMeasuredObservation_.state, currentMeasuredObservation_.input);
+    wbcPtr_->updateTerrainNormals(time, terrainNormals_);
+  }
 
-    wbcPtr_->updateContactFlags(lastContactFlagsTime_.seconds(), 
-      contactFlags_);
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedWholeBodyControllerNode::setStandingReference()
+  {
+    const contact_flags_t standingFlags((size_t(1) << endEffectorNum_) - 1);
 
-    wbcPtr_->updateTerrainNormals(lastTerrainNormalsTime_.seconds(), terrainNormals_);
+    // Robot stays where it is now
+    standingState_ = currentMeasuredObservation_.state;
+    access_helper_functions::getBaseVelocity(standingState_, modelInfo_).setZero();
+
+    // Weight is distributed equally on all end effectors, joints do not move
+    standingInput_ = weightCompensatingInput(modelInfo_, standingFlags);
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedWholeBodyControllerNode::updatePolicy()
+  {
+    rclcpp::MessageInfo msgInfo;
+
+    auto& policyMessage = policyMessage_;
+    if(!policySubscriber_->take(policyMessage, msgInfo)) return;
+
+    // Policy is not transformed, it has to be in the world frame
+    if(policyMessage.header.frame_id != wbcSettings_.worldLinkName)
+    {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored MPC policy with frame %s, expected %s",
+        policyMessage.header.frame_id.c_str(), wbcSettings_.worldLinkName.c_str());
+      return;
+    }
+
+    // Policy times are relative to MPC start time (header stamp), they are moved to WBC time
+    const rclcpp::Time mpcStartTime(policyMessage.header.stamp, this->get_clock()->get_clock_type());
+    const scalar_t timeOffset = (mpcStartTime - wbcStartTime_).seconds();
+
+    std::string error;
+    if(!policyEvaluatorPtr_->readPolicy(policyMessage, timeOffset, error))
+    {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored invalid MPC policy: %s", error.c_str());
+    }
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::isPolicyValid(scalar_t time) const
+  {
+    return policyEvaluatorPtr_->hasPolicy() &&
+      (time - policyEvaluatorPtr_->getStartTime()) <= policyTimeout_ &&
+      time <= policyEvaluatorPtr_->getFinalTime();
   }
   
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::waitForInitialState()
+  {
+    // Robot state has to be received during this activation
+    jointStateReceived_ = false;
+    odometryReceived_ = false;
+
+    // WBC time starts at activation, states stamped before it get time 0
+    wbcStartTime_ = this->get_clock()->now();
+    currentMeasuredObservation_.time = 0.0;
+
+    // Steady clock, so waiting also ends when ROS time is not running
+    const auto maxWaitDuration = std::chrono::seconds(1);
+    const auto startTime = std::chrono::steady_clock::now();
+
+    while(rclcpp::ok())
+    {
+      updateMeasuredObservation();
+
+      if(isStateFresh(this->get_clock()->now()))
+      {
+        return true;
+      }
+
+      if(std::chrono::steady_clock::now() - startTime > maxWaitDuration)
+      {
+        return false;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return false;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::isStateFresh(const rclcpp::Time& currentTime) const
+  {
+    return isOdometryFresh(currentTime) && isJointStateFresh(currentTime);
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::isOdometryFresh(const rclcpp::Time& currentTime) const
+  {
+    return odometryReceived_ && (currentTime - lastOdometryTime_) <= odometryTimeout_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  bool LeggedWholeBodyControllerNode::isJointStateFresh(const rclcpp::Time& currentTime) const
+  {
+    return jointStateReceived_ && (currentTime - lastJointStateTime_) <= jointStateTimeout_;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
   void LeggedWholeBodyControllerNode::updateMeasuredObservation()
   {
+    // Every message is handled separately, invalid one does not block others
+    updateOdometry();
+    updateJointStates();
+
+    const rclcpp::Time newestStateTime = std::max(lastJointStateTime_, lastOdometryTime_);
+
+    // Relative to WBC start, absolute ROS time (~1.7e9 s) in double has only ~2.4e-7 s resolution.
+    // Observation time can not go backwards
+    currentMeasuredObservation_.time = std::max(currentMeasuredObservation_.time,
+      (newestStateTime - wbcStartTime_).seconds());
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedWholeBodyControllerNode::updateOdometry()
+  {
     rclcpp::MessageInfo msgInfo;
 
-    geometry_msgs::msg::TransformStamped baseTransform;
-    if(baseTransformSubscriber_->take(baseTransform, msgInfo)) 
+    nav_msgs::msg::Odometry odometry;
+    if(!odometrySubscriber_->take(odometry, msgInfo)) return;
+
+    // Pose is expressed in header frame (world), twist in child frame (base)
+    if(odometry.header.frame_id != wbcSettings_.worldLinkName ||
+       odometry.child_frame_id != wbcSettings_.baseLinkName)
     {
-      // Check if message has good base link in header
-      if(baseTransform.header.frame_id != wbcSettings_.worldLinkName ||
-         baseTransform.child_frame_id != wbcSettings_.baseLinkName)
-      {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Base transform has wrong base or world frame ID!");
-        return;
-      }
-
-      if(this->get_clock()->now() - lastBaseTransformTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two TransformStamped messages was longer than maximum duration!");
-      }
-
-      lastBaseTransformTime_ = baseTransform.header.stamp;
-
-      vector6_t currentBaseTransform;
-
-      currentBaseTransform(0) = baseTransform.transform.translation.x;
-      currentBaseTransform(1) = baseTransform.transform.translation.y;
-      currentBaseTransform(2) = baseTransform.transform.translation.z;
-
-      Eigen::Quaterniond quaterion;
-
-      tf2::fromMsg(baseTransform.transform.rotation, quaterion);
-
-      const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
-
-      const vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
-        rotationMatrix);
-
-      currentBaseTransform(3) = eulerAngles(0);
-      currentBaseTransform(4) = eulerAngles(1);
-      currentBaseTransform(5) = eulerAngles(2);
-
-      access_helper_functions::getBasePose(
-        currentMeasuredObservation_.state, modelInfo_) = currentBaseTransform;
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Odometry has wrong base or world frame ID!");
+      return;
     }
 
-    geometry_msgs::msg::TwistStamped baseTwist;
-    if(baseTwistSubscriber_->take(baseTwist, msgInfo)) 
+    const auto& basePose = odometry.pose.pose;
+    const auto& baseTwist = odometry.twist.twist;
+
+    vector6_t currentBasePose;
+
+    currentBasePose(0) = basePose.position.x;
+    currentBasePose(1) = basePose.position.y;
+    currentBasePose(2) = basePose.position.z;
+
+    Eigen::Quaterniond quaterion;
+
+    tf2::fromMsg(basePose.orientation, quaterion);
+
+    vector6_t currentBaseTwist;
+
+    currentBaseTwist(0) = baseTwist.linear.x;
+    currentBaseTwist(1) = baseTwist.linear.y;
+    currentBaseTwist(2) = baseTwist.linear.z;
+    currentBaseTwist(3) = baseTwist.angular.x;
+    currentBaseTwist(4) = baseTwist.angular.y;
+    currentBaseTwist(5) = baseTwist.angular.z;
+
+    // Zero quaternion can not be normalized
+    if(!currentBasePose.head<3>().allFinite() || !quaterion.coeffs().allFinite() ||
+       quaterion.norm() < 1e-6 || !currentBaseTwist.allFinite())
     {
-      // Check if message has good base link in header
-      if(baseTwist.header.frame_id != wbcSettings_.baseLinkName)
-      {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Base twist has wrong base frame ID!");
-        return;
-      }
-
-      if(this->get_clock()->now() - lastBaseTwistTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two TwistStamped messages was longer than maximum duration!");
-      }
-
-      lastBaseTwistTime_ = baseTwist.header.stamp;
-
-      vector6_t currentBaseTwist;
-
-      currentBaseTwist(0) = baseTwist.twist.linear.x;
-      currentBaseTwist(1) = baseTwist.twist.linear.y;
-      currentBaseTwist(2) = baseTwist.twist.linear.z;
-      currentBaseTwist(3) = baseTwist.twist.angular.x;
-      currentBaseTwist(4) = baseTwist.twist.angular.y;
-      currentBaseTwist(5) = baseTwist.twist.angular.z;
-
-      access_helper_functions::getBaseVelocity(
-        currentMeasuredObservation_.state, modelInfo_) = currentBaseTwist;
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored odometry with non-finite values or zero quaternion");
+      return;
     }
+
+    const matrix3_t rotationMatrix = quaterion.normalized().toRotationMatrix();
+
+    // Wrapped angles are fine, WBC uses only rotation matrices made from them
+    const vector3_t eulerAngles = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
+      rotationMatrix);
+
+    currentBasePose(3) = eulerAngles(0);
+    currentBasePose(4) = eulerAngles(1);
+    currentBasePose(5) = eulerAngles(2);
+
+    lastOdometryTime_ = odometry.header.stamp;
+    odometryReceived_ = true;
+
+    access_helper_functions::getBasePose(
+      currentMeasuredObservation_.state, modelInfo_) = currentBasePose;
+
+    access_helper_functions::getBaseVelocity(
+      currentMeasuredObservation_.state, modelInfo_) = currentBaseTwist;
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedWholeBodyControllerNode::updateJointStates()
+  {
+    rclcpp::MessageInfo msgInfo;
 
     sensor_msgs::msg::JointState jointStates;
-    if(jointStateSubscriber_->take(jointStates, msgInfo)) 
+    if(!jointStateSubscriber_->take(jointStates, msgInfo)) return;
+
+    // Check if message has same amount of data
+    if(jointStates.name.size() != jointStates.position.size() ||
+       jointStates.name.size() != jointStates.velocity.size() ||
+       jointStates.name.size() != modelInfo_.actuatedDofNum)
     {
-      // Check if message has same amount of data
-      if(jointStates.name.size() != jointStates.position.size() || 
-         jointStates.name.size() != jointStates.velocity.size() ||
-         jointStates.name.size() != modelInfo_.actuatedDofNum)
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Ignored an invalid JointState message");
+      return;
+    }
+
+    vector_t jointPositions = vector_t(modelInfo_.actuatedDofNum);
+    vector_t jointVelocities = vector_t(modelInfo_.actuatedDofNum);
+    std::vector<bool> jointUpdated(modelInfo_.actuatedDofNum, false);
+
+    for(size_t i = 0; i < jointStates.name.size(); ++i)
+    {
+      const auto jointIndexIt = jointNameIndexMap_.find(jointStates.name[i]);
+
+      // Unknown or duplicated joint would leave some joint state unset
+      if(jointIndexIt == jointNameIndexMap_.end() || jointUpdated[jointIndexIt->second])
       {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Ignored an invalid JointState message");
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+          "Ignored JointState message with unknown or duplicated joint: %s",
+          jointStates.name[i].c_str());
         return;
       }
 
-      if(this->get_clock()->now() - lastJointStateTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two JointState messages was longer than maximum duration!");
-      }
-
-      lastJointStateTime_ = jointStates.header.stamp;
-
-      vector_t jointPositions = vector_t(modelInfo_.actuatedDofNum);
-      vector_t jointVelocities = vector_t(modelInfo_.actuatedDofNum);
-
-      for(size_t i = 0; i < jointStates.name.size(); ++i)
-      {
-        const size_t currentIndex = jointNameIndexMap_.at(jointStates.name[i]);
-        jointPositions[currentIndex] = jointStates.position[i];
-        jointVelocities[currentIndex] = jointStates.velocity[i];
-      }
-
-      access_helper_functions::getJointPositions(currentMeasuredObservation_.state, 
-        modelInfo_) = jointPositions;
+      jointPositions[jointIndexIt->second] = jointStates.position[i];
+      jointVelocities[jointIndexIt->second] = jointStates.velocity[i];
+      jointUpdated[jointIndexIt->second] = true;
     }
 
-    currentMeasuredObservation_.time = std::max(std::max(lastJointStateTime_.seconds(), 
-      lastBaseTwistTime_.seconds()), lastBaseTransformTime_.seconds());
-  }
+    lastJointStateTime_ = jointStates.header.stamp;
+    jointStateReceived_ = true;
 
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  void LeggedWholeBodyControllerNode::updateContactFlags()
-  {
-    rclcpp::MessageInfo msgInfo;
+    access_helper_functions::getJointPositions(currentMeasuredObservation_.state,
+      modelInfo_) = jointPositions;
 
-    contact_msgs::msg::Contacts contactFlags;
-    if(contactsSubscriber_->take(contactFlags, msgInfo))
-    {
-      if(contactFlags.contacts.size() != endEffectorNum_)
-      {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Ignored an invalid Contacts message");
-        return;
-      }
-
-      if(this->get_clock()->now() - lastContactFlagsTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two Contacts messages was longer than maximum duration!");
-      }
-
-      contactFlags_ = 0;
-
-      for(size_t i = 0; i < contactFlags.contacts.size(); ++i)
-      {
-        const auto currentContactMessage = contactFlags.contacts[i];
-        const size_t currentIndex = contactFrameNameIndexMap_[
-          currentContactMessage.header.frame_id];
-        contactFlags_[currentIndex] = currentContactMessage.contact;
-
-        if(lastContactFlagsTime_ < currentContactMessage.header.stamp)
-        {
-          lastContactFlagsTime_ = currentContactMessage.header.stamp;
-        }
-      }
-    }
-  }
-
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  void LeggedWholeBodyControllerNode::updateTerrainNormals()
-  {
-    rclcpp::MessageInfo msgInfo;
-
-    legged_locomotion_msgs::msg::TerrainNormalsStamped terrainNormalsMessage;
-    if(terrainNormalsSubscriber_->take(terrainNormalsMessage, msgInfo)) 
-    {
-      if(terrainNormalsMessage.normals.size() != endEffectorNum_)
-      {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Ignored an invalid TerrainNormalsStamped message");
-        return;
-      }
-
-      // Check if message has good base link in header
-      if(this->get_clock()->now() - lastTerrainNormalsTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two TransformStamped messages was longer than maximum duration!");
-      }
-
-      lastBaseTransformTime_ = terrainNormalsMessage.header.stamp;
-
-      const auto& normals = terrainNormalsMessage.normals;
-
-      for(size_t i = 0; i < endEffectorNum_; ++i)
-      {
-        tf2::fromMsg(normals[i], terrainNormals_[i]);
-      }
-    }
-  }
-
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  /******************************************************************************************************/
-  void LeggedWholeBodyControllerNode::updateDesiredObservation()
-  {
-    rclcpp::MessageInfo msgInfo;
-
-    ocs2_msgs::msg::MpcObservation desiredObservation;
-    if(desiredObservationSubscriber_->take(desiredObservation, msgInfo)) 
-    {
-      auto& desiredState = desiredObservation.state.value;
-      auto& desiredInput = desiredObservation.input.value;
-
-      if(desiredState.size() != modelInfo_.stateDim 
-        || desiredInput.size() != modelInfo_.inputDim)
-      {
-        RCLCPP_ERROR(this->get_logger(), 
-          "Ignored an invalid MpcObservation message");
-        return;
-      }
-
-      // Check if message has good base link in header
-      if(this->get_clock()->now() - lastDesiredObservationTime_ > maxDurationBetweenMessages_)
-      {
-        RCLCPP_WARN(this->get_logger(), 
-          "Time between two desired observation messages was longer than maximum duration!");
-      }
-
-      lastDesiredObservationTime_ = rclcpp::Time(static_cast<int64_t>(
-        desiredObservation.time * 1e9), RCL_ROS_TIME);
-
-      currentDesiredObservation_.time = desiredObservation.time;
-      currentDesiredObservation_.mode = desiredObservation.mode;
-      currentDesiredObservation_.state = Eigen::Map<Eigen::VectorXf>(
-        desiredState.data(), desiredState.size()).cast<scalar_t>();
-      currentDesiredObservation_.input = Eigen::Map<Eigen::VectorXf>(
-        desiredInput.data(), desiredInput.size()).cast<scalar_t>();
-    }
+    // Joint velocities are part of the input
+    access_helper_functions::getJointVelocities(currentMeasuredObservation_.input,
+      modelInfo_) = jointVelocities;
   }
 } // namespace legged_whole_body_control_ros2

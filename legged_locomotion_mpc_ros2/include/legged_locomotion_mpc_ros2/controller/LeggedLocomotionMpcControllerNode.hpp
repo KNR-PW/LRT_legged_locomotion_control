@@ -58,6 +58,7 @@
 
 #include <legged_locomotion_msgs/msg/gait_parameters.hpp>
 #include <legged_locomotion_msgs/msg/swing_parameters.hpp>
+#include <legged_locomotion_msgs/msg/mpc_policy.hpp>
 
 #include <grid_map_ros/GridMapRosConverter.hpp>
 
@@ -105,7 +106,17 @@ namespace legged_locomotion_mpc_ros2
       void updateSegmentedTerrain(
         grid_map_msgs::msg::GridMap::UniquePtr gridMap);
 
+      // MRT timer callback (MRT control), evaluates policy and sends joint trajectory
       void sendJointTrajectory();
+
+      // Observation timer callback (policy mode), only feeds MPC with robot state
+      void updateObservationLoop();
+
+      // Feeds MPC with robot state, checks timeouts. False if controller was deactivated
+      bool updateMpcObservation();
+
+      // Sends new policy (if there is one) to whole body controller, called by MPC thread
+      void publishPolicy();
 
       void setTrajectoryPoint(size_t pointIndex, const ocs2::vector_t& state,
         const ocs2::vector_t& input);
@@ -167,9 +178,19 @@ namespace legged_locomotion_mpc_ros2
       // MPC loop duration (1 / mpcFreuency)
       rclcpp::Duration mpcDuration_ = rclcpp::Duration(0, 0);
 
-      // Timer for MRT
+      // Read once in on_configure. True: MRT sends joint trajectory to robot,
+      // false: policy is sent to whole body controller
+      bool useMrtControl_ = false;
+
+      // Timer for MRT (MRT control only)
       ocs2::scalar_t mrtDurationSeconds_ = 0.0;
       rclcpp::TimerBase::SharedPtr jointTrajectoryTimer_;
+
+      // Timer for robot state observation (policy mode only)
+      rclcpp::TimerBase::SharedPtr observationTimer_;
+
+      // Start time of the last sent policy (MPC time), set by MPC thread (policy mode only)
+      std::atomic<ocs2::scalar_t> lastPolicyTime_{0.0};
 
       // Terrain processing is slow, separate group so it does not block MRT timer
       rclcpp::CallbackGroup::SharedPtr terrainCallbackGroup_;
@@ -187,12 +208,19 @@ namespace legged_locomotion_mpc_ros2
       rclcpp::Subscription<legged_locomotion_msgs::msg::SwingParameters>::SharedPtr swingParametersSubscriber_;
       rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr baseWrenchSubscriber_;
       
-      // Joint trajectory publisher from MRT
+      // Joint trajectory publisher from MRT (MRT control only)
       std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
         trajectory_msgs::msg::JointTrajectory>> jointTrajectoryPublisher_;
 
       // Preallocated in on_configure, only point values change in MRT loop
       trajectory_msgs::msg::JointTrajectory jointTrajectory_;
+
+      // Policy publisher for whole body controller (policy mode only)
+      std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
+        legged_locomotion_msgs::msg::MpcPolicy>> policyPublisher_;
+
+      // Used only by MPC thread (and activation before it starts), vectors are reused
+      legged_locomotion_msgs::msg::MpcPolicy policyMessage_;
 
       // Stamps of last robot state messages
       rclcpp::Time lastJointStateTime_;
@@ -235,6 +263,7 @@ namespace legged_locomotion_mpc_ros2
       // Benchmark timers
       ocs2::benchmark::RepeatedTimer mpcBenchmarkTimer_;
       ocs2::benchmark::RepeatedTimer mrtBenchmarkTimer_;
+      ocs2::benchmark::RepeatedTimer policyBenchmarkTimer_;
 
       // Decomposition pipeline for segmented terrain model, pointer guarded by terrainMutex_.
       // Shared, so terrain callback can use it without holding terrainMutex_

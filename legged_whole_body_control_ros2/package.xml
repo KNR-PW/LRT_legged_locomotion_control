@@ -12,15 +12,20 @@
   
   <depend>tf2_eigen</depend>
 
+  <depend>ocs2_core</depend>
+  <depend>ocs2_oc</depend>
   <depend>ocs2_mpc</depend>
+  <depend>ocs2_pinocchio_interface</depend>
+  <depend>floating_base_model</depend>
   <depend>legged_whole_body_control</depend>
 
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
   <depend>trajectory_msgs</depend>
   
   <depend>ocs2_msgs</depend>
-  <depend>contact_msgs</depend>
+  <depend>ocs2_ros_interfaces</depend>
   <depend>legged_locomotion_msgs</depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -65,6 +65,7 @@ target_compile_options(${PROJECT_NAME} PUBLIC ${FLAGS})
 # Legged MPC controller
 add_executable(legged_locomotion_mpc_controller_node
   src/controller/LeggedLocomotionMpcControllerNode.cpp
+  src/controller/MpcPolicyConversions.cpp
   src/controller/main.cpp
 )
 target_link_libraries(legged_locomotion_mpc_controller_node ${PROJECT_NAME})
