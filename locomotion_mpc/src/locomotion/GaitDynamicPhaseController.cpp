@@ -126,6 +126,23 @@ namespace legged_locomotion_mpc
       return dynamicParamsVec_[index - 1];
     }
 
+    scalar_t GaitDynamicPhaseController::getBasePhaseAfterTime(scalar_t time) const
+    {
+      assert(time >= eventTimes_.front());
+
+      // Index of first segment starting at (or almost at) or after query time
+      size_t index = utils::findIndexInTimeArray(eventTimes_, time);
+
+      // Segment starting at query time is used, otherwise segment before query time
+      if(index == eventTimes_.size() || !numerics::almost_eq(eventTimes_[index], time, SCALAR_EPSILON))
+      {
+        index -= 1;
+      }
+
+      const auto frequency = dynamicParamsVec_[index].steppingFrequency;
+      return normalizePhase(cachedPhase_[index] + (time - eventTimes_[index]) * frequency);
+    }
+
     void GaitDynamicPhaseController::remove(scalar_t time)
     {
       // Find index of time larger that query time
@@ -161,6 +178,16 @@ namespace legged_locomotion_mpc
       eventTimes_.push_back(newTime);
       dynamicParamsVec_.push_back(std::move(newDynamicParams));
       cachedPhase_.push_back(newCachedPhase);
+    }
+
+    void GaitDynamicPhaseController::update(scalar_t newTime,
+      const GaitDynamicParameters& newDynamicParams, scalar_t newBasePhase)
+    {
+      assert(newTime > eventTimes_.back());
+
+      eventTimes_.push_back(newTime);
+      dynamicParamsVec_.push_back(newDynamicParams);
+      cachedPhase_.push_back(normalizePhase(newBasePhase));
     }
   }
 }

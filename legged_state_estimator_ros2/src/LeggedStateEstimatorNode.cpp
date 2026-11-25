@@ -822,7 +822,7 @@ namespace legged_state_estimator_ros2
       
       if(!readImu(*imu)) return;
 
-      // Gap between IMU samples, estimator holds the previous one during it
+      // Gap between IMU samples, estimator integrates it with trapezoidal rule
       const scalar_t dt = (lastImuTime_ - previousImuTime).seconds();
 
       if(dt > imuTimeout_.seconds())
@@ -833,7 +833,7 @@ namespace legged_state_estimator_ros2
         return;
       }
 
-      // Estimator propagates to the IMU time and holds the new measurement
+      // Estimator propagates to the IMU time, new measurement is held only until the next one
       leggedStateEstimator_->updateImu(angularVelocity_, linearAcceleration_, 
         toEstimatorTime(lastImuTime_));
 

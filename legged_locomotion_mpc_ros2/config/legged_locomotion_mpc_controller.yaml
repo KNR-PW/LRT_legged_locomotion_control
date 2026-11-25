@@ -15,5 +15,11 @@ legged_locomotion_mpc_controller:
     # Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
     policy_timeout: 0.5
 
+    # Maximum dynamics violation (sum of squared errors) of MPC solution, 0.0: not checked.
+    # Diverged solution is not sent to whole body controller (it uses the previous one until
+    # policy_timeout) and solver is reset. With MRT control solver is only reset, MRT can use
+    # diverged policy until the next solution
+    max_dynamics_violation: 0.05
+
     # Frequency of robot state updates for MPC when MRT is not used [Hz]
     observation_frequency: 200.0

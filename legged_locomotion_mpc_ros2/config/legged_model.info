@@ -198,6 +198,15 @@ gait_static_settings
   maximumSteppingFrequency  2.5
   minimumSteppingFrequency  0.0
   touchdownWindow           0.75
+
+  ; Maximum rate of stepping frequency changes [Hz/s] (0.0: no limit). Start, stop and gait type change
+  ; (phase offsets) are not limited: they are applied at once with new phase, that keeps contacts of end effectors
+  ; (if possible). Standing robot does not lift end effectors, such change waits for start
+  maximumSteppingFrequencyRate 2.0
+
+  ; Maximum rate of swing ratio changes [1/s] (0.0: no limit). Swing ratio is also changed only so far,
+  ; that no end effector changes its contact state at once. Without limit decrease can shorten current swings a lot
+  maximumSwingRatioRate        0.5
 }
 
 gait_dynamic_settings

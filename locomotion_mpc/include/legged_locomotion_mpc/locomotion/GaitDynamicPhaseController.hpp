@@ -48,6 +48,12 @@ namespace legged_locomotion_mpc
         const GaitDynamicParameters& getDynamicParametersAtTime(ocs2::scalar_t time) const;
 
         /**
+         * Get base phase (phase of the first end effector) just after query time. It differs from
+         * getPhasesAtTime() only at the start of segment with new phase (see update() with phase)
+         */
+        ocs2::scalar_t getBasePhaseAfterTime(ocs2::scalar_t time) const;
+
+        /**
          * Remove event times, frequencies and offsets before query time
          */
         void remove(ocs2::scalar_t time);
@@ -57,6 +63,14 @@ namespace legged_locomotion_mpc
          */
         void update(ocs2::scalar_t newTime, const GaitDynamicParameters& newDynamicParams);
         void update(ocs2::scalar_t newTime, GaitDynamicParameters&& newDynamicParams);
+
+        /**
+         * Add new frequency and offsets, starting from query time with given base phase (phase jump).
+         * At query time phases are still from the previous segment (same as mode at event time
+         * in ModeSchedule), new phase is used after it.
+         */
+        void update(ocs2::scalar_t newTime, const GaitDynamicParameters& newDynamicParams,
+          ocs2::scalar_t newBasePhase);
         
       private:
 

@@ -174,9 +174,12 @@ namespace legged_state_estimator
     /// @brief Processes an IMU measurement, when IMU and joint measurements are
     /// processed separately (updateImu() and correct() instead of update(),
     /// do not mix them). The estimate is propagated to the measurement time
-    /// with the previous IMU measurement held constant, then the new measurement
-    /// is held until the next measurement. Times are in seconds, relative to
-    /// any start time (absolute ROS time in double resolves only ~0.24 us).
+    /// with trapezoidal integration (measurement changes linearly from the previous
+    /// to the new one). If a part of this time was already propagated by correct()
+    /// with the previous measurement held, the difference to the trapezoid is added,
+    /// so the result does not depend on the order of IMU and joint measurements.
+    /// Times are in seconds, relative to any start time (absolute ROS time in
+    /// double resolves only ~0.24 us).
     /// @param[in] imu_gyro_raw Raw measurement of the base angular velocity
     /// expressed in the body local coordinate from IMU gyro sensor.
     /// @param[in] imu_lin_accel_raw Raw measurement of the base linear
@@ -201,8 +204,9 @@ namespace legged_state_estimator
     /// states come from the contact estimator or from the last updateContacts()
     /// call (required after init() when use_contact_estimator is false).
     /// The estimate is first propagated to the measurement time with the last
-    /// IMU measurement held constant. Measurement older than the estimate is
-    /// used at the estimate time.
+    /// IMU measurement held constant (there is no newer one yet, updateImu() adds
+    /// the difference to trapezoidal integration later). Measurement older than
+    /// the estimate is used at the estimate time.
     /// @param[in] qJ Raw measurement of the joint positions.
     /// @param[in] dqJ Raw measurement of the joint velocities.
     /// @param[in] tauJ Raw measurement of the joint torques.
@@ -327,7 +331,12 @@ namespace legged_state_estimator
     ocs2::scalar_t prepareCorrection(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
       const ocs2::vector_t& tauJ, const ocs2::scalar_t time);
 
+    // With the last IMU measurement held
     void propagateTo(const ocs2::scalar_t time);
+
+    // With trapezoidal integration from the last to the new IMU measurement
+    void propagateToImuMeasurement(const vector3_t& imu_gyro_raw,
+      const vector3_t& imu_lin_accel_raw, const ocs2::scalar_t time);
 
     void processImuMeasurement(const ocs2::scalar_t dt);
 

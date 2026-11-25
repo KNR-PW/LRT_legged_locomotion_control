@@ -120,6 +120,7 @@ if(BUILD_TESTING)
 
     ament_add_gtest(${PROJECT_NAME}_test
         test/legged_estimator_settings_test.cpp
+        test/legged_state_estimator_imu_test.cpp
     )
     ament_target_dependencies(${PROJECT_NAME}_test ${THIS_PACKAGE_DEPENDS})
     target_include_directories(${PROJECT_NAME}_test PRIVATE test/include)

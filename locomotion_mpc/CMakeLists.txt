@@ -168,6 +168,7 @@ if(BUILD_TESTING)
         test/common/ModelHelperFunctionsTest.cpp
         test/common/EulerTransformsTest.cpp
         test/common/ModelSettingsTest.cpp
+        test/common/MpcSolutionMonitorTest.cpp
   )
   ament_target_dependencies(${PROJECT_NAME}_test_common ${THIS_PACKAGE_DEPENDS})
   target_include_directories(${PROJECT_NAME}_test_common PRIVATE test/include)
@@ -179,6 +180,8 @@ if(BUILD_TESTING)
         test/locomotion/GaitCommonTest.cpp
         test/locomotion/ModeDynamicSequenceTemplateTest.cpp
         test/locomotion/GaitPlannerTest.cpp
+        test/locomotion/GaitPlannerRateLimitTest.cpp
+        test/locomotion/GaitPlannerRephasingTest.cpp
         test/locomotion/GaitDynamicPhaseControllerTest.cpp
         test/locomotion/FootPhaseTest.cpp
         test/locomotion/SingleLegLogicTest.cpp

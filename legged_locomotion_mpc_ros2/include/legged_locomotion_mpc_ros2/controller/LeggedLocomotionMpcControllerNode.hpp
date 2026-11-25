@@ -38,6 +38,7 @@
 #include <pinocchio/fwd.hpp>
 #include <convex_plane_decomposition/PlaneDecompositionPipeline.h>
 
+#include <legged_locomotion_mpc/common/MpcSolutionMonitor.hpp>
 #include <legged_locomotion_mpc/robot_interface/LeggedLoopshapingInterface.hpp>
 
 #include <rclcpp/rclcpp.hpp>
@@ -126,6 +127,10 @@ namespace legged_locomotion_mpc_ros2
       void setupMpc();
 
       void runMpc();
+
+      // Checks the newest MPC solution, resets solver if it diverged. False if solution diverged.
+      // Has to be called once after every solution, by MPC thread (and activation before it starts)
+      bool checkMpcSolution();
       
       void stopMpcThread();
 
@@ -171,6 +176,9 @@ namespace legged_locomotion_mpc_ros2
       // MPC thread
       std::thread mpcThread_;
       std::atomic_bool controllerRunning_{false};
+
+      // Used only by MPC thread (and activation before it starts)
+      MpcSolutionMonitor solutionMonitor_;
 
       // Set by MPC thread on error, deactivation is done by MRT timer
       std::atomic_bool mpcFailed_{false};

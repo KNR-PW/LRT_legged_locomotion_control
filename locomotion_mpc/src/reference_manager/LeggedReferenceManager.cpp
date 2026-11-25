@@ -51,20 +51,6 @@ namespace legged_locomotion_mpc
   {
     // // Reset base orientation to be the parallel to terrain 
     auto stampedCurrentObservation = currentObservation;
-    // auto baseEulerZyx = access_helper_functions::getBaseOrientationZyx(
-    //   stampedCurrentObservation.state, modelInfo_);
-
-    // const vector3_t currentBasePosition = access_helper_functions::getBasePosition(
-    //   stampedCurrentObservation.state, modelInfo_);
-
-    // const TerrainPlane currentPlane = currentTerrainModel->getLocalTerrainAtPositionInWorldAlongGravity(
-    //   currentBasePosition);
-
-    // const matrix3_t terrainToWorldRotation = currentPlane.getOrientationToTerrain().transpose();
-    // const auto terrainEuler = quaterion_euler_transforms::getEulerAnglesFromRotationMatrix(
-    //   terrainToWorldRotation);
-    // baseEulerZyx(1) = terrainEuler(1);
-    // baseEulerZyx(2) = terrainEuler(2);
 
     updateContactFlags(currentContactFlags);
     updateGaitParemeters(currentGaitParameters);
@@ -256,11 +242,15 @@ namespace legged_locomotion_mpc
     currentObservation.state = currentTargetTrajectory.getDesiredState(initTime);
     currentObservation.input = currentTargetTrajectory.getDesiredInput(initTime);
 
-    // no new gait parameters -> no update
+    // New gait parameters are the target, applied parameters are moved towards it (rate limits) in every iteration
     if(currentGaitParameters_.updateFromBuffer())
     {
       const GaitDynamicParameters& currentGaitParameters = currentGaitParameters_.get();
       gaitPlanner_.updateDynamicParameters(initTime + settings_.gaitUpdateOffset, currentGaitParameters);
+    }
+    else
+    {
+      gaitPlanner_.stepDynamicParameters(initTime + settings_.gaitUpdateOffset);
     }
 
     // No new swing parameters -> no update

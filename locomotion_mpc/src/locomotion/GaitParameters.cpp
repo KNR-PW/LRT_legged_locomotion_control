@@ -55,6 +55,28 @@ namespace legged_locomotion_mpc
         throw std::invalid_argument("[GaitStaticParameters]: Touchdown window smaller or equal 0!");
       }
 
+      // Optional, 0.0 (no limit) when not set. Smaller rates would not change parameters in one step
+      // of MAX_PARAMETERS_STEP_DURATION more than GAIT_PARAMETERS_EPS (parameters are equal then)
+      const scalar_t minimumRate = Definitions::GAIT_PARAMETERS_EPS / Definitions::MAX_PARAMETERS_STEP_DURATION;
+
+      loadData::loadPtreeValue(pt, settings.maximumSteppingFrequencyRate,
+        fieldName + ".maximumSteppingFrequencyRate", verbose);
+      if(!std::isfinite(settings.maximumSteppingFrequencyRate) || settings.maximumSteppingFrequencyRate < 0.0 ||
+        (settings.maximumSteppingFrequencyRate > 0.0 && settings.maximumSteppingFrequencyRate < minimumRate))
+      {
+        throw std::invalid_argument("[GaitStaticParameters]: Maximum stepping frequency rate has to be 0.0 (no limit) or at least "
+          + std::to_string(minimumRate) + "!");
+      }
+
+      loadData::loadPtreeValue(pt, settings.maximumSwingRatioRate,
+        fieldName + ".maximumSwingRatioRate", verbose);
+      if(!std::isfinite(settings.maximumSwingRatioRate) || settings.maximumSwingRatioRate < 0.0 ||
+        (settings.maximumSwingRatioRate > 0.0 && settings.maximumSwingRatioRate < minimumRate))
+      {
+        throw std::invalid_argument("[GaitStaticParameters]: Maximum swing ratio rate has to be 0.0 (no limit) or at least "
+          + std::to_string(minimumRate) + "!");
+      }
+
       if(verbose) 
       {
         std::cerr << " #### =============================================================================" <<

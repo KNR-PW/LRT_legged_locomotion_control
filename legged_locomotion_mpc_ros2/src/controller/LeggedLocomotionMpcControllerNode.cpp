@@ -59,6 +59,10 @@ namespace legged_locomotion_mpc_ros2
     // Maximum age of MPC policy [s], controller is deactivated after that (stalled MPC)
     this->declare_parameter("policy_timeout", 0.5);
 
+    // Maximum dynamics violation (sum of squared errors) of MPC solution, diverged solution is not sent
+    // and solver is reset. 0.0: not checked
+    this->declare_parameter("max_dynamics_violation", 0.05);
+
     // True: MRT sends joint trajectory to the robot (/joint_trajectory),
     // false: MPC policy is sent to the whole body controller (/mpc_policy), MRT is not used
     this->declare_parameter("use_mrt_control", false);
@@ -128,6 +132,17 @@ namespace legged_locomotion_mpc_ros2
     velocityTimeout_ = rclcpp::Duration::from_seconds(velocityTimeout);
     wrenchTimeout_ = rclcpp::Duration::from_seconds(wrenchTimeout);
     policyTimeout_ = policyTimeout;
+
+    const scalar_t maxDynamicsViolation = this->get_parameter("max_dynamics_violation").as_double();
+
+    if(!std::isfinite(maxDynamicsViolation) || maxDynamicsViolation < 0.0)
+    {
+      RCLCPP_ERROR(this->get_logger(),
+        "Parameter max_dynamics_violation has to be finite and not negative!");
+      return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+    }
+
+    solutionMonitor_ = MpcSolutionMonitor(maxDynamicsViolation);
 
     useMrtControl_ = this->get_parameter("use_mrt_control").as_bool();
     const scalar_t observationFrequency = this->get_parameter("observation_frequency").as_double();
@@ -622,21 +637,25 @@ namespace legged_locomotion_mpc_ros2
     // Get observation of the model
     currentObservation_.input = initialInput;
 
-    // Wait for the first policy
+    // Wait for the first valid policy
     mpcMrtPtr_->setCurrentObservation(currentObservation_);
+    solutionMonitor_.reset();
 
     rclcpp::Duration maxInitialPolicyDuration = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time startTime = this->get_clock()->now();
 
-    while(!mpcMrtPtr_->initialPolicyReceived() && rclcpp::ok() && 
+    bool initialPolicyValid = false;
+
+    while(!initialPolicyValid && rclcpp::ok() && 
       (this->get_clock()->now() - startTime) < maxInitialPolicyDuration) 
     {
       mpcMrtPtr_->advanceMpc();
+      initialPolicyValid = mpcMrtPtr_->initialPolicyReceived() && checkMpcSolution();
     }
 
-    if(!mpcMrtPtr_->initialPolicyReceived())
+    if(!initialPolicyValid)
     {
-      const std::string errorMessage = "Initial policy not recived, try again later!";
+      const std::string errorMessage = "Initial policy not received or MPC diverged, try again later!";
       throw std::runtime_error(errorMessage);
     }
   }
@@ -857,6 +876,10 @@ namespace legged_locomotion_mpc_ros2
           mpcMrtPtr_->advanceMpc();
           mpcBenchmarkTimer_.endTimer();
 
+          // Diverged policy is not sent, whole body controller uses the previous one. Next solution
+          // is computed at once. Without valid policy for policy_timeout controller is deactivated
+          if(!checkMpcSolution()) continue;
+
           // Without MRT control, policy is used only by this thread
           if(!useMrtControl_)
           {
@@ -877,6 +900,35 @@ namespace legged_locomotion_mpc_ros2
         }
       }
     });
+  }
+
+  bool LeggedLocomotionMpcControllerNode::checkMpcSolution()
+  {
+    const auto& performanceIndices = mpcPtr_->getSolverPtr()->getPerformanceIndeces();
+
+    const size_t previousDivergedSolutions = solutionMonitor_.getDivergedSolutions();
+    const auto result = solutionMonitor_.update(performanceIndices);
+
+    if(result == MpcSolutionMonitor::Result::VALID)
+    {
+      if(previousDivergedSolutions > 0)
+      {
+        RCLCPP_WARN(this->get_logger(),
+          "MPC converged again, number of rejected solutions: %zu", previousDivergedSolutions);
+      }
+      return true;
+    }
+
+    if(result == MpcSolutionMonitor::Result::DIVERGED_RESET)
+    {
+      RCLCPP_ERROR(this->get_logger(), "MPC diverged (dynamics violation: %g, equality constraints: %g, "
+        "cost: %g), solver reset!", performanceIndices.dynamicsViolationSSE,
+        performanceIndices.equalityConstraintsSSE, performanceIndices.cost);
+
+      // Clears performance indices, next solution starts from the initializer
+      mpcPtr_->reset();
+    }
+    return false;
   }
 
   void LeggedLocomotionMpcControllerNode::stopMpcThread()

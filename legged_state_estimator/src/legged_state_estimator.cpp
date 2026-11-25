@@ -1,5 +1,6 @@
 #include <legged_state_estimator/legged_state_estimator.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -263,8 +264,8 @@ namespace legged_state_estimator
 
     if(imu_measurement_available_)
     {
-      // Previous measurement is held until the new one
-      propagateTo(time);
+      // Trapezoidal integration between the previous and the new measurement
+      propagateToImuMeasurement(imu_gyro_raw, imu_lin_accel_raw, time);
       setImuMeasurement(imu_gyro_raw, imu_lin_accel_raw);
     }
     else
@@ -372,7 +373,7 @@ namespace legged_state_estimator
 
     checkUpdateArguments(qJ, dqJ, tauJ, dt);
 
-    // Last IMU measurement is held until the joint measurement
+    // Last IMU measurement is held until the joint measurement, the next one adds difference to trapezoid
     propagateTo(time);
 
     last_joint_time_ = time;
@@ -402,6 +403,58 @@ namespace legged_state_estimator
       {
         inekf_.Propagate(imu_raw_, time - estimate_time_);
       }
+      estimate_time_ = time;
+    }
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::propagateToImuMeasurement(const vector3_t& imu_gyro_raw,
+    const vector3_t& imu_lin_accel_raw, const scalar_t time)
+  {
+    vector6_t imu_new;
+    imu_new << imu_gyro_raw, imu_lin_accel_raw;
+
+    // Measurement is assumed to change linearly between the previous and the new one
+    const scalar_t imu_dt = time - last_imu_time_;
+    const vector6_t imu_difference = imu_new - imu_raw_;
+
+    // Part of the time step is already propagated (joint measurement was processed first) with the previous
+    // measurement held. Difference to the linear one is added, so result does not depend on the order
+    // of IMU and joint measurements
+    const scalar_t held_dt = std::clamp(estimate_time_ - last_imu_time_, 0.0, imu_dt);
+
+    // Estimate newer than the new measurement: previous one was held also after the new one
+    const scalar_t late_dt = std::max(estimate_time_ - time, 0.0);
+
+    if(held_dt > 0.0)
+    {
+      // Integrals of (linear - held) measurement over the held part
+      const scalar_t held_integral = 0.5 * held_dt * held_dt / imu_dt;
+      const scalar_t held_double_integral = held_dt * held_dt * held_dt / (6.0 * imu_dt);
+
+      const scalar_t integral = held_integral + late_dt;
+      const scalar_t double_integral = held_double_integral + held_integral * late_dt + 0.5 * late_dt * late_dt;
+
+      const vector3_t gyro_difference = imu_difference.head<3>();
+      const vector3_t accel_difference = imu_difference.tail<3>();
+
+      // Biases and gravity are the same in both, only the mean of the state is changed
+      InEKFState state = inekf_.getState();
+      const matrix3_t rotation = state.getRotation();
+      state.setPosition(state.getPosition() + rotation * accel_difference * double_integral);
+      state.setVelocity(state.getVelocity() + rotation * accel_difference * integral);
+      state.setRotation(rotation * Exp_SO3(gyro_difference * integral));
+      inekf_.setState(state);
+    }
+
+    // Rest of the time step, mean of the measurement at its start and end
+    if(time > estimate_time_)
+    {
+      const vector6_t imu_start = imu_raw_ + imu_difference * (held_dt / imu_dt);
+      const vector6_t imu_mean = 0.5 * (imu_start + imu_new);
+      inekf_.Propagate(imu_mean, time - estimate_time_);
       estimate_time_ = time;
     }
   }

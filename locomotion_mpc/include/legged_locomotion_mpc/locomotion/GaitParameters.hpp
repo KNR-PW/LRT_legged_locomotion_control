@@ -40,6 +40,17 @@ namespace legged_locomotion_mpc
       
       // If mode changes between modes are smaller than this, they are in same mode change!
       const ocs2::scalar_t MIN_TIME_BETWEEN_CHANGES = 5e-3;
+
+      // Maximum duration of one step of rate limited dynamic parameters changes [s],
+      // a long pause between steps does not make a big step
+      const ocs2::scalar_t MAX_PARAMETERS_STEP_DURATION = 0.1;
+
+      // Swinging end effector stays in swing, when swing ratio is this above its phase
+      const ocs2::scalar_t SWING_RATIO_MARGIN = 1e-6;
+
+      // New base phase after start, stop or gait type change is at least this time [s] after
+      // contact state change of the new gait (no too short modes)
+      const ocs2::scalar_t REPHASING_MARGIN_TIME = 2 * MIN_TIME_BETWEEN_CHANGES;
     }
 
     enum class GaitFlags
@@ -58,6 +69,13 @@ namespace legged_locomotion_mpc
       ocs2::scalar_t maximumSteppingFrequency = 5.0; // [Hz]
       ocs2::scalar_t minimumSteppingFrequency = 0.0; // [Hz]
       ocs2::scalar_t touchdownWindow = 0.1; // [s]
+
+      // Maximum rate of stepping frequency changes [Hz/s], 0.0: no limit.
+      // Start (from minimum stepping frequency) and stop (to it) are not limited
+      ocs2::scalar_t maximumSteppingFrequencyRate = 0.0;
+
+      // Maximum rate of swing ratio changes [1/s], 0.0: no limit
+      ocs2::scalar_t maximumSwingRatioRate = 0.0;
     };
 
     struct GaitDynamicParameters
