@@ -37,6 +37,19 @@ namespace legged_state_estimator
     loadData::loadStdVector(filename, fieldName + ".contactFrames", 
       settings.contact_frames, verbose);
 
+    // Optional, point or surface contacts when not set
+    if(pt.get_child_optional(fieldName + ".contactSphereRadii"))
+    {
+      loadData::loadStdVector(filename, fieldName + ".contactSphereRadii", 
+        settings.contact_sphere_radii, verbose);
+      if(settings.contact_sphere_radii.size() != settings.contact_frames.size())
+      {
+        throw std::invalid_argument("[LeggedStateEstimator] contactSphereRadii size is "
+          + std::to_string(settings.contact_sphere_radii.size()) + ", but should be "
+          + std::to_string(settings.contact_frames.size()));
+      }
+    }
+
     loadData::loadPtreeValue(pt, settings.use_contact_estimator, 
       fieldName + ".useContactEstimator", verbose);
 
@@ -99,6 +112,12 @@ namespace legged_state_estimator
     settings.inekf_noise_params.setAccelerometerNoise(acceleration_noise);
     settings.inekf_noise_params.setAccelerometerBiasNoise(acceleration_bias_noise);
     settings.inekf_noise_params.setContactNoise(contact_noise);
+
+    // Optional, default when not set
+    loadData::loadPtreeValue(pt, settings.initial_gyroscope_bias_noise, 
+      fieldName + ".noiseSettings.initialGyroscopeBiasNoise", verbose);
+    loadData::loadPtreeValue(pt, settings.initial_accelerometer_bias_noise, 
+      fieldName + ".noiseSettings.initialAccelerometerBiasNoise", verbose);
 
     loadData::loadPtreeValue(pt, settings.dynamic_contact_estimation, 
       fieldName + ".dynamicContactEstimation", verbose);

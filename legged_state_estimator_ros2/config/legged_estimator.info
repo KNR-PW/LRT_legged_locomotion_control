@@ -12,6 +12,16 @@ legged_state_estimator
     [3] LRF_link
   }
 
+  ; Radii of spherical end effectors [m] (frames are in sphere centers), rolling of feet is compensated.
+  ; 0.0: point or surface (6 DoF) contact. Same order as contactFrames
+  contactSphereRadii
+  {
+    [0] 0.035
+    [1] 0.035
+    [2] 0.035
+    [3] 0.035
+  }
+
   useContactEstimator false
 
   contactEstimatorSettings
@@ -39,11 +49,19 @@ legged_state_estimator
 
   noiseSettings
   {
-    gyroscopeNoise 0.1
-    gyroscopeBiasNoise 0.01
+    gyroscopeNoise 0.01
+    gyroscopeBiasNoise 0.0001
     accelerometerNoise 0.1
-    accelerometerBiasNoise 0.01
-    contactNoise 0.01
+    accelerometerBiasNoise 0.001
+
+    ; Velocity noise of end effector in contact (slip, rolling). Too small value makes kinematics change
+    ; the orientation when end effector slips, bigger one gives bigger drift of base height
+    contactNoise 0.05
+
+    ; Initial uncertainty of IMU biases (accuracy of bias calibration before activation), gyroscope [rad/s],
+    ; accelerometer [m/s^2]. Big gyroscope value makes yaw rate too small (bias is changed instead)
+    initialGyroscopeBiasNoise 0.001
+    initialAccelerometerBiasNoise 0.1
   }
 
   dynamicContactEstimation true

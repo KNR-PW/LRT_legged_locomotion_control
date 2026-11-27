@@ -447,62 +447,62 @@ joint_torque_weights
 {
   LFT_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   LFH_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   LFK_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   LRT_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   LRH_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   LRK_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RFT_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RFH_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RFK_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RRT_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RRH_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 
   RRK_joint
   {
-    torqueWeight 0.25
+    torqueWeight 0.1
   }
 }
 
@@ -522,9 +522,9 @@ reference_manager_settings
 
 swing_planner_static_settings
 {
-  liftOffVelocity                 0.1
+  liftOffVelocity                 0.0
 
-  touchDownVelocity               -0.1
+  touchDownVelocity               0.0
         
   errorGain                       0.0
           

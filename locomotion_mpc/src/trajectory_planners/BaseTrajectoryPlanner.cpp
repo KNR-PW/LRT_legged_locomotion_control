@@ -2,6 +2,7 @@
 #include <legged_locomotion_mpc/trajectory_planners/BaseTrajectoryPlanner.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -27,28 +28,18 @@ namespace legged_locomotion_mpc
     void unwrapYawAngle(TargetTrajectories& targetTrajectory, 
       const FloatingBaseModelInfo& modelInfo)
     {
+      // First yaw comes from observation (unwrapped, any number of turns), next ones from rotation
+      // matrices (in [-pi, pi]). Each yaw is moved by whole turns to the closest value to previous one
       for(size_t i = 1; i < targetTrajectory.stateTrajectory.size(); ++i)
       {
-        const auto& previousState = targetTrajectory.stateTrajectory[i - 1];
-        const auto previousEulerAngles = access_helper_functions::getBaseOrientationZyx(
-          previousState, modelInfo);
+        const scalar_t previousYaw = access_helper_functions::getBaseOrientationZyx(
+          targetTrajectory.stateTrajectory[i - 1], modelInfo).x();
 
-        auto& newState = targetTrajectory.stateTrajectory[i];
         auto newEulerAngles = access_helper_functions::getBaseOrientationZyx(
-          newState, modelInfo);
+          targetTrajectory.stateTrajectory[i], modelInfo);
 
-        const scalar_t yawDifference = newEulerAngles.x() - previousEulerAngles.x();
-
-        static const scalar_t EulerYawJump = 2.0 * M_PI;
-
-        if(yawDifference > M_PI)
-        {
-          newEulerAngles.x() -= EulerYawJump;
-        }
-        else if(yawDifference < -M_PI)
-        {
-          newEulerAngles.x() += EulerYawJump;
-        }
+        newEulerAngles.x() = previousYaw + std::remainder(newEulerAngles.x() - previousYaw,
+          2.0 * M_PI);
       }
     }
 

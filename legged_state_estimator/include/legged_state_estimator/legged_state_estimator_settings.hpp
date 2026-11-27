@@ -74,6 +74,14 @@ namespace legged_state_estimator
       std::vector<std::string> contact_frames;
 
       ///
+      /// @brief Radii of spherical end effectors [m], in order of contact_frames. Contact frame has to be
+      /// in the center of the sphere. In contact the sphere rolls without slipping, so its center moves
+      /// (rotation x radius * ground normal), the estimator compensates it. 0.0: point or surface (6 DoF)
+      /// contact, the contact frame does not move in contact. Empty: all 0.0 (optional in settings file).
+      ///
+      std::vector<ocs2::scalar_t> contact_sphere_radii;
+
+      ///
       /// @brief Flag if contact estimator is used, or contact flags are given by external system
       ///
       bool use_contact_estimator = false;
@@ -87,6 +95,23 @@ namespace legged_state_estimator
       /// @brief Noise parameters (covariances) of InEKF. 
       ///
       NoiseParams inekf_noise_params;
+
+      ///
+      /// @brief Initial uncertainty (standard deviation) of the gyroscope bias [rad/s],
+      /// see LeggedStateEstimator::init(). Must be positive. Should be as small as the
+      /// accuracy of the initial bias: big value lets wrong kinematics (e.g. rolling or
+      /// slipping feet) change the bias instead of the orientation, then yaw is wrong.
+      /// Optional in settings file, default is 1.0.
+      ///
+      ocs2::scalar_t initial_gyroscope_bias_noise = 1.0;
+
+      ///
+      /// @brief Initial uncertainty (standard deviation) of the accelerometer bias [m/s^2],
+      /// see LeggedStateEstimator::init(). Must be positive. Initial bias from calibration
+      /// contains also gravity times the error of initial roll and pitch.
+      /// Optional in settings file, default is 1.0.
+      ///
+      ocs2::scalar_t initial_accelerometer_bias_noise = 1.0;
 
       /// 
       /// @brief Use dynamics in contact estimation. If false, equilibrium is 

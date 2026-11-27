@@ -415,6 +415,102 @@ TEST(BaseTrajectoryPlannerTest, translationAndrotationOnSlopyTerrain)
   }
 }
 
+namespace
+{
+  // MPC plans many times in a row, each plan starts at yaw of the previous plan after one
+  // time step (as unwrapped yaw of estimator in MPC observation). Yaw of plan must be continuous
+  // for any number of turns
+  void checkYawOverManyTurns(const scalar_t yawRate, const scalar_t initialYaw)
+  {
+    TerrainPlane flatTerrain(vector3_t::Zero(), matrix3_t::Identity());
+    PlanarTerrainModel terrainModel(flatTerrain);
+
+    FloatingBaseModelInfo modelInfo;
+    modelInfo.actuatedDofNum = 12;
+    modelInfo.generalizedCoordinatesNum = 12 + 6;
+    modelInfo.inputDim = 12 + 12;
+    modelInfo.stateDim = 12 + 12;
+    modelInfo.numSixDofContacts = 0;
+    modelInfo.numThreeDofContacts = 4;
+
+    BaseTrajectoryPlanner::StaticSettings staticSettings;
+    staticSettings.deltaTime = 0.1;
+    staticSettings.minimumBaseHeight = 0.1;
+    staticSettings.maximumBaseHeight = 1.0;
+    staticSettings.nominalBaseWidthHeading = 0.2;
+    staticSettings.nominalBaseWidthLateral = 0.2;
+    staticSettings.maximumBaseHeadingVelocity = 1.0;
+    staticSettings.maximumBaseLateralVelocity = 1.0;
+    staticSettings.maximumBaseVerticalVelocity = 1.0;
+    staticSettings.maximumYawRate = 1.0;
+
+    BaseTrajectoryPlanner planner(modelInfo, staticSettings);
+    planner.updateTerrain(terrainModel);
+
+    BaseTrajectoryPlanner::BaseReferenceCommand command;
+    command.baseHeadingVelocity = 0.0;
+    command.baseLateralVelocity = 0.0;
+    command.baseVerticalVelocity = 0.0;
+    command.yawRate = yawRate;
+
+    SystemObservation observation;
+    observation.state = vector_t::Zero(modelInfo.stateDim);
+    observation.input = vector_t::Zero(modelInfo.inputDim);
+    observation.state.block<3,1>(6, 0) = vector3_t(0.0, 0.0, 0.4);
+
+    // 25 s, 4 turns for yaw rate 1 rad/s
+    const size_t numPlans = 250;
+    const scalar_t horizon = 1.0;
+    scalar_t yaw = initialYaw;
+
+    for(size_t plan = 0; plan < numPlans; ++plan)
+    {
+      const scalar_t initTime = plan * staticSettings.deltaTime;
+      observation.time = initTime;
+      observation.state(9) = yaw;
+
+      TargetTrajectories trajectories;
+      planner.updateTargetTrajectory(initTime, initTime + horizon, command, observation,
+        trajectories);
+
+      ASSERT_GE(trajectories.stateTrajectory.size(), 2u);
+
+      for(size_t i = 0; i < trajectories.stateTrajectory.size(); ++i)
+      {
+        const vector3_t eulerAnglesZyx = access_helper_functions::getBaseOrientationZyx(
+          trajectories.stateTrajectory[i], modelInfo);
+
+        ASSERT_NEAR(eulerAnglesZyx.x(), yaw + yawRate * i * staticSettings.deltaTime, tol) 
+          << "plan " << plan << ", point " << i;
+        EXPECT_NEAR(eulerAnglesZyx.y(), 0.0, tol);
+        EXPECT_NEAR(eulerAnglesZyx.z(), 0.0, tol);
+      }
+
+      yaw = access_helper_functions::getBaseOrientationZyx(trajectories.stateTrajectory[1], 
+        modelInfo).x();
+    }
+
+    EXPECT_NEAR(yaw, initialYaw + yawRate * numPlans * staticSettings.deltaTime, 1e-6);
+  }
+}
+
+TEST(BaseTrajectoryPlannerTest, yawOverManyTurnsClockwise) 
+{
+  checkYawOverManyTurns(-1.0, 0.0);
+}
+
+TEST(BaseTrajectoryPlannerTest, yawOverManyTurnsCounterClockwise) 
+{
+  checkYawOverManyTurns(1.0, 0.0);
+}
+
+TEST(BaseTrajectoryPlannerTest, yawOverManyTurnsFromFarYaw) 
+{
+  // Initial observation after almost 5 turns
+  checkYawOverManyTurns(0.5, -30.0);
+  checkYawOverManyTurns(-0.7, 3.0 * M_PI - 0.05);
+}
+
 TEST(BaseTrajectoryPlannerTest, loader) 
 {
   ModelSettings modelSettings;

@@ -343,7 +343,11 @@ namespace legged_state_estimator
     void processJointMeasurements(const ocs2::vector_t& qJ, const ocs2::vector_t& dqJ,
       const ocs2::vector_t& tauJ, const ocs2::scalar_t dt);
 
-    void correctKinematics();
+    // Kinematics correction, dt: time from the previous joint measurement
+    void correctKinematics(const ocs2::scalar_t dt);
+
+    // Moves contact points of rolling spherical end effectors in contact, resets them for others
+    void updateRollingOffsets(const ocs2::scalar_t dt);
 
     void restoreEstimates();
 
@@ -400,6 +404,14 @@ namespace legged_state_estimator
     ocs2::scalar_t last_contacts_time_;
 
     std::vector<vector3_t> ground_normals_;
+
+    // Rolling of spherical end effectors: radius, displacement of the sphere center since touchdown
+    // (world frame), rotation of the end effector relative to the IMU at the previous correction,
+    // contact state at the previous correction
+    std::vector<ocs2::scalar_t> contact_sphere_radii_;
+    std::vector<vector3_t> rolling_offsets_;
+    std::vector<matrix3_t> previous_contact_rotations_;
+    std::vector<bool> previous_rolling_contacts_;
   };
 } // namespace legged_state_estimator
 

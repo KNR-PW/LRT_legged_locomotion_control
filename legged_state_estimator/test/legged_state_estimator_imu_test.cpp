@@ -23,7 +23,7 @@ namespace
     NEWER_THAN_LATE_IMU // Newer than IMU measurement, but processed before it
   };
 
-  LeggedStateEstimator makeEstimator()
+  LeggedStateEstimator makeEstimator(scalar_t initialGyroBiasNoise = 1.0, scalar_t initialAccelBiasNoise = 1.0)
   {
     const std::string path = (std::filesystem::temp_directory_path() / "legged_state_estimator_imu_test.urdf").string();
     std::ofstream file(path);
@@ -37,7 +37,7 @@ namespace
     {
       file << "<link name=\"" << leg << "_foot\">" << inertial << "</link>"
            << "<joint name=\"" << leg << "_joint\" type=\"revolute\"><parent link=\"base_link\"/>"
-           << "<child link=\"" << leg << "_foot\"/><origin xyz=\"0 0 -0.3\"/><axis xyz=\"0 1 0\"/>"
+           << "<child link=\"" << leg << "_foot\"/><origin xyz=\"0 " << (leg == "left" ? 0.2 : -0.2) << " -0.3\"/><axis xyz=\"0 1 0\"/>"
            << "<limit lower=\"-1\" upper=\"1\" effort=\"1\" velocity=\"1\"/></joint>";
     }
     file << "</robot>";
@@ -57,6 +57,13 @@ namespace
     settings.lpf_dqJ_cutoff_frequency = 30.0;
     settings.lpf_ddqJ_cutoff_frequency = 30.0;
     settings.lpf_tauJ_cutoff_frequency = 30.0;
+    settings.initial_gyroscope_bias_noise = initialGyroBiasNoise;
+    settings.initial_accelerometer_bias_noise = initialAccelBiasNoise;
+    settings.inekf_noise_params.setGyroscopeNoise(0.01);
+    settings.inekf_noise_params.setGyroscopeBiasNoise(0.0001);
+    settings.inekf_noise_params.setAccelerometerNoise(0.1);
+    settings.inekf_noise_params.setAccelerometerBiasNoise(0.001);
+    settings.inekf_noise_params.setContactNoise(0.1);
     return LeggedStateEstimator(path, settings);
   }
 
@@ -178,4 +185,37 @@ TEST(LeggedStateEstimatorImuTest, positionDoesNotDependOnOrder)
     EXPECT_LT((run(order, samples, false).getBasePositionEstimate() - position).norm(), 1e-4)
       << "order " << static_cast<int>(order);
   }
+}
+
+// Base turns, but feet in contact do not move relative to it (wrong kinematics, as rolling or slipping feet).
+// Initial bias is right, so gyroscope should be trusted
+TEST(LeggedStateEstimatorImuTest, wrongKinematicsDoesNotChangeKnownGyroBias)
+{
+  const scalar_t yawRate = 0.5;
+
+  const auto turn = [&](scalar_t initialGyroBiasNoise)
+  {
+    LeggedStateEstimator estimator = makeEstimator(initialGyroBiasNoise, 0.1);
+    estimator.init(vector3_t(0.0, 0.0, 0.3), vector4_t(0.0, 0.0, 0.0, 1.0));
+    estimator.updateImu(vector3_t(0.0, 0.0, yawRate), vector3_t(0.0, 0.0, PLUS_GRAVITY_VALUE), 0.0);
+    estimator.updateContacts({{0, true}, {1, true}}, 0.0);
+    for(size_t k = 1; k <= 500; ++k)
+    {
+      estimator.updateImu(vector3_t(0.0, 0.0, yawRate), vector3_t(0.0, 0.0, PLUS_GRAVITY_VALUE), k * IMU_PERIOD);
+      estimator.correct(vector_t::Zero(2), vector_t::Zero(2), vector_t::Zero(2), k * IMU_PERIOD);
+    }
+    return estimator.getIMUGyroBiasEstimate().z();
+  };
+
+  // Uncertain bias takes most of the yaw rate, known one stays
+  EXPECT_GT(turn(1.0), 0.5 * yawRate);
+  EXPECT_LT(std::abs(turn(0.001)), 0.02 * yawRate);
+}
+
+TEST(LeggedStateEstimatorImuTest, wrongInitialBiasNoise)
+{
+  EXPECT_THROW(makeEstimator(0.0, 1.0), std::invalid_argument);
+  EXPECT_THROW(makeEstimator(-1.0, 1.0), std::invalid_argument);
+  EXPECT_THROW(makeEstimator(1.0, 0.0), std::invalid_argument);
+  EXPECT_THROW(makeEstimator(1.0, std::nan("")), std::invalid_argument);
 }

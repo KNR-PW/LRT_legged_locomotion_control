@@ -38,6 +38,9 @@ TEST(ModelSettingsTest, loader)
   EXPECT_TRUE((settings.inekf_noise_params.getGyroscopeBiasCov() - true_gyro_bias_noise).norm() < eps);
   EXPECT_TRUE((settings.inekf_noise_params.getAccelerometerBiasCov() - true_accel_bias_noise).norm() < eps);
   EXPECT_TRUE((settings.inekf_noise_params.getContactCov() - true_contact_noise).norm() < eps);
+  // Optional, not set in the file
+  EXPECT_TRUE(settings.initial_gyroscope_bias_noise == 1.0);
+  EXPECT_TRUE(settings.initial_accelerometer_bias_noise == 1.0);
   EXPECT_TRUE(settings.dynamic_contact_estimation == false);
   EXPECT_TRUE(settings.contact_position_noise == 0.01);
   EXPECT_TRUE(settings.contact_rotation_noise == 0.01);

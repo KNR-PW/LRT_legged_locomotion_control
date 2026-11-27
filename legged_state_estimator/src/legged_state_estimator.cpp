@@ -1,8 +1,11 @@
 #include <legged_state_estimator/legged_state_estimator.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
+
+#include <Eigen/Geometry>
 
 
 namespace legged_state_estimator 
@@ -54,6 +57,36 @@ namespace legged_state_estimator
         "[LeggedStateEstimator] invalid argment: sampling_time must be positive");
     }
 
+    if(!std::isfinite(settings.initial_gyroscope_bias_noise) || !(settings.initial_gyroscope_bias_noise > 0.0) ||
+       !std::isfinite(settings.initial_accelerometer_bias_noise) || !(settings.initial_accelerometer_bias_noise > 0.0))
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: initial gyroscope and accelerometer bias noises must be positive");
+    }
+
+    // Point or surface contacts when not set
+    contact_sphere_radii_ = settings.contact_sphere_radii;
+    if(contact_sphere_radii_.empty())
+    {
+      contact_sphere_radii_.assign(robot_model_.numContacts(), 0.0);
+    }
+    if(contact_sphere_radii_.size() != robot_model_.numContacts())
+    {
+      throw std::invalid_argument(
+        "[LeggedStateEstimator] invalid argment: contact_sphere_radii.size() must be 0 or " + std::to_string(robot_model_.numContacts()));
+    }
+    for(const scalar_t radius: contact_sphere_radii_)
+    {
+      if(!std::isfinite(radius) || radius < 0.0)
+      {
+        throw std::invalid_argument(
+          "[LeggedStateEstimator] invalid argment: contact sphere radii must be finite and not negative");
+      }
+    }
+    rolling_offsets_.assign(robot_model_.numContacts(), vector3_t::Zero());
+    previous_contact_rotations_.assign(robot_model_.numContacts(), matrix3_t::Identity());
+    previous_rolling_contacts_.assign(robot_model_.numContacts(), false);
+
     if(settings.use_contact_estimator)
     {
       contact_estimator_ptr_ = std::make_unique<ContactEstimator>(robot_model_, 
@@ -92,6 +125,12 @@ namespace legged_state_estimator
     initial_state.setGyroscopeBias(imu_gyro_bias);
     initial_state.setAccelerometerBias(imu_lin_accel_bias);
 
+    // Biases are known from calibration. Default (identity) covariance would let kinematics change them at once
+    const scalar_t gyro_bias_cov = settings_.initial_gyroscope_bias_noise * settings_.initial_gyroscope_bias_noise;
+    const scalar_t accel_bias_cov = settings_.initial_accelerometer_bias_noise * settings_.initial_accelerometer_bias_noise;
+    initial_state.setGyroscopeBiasCovariance(gyro_bias_cov * matrix3_t::Identity());
+    initial_state.setAccelerometerBiasCovariance(accel_bias_cov * matrix3_t::Identity());
+
     // Contact points of previous estimation are not in the new state, filter would still index them.
     // clear() also resets noise parameters, so they are set again
     inekf_.clear();
@@ -112,6 +151,8 @@ namespace legged_state_estimator
     estimate_time_available_ = false;
     // Contact states were cleared with the filter
     contacts_available_ = false;
+    std::fill(rolling_offsets_.begin(), rolling_offsets_.end(), vector3_t::Zero());
+    std::fill(previous_rolling_contacts_.begin(), previous_rolling_contacts_.end(), false);
 
     if(contact_estimator_ptr_)
     {
@@ -202,7 +243,7 @@ namespace legged_state_estimator
       inekf_.setContacts(contact_estimator_ptr_->getContactState());
     }
 
-    correctKinematics();
+    correctKinematics(dt);
     restoreEstimates();
   }
 
@@ -242,7 +283,7 @@ namespace legged_state_estimator
 
     inekf_.setContacts(contacts);
 
-    correctKinematics();
+    correctKinematics(dt);
     restoreEstimates();
   }
 
@@ -343,7 +384,7 @@ namespace legged_state_estimator
       inekf_.setContacts(contact_estimator_ptr_->getContactState());
     }
 
-    correctKinematics();
+    correctKinematics(dt);
     restoreEstimates();
   }
 
@@ -606,15 +647,65 @@ namespace legged_state_estimator
   /******************************************************************************************************/
   /******************************************************************************************************/
   /******************************************************************************************************/
-  void LeggedStateEstimator::correctKinematics()
+  void LeggedStateEstimator::updateRollingOffsets(const scalar_t dt)
   {
-    // Contact positions must be expressed in the IMU frame (frame of the InEKF state)
+    const InEKFState& state = inekf_.getState();
+    const matrix3_t& imu_rotation = state.getRotation();
+    const vector3_t imu_gyro_local = imu_raw_.template head<3>() - state.getGyroscopeBias();
     const matrix3_t imu_rotation_transposed = robot_model_.getImuRotation().transpose();
+    const auto& contacts = inekf_.getContacts();
+
+    for(int  i = 0;  i < robot_model_.numContacts(); ++i)
+    {
+      const scalar_t radius = contact_sphere_radii_[i];
+      if(radius == 0.0) continue;
+
+      const auto contact = contacts.find(i);
+      const bool in_contact = contact != contacts.end() && contact->second;
+
+      // Kinematics is computed with identity root, rotation of end effector relative to IMU
+      const matrix3_t contact_rotation_in_imu = imu_rotation_transposed * robot_model_.getContactRotation(i);
+
+      if(in_contact && previous_rolling_contacts_[i])
+      {
+        // Rotation of the end effector in the world frame since previous correction: base rotation measured by
+        // gyroscope and joint motion. Estimated orientation is not used, its corrections are not rolling
+        const Eigen::AngleAxisd joint_rotation(contact_rotation_in_imu * previous_contact_rotations_[i].transpose());
+        const vector3_t rotation = imu_rotation * (joint_rotation.angle() * joint_rotation.axis() + imu_gyro_local * dt);
+
+        // Rolling without slipping: point in contact does not move, sphere center moves by rotation x (r * n).
+        // Rotation about the ground normal does not move it
+        const vector3_t ground_normal = ground_normals_.empty() ? vector3_t::UnitZ() : ground_normals_[i];
+        rolling_offsets_[i] += rotation.cross(radius * ground_normal);
+      }
+      else
+      {
+        // New contact point is the sphere center at touchdown
+        rolling_offsets_[i].setZero();
+      }
+
+      previous_rolling_contacts_[i] = in_contact;
+      previous_contact_rotations_[i] = contact_rotation_in_imu;
+    }
+  }
+
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  /******************************************************************************************************/
+  void LeggedStateEstimator::correctKinematics(const scalar_t dt)
+  {
+    updateRollingOffsets(dt);
+
+    // Contact positions must be expressed in the IMU frame (frame of the InEKF state). Contact point of rolling
+    // spherical end effector is the sphere center at touchdown (it does not move while the sphere rolls)
+    const matrix3_t imu_rotation_transposed = robot_model_.getImuRotation().transpose();
+    const matrix3_t state_rotation_transposed = inekf_.getState().getRotation().transpose();
     const scalar_t contact_position_cov = settings_.contact_position_noise * settings_.contact_position_noise;
     for(int  i = 0;  i < robot_model_.numContacts(); ++i)
     {
       leg_kinematics_[i].setContactPosition(imu_rotation_transposed
-        * (robot_model_.getContactPosition(i) - robot_model_.getImuPosition()));
+        * (robot_model_.getContactPosition(i) - robot_model_.getImuPosition())
+        - state_rotation_transposed * rolling_offsets_[i]);
 
       scalar_t contact_cov = contact_position_cov;
       if(contact_estimator_ptr_)
